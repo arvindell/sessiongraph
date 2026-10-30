@@ -1,2 +1,5 @@
 allowBuilds:
   esbuild: true
+# These are release outputs; source builds never install their own native binaries.
+ignoredOptionalDependencies:
+  - '@arvindell/session-atlas-app-*'
