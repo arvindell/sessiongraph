@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { SessionAtlasData, Session, SessionDetail, SessionTimeline, SourceStatus } from '../src/types';
+import type { SessionGraphData, Session, SessionDetail, SessionTimeline, SourceStatus } from '../src/types';
 import type { ContentPage } from '../src/search/types';
 import { MAX_CHARACTERS, validRecord, type CachedContent } from '../src/search/persistence';
 import type { Candidate, ImportedMessage } from './adapters/types';
@@ -10,8 +10,8 @@ import { databasePath } from './config';
 import { activitySQL, isUserMessage, messageTime } from './activity';
 import { EVENT_SCHEMA, writeEvents, readEvents, readEventMarkers } from './event-store';
 
-/** Session Atlas owns this database. No adapter opens or modifies a harness database. */
-export class SessionAtlasStore {
+/** SessionGraph owns this database. No adapter opens or modifies a harness database. */
+export class SessionGraphStore {
   private owner = randomUUID();
   readonly db: DatabaseSync;
   constructor(readonly path = databasePath()) {
@@ -20,7 +20,7 @@ export class SessionAtlasStore {
     if (path !== ':memory:') chmodSync(path, 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
-    if (version > 4) throw new Error('This Session Atlas database requires a newer version of the app.');
+    if (version > 4) throw new Error('This SessionGraph database requires a newer version of the app.');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, last_import INTEGER, error TEXT);
@@ -40,7 +40,7 @@ export class SessionAtlasStore {
     if (version < 3) {
       this.db.exec('BEGIN IMMEDIATE');
       try {
-        // Backfill from Session Atlas's saved snapshot, without rereading sources.
+        // Backfill from SessionGraph's saved snapshot, without rereading sources.
         if (!this.db.prepare('PRAGMA table_info(messages)').all().some((column) => column.name === 'time')) {
           this.db.exec(`ALTER TABLE messages ADD COLUMN time REAL;
             ALTER TABLE messages ADD COLUMN is_user INTEGER NOT NULL DEFAULT 0;
@@ -127,7 +127,7 @@ export class SessionAtlasStore {
     const count = this.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE source=?').get(id)!;
     return { sessions: Number(count.n), lastImport: row?.last_import ? Number(row.last_import) : undefined, error: row?.error ? String(row.error) : undefined };
   }
-  library(sources: SourceStatus[], importing: boolean): SessionAtlasData {
+  library(sources: SourceStatus[], importing: boolean): SessionGraphData {
     return { sourceID: this.setting('libraryID'), onboarding: this.setting('selected') === undefined, sources, importing,
       sessions: this.db.prepare('SELECT metadata FROM sessions').all().map((r) => JSON.parse(String(r.metadata))),
       projects: this.db.prepare('SELECT data FROM projects').all().map((r) => JSON.parse(String(r.data))), loadedAt: Date.now(), warnings: [],

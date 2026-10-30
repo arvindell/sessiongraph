@@ -8,18 +8,18 @@ import { tmpdir } from 'node:os';
 import { blankMessage, blankSession } from '../server/adapters/common';
 
 test('local API prepares saved handoffs and timing; rejects unsupported targets, methods and cross-origin writes', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'session-atlas-api-'));
-  const previous = process.env.SESSION_ATLAS_DATA_DIR;
-  process.env.SESSION_ATLAS_DATA_DIR = dir;
-  const { library, sessionAtlasMiddleware } = await import('../server/middleware');
+  const dir = await mkdtemp(join(tmpdir(), 'sessiongraph-api-'));
+  const previous = process.env.SESSIONGRAPH_DATA_DIR;
+  process.env.SESSIONGRAPH_DATA_DIR = dir;
+  const { library, sessionGraphMiddleware } = await import('../server/middleware');
   const { store } = library();
   const c = { session: { ...blankSession('opencode', 'ses_fixture', dir), created: 100 }, revision: 'test', locator: {} };
   store.upsert(c); store.replace(c, [{ ...blankMessage('u1', 200, 'user'), fragments: [{ kind: 'You', time: 200, text: 'Continue building the synthetic test.' }] }], false);
-  const server = createServer((req, res) => { void sessionAtlasMiddleware(req, res, () => { res.statusCode = 404; res.end(); }); });
+  const server = createServer((req, res) => { void sessionGraphMiddleware(req, res, () => { res.statusCode = 404; res.end(); }); });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address() as { port: number };
-  const base = `http://127.0.0.1:${address.port}/api/session-atlas/session/${encodeURIComponent(c.session.id)}`;
-  const post = (value: unknown, headers = {}) => fetch(`${base}/prepare-launch`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Session-Atlas-Action': 'prepare-launch', ...headers }, body: JSON.stringify(value) });
+  const base = `http://127.0.0.1:${address.port}/api/sessiongraph/session/${encodeURIComponent(c.session.id)}`;
+  const post = (value: unknown, headers = {}) => fetch(`${base}/prepare-launch`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'prepare-launch', ...headers }, body: JSON.stringify(value) });
   try {
     const response = await post({ target: 'claude-code', directory: dir, command: 'untrusted command must be ignored' });
     assert.equal(response.status, 200);
@@ -42,11 +42,11 @@ test('local API prepares saved handoffs and timing; rejects unsupported targets,
     assert.equal((await fetch(`${base}/events?filter=invalid`)).status, 400);
     assert.equal((await fetch(`${base}/events?item=absent`)).status, 404);
     assert.equal((await fetch(`${base}/events?revision=old`)).status, 409);
-    assert.equal((await fetch(`${base}/events`, { method: 'POST', headers: { 'X-Session-Atlas-Action': 'events' } })).status, 405);
+    assert.equal((await fetch(`${base}/events`, { method: 'POST', headers: { 'X-SessionGraph-Action': 'events' } })).status, 405);
   } finally {
     server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve()));
     store.close();
-    if (previous === undefined) delete process.env.SESSION_ATLAS_DATA_DIR; else process.env.SESSION_ATLAS_DATA_DIR = previous;
+    if (previous === undefined) delete process.env.SESSIONGRAPH_DATA_DIR; else process.env.SESSIONGRAPH_DATA_DIR = previous;
     await rm(dir, { recursive: true });
   }
 });

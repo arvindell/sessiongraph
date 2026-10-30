@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SessionAtlasStore } from '../server/store';
+import { SessionGraphStore } from '../server/store';
 import { EventReadError } from '../server/event-store';
 import { blockEvents, boundEventPayloads, eventFor, eventText, messageEvent } from '../server/events';
 import { blankMessage, blankSession } from '../server/adapters/common';
@@ -17,7 +17,7 @@ const message = (id: string, time: number) => {
 };
 
 test('events page through source order, retain simultaneous and untimed items, scope correlations and reject stale snapshots', () => {
-  const store = new SessionAtlasStore(':memory:');
+  const store = new SessionGraphStore(':memory:');
   try {
     store.upsert(candidate);
     const messages = Array.from({ length: 125 }, (_, i) => message(`m${i}`, i === 5 ? 0 : 100 + Math.floor(i / 2)));
@@ -47,7 +47,7 @@ test('events page through source order, retain simultaneous and untimed items, s
 });
 
 test('message and event replacement rolls back together and leaves the previous snapshot readable', () => {
-  const store = new SessionAtlasStore(':memory:');
+  const store = new SessionGraphStore(':memory:');
   try {
     store.upsert(candidate); store.replace(candidate, [message('old', 150)], false);
     const before = store.events(candidate.session.id);
@@ -61,18 +61,18 @@ test('message and event replacement rolls back together and leaves the previous 
 });
 
 test('v3 migration reconstructs honest legacy coverage and keeps snapshots and checkpoints', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'atlas-events-')), path = join(dir, 'library.sqlite');
+  const dir = await mkdtemp(join(tmpdir(), 'sessiongraph-events-')), path = join(dir, 'library.sqlite');
   try {
-    const old = new SessionAtlasStore(path); old.upsert(candidate);
+    const old = new SessionGraphStore(path); old.upsert(candidate);
     const msg = blankMessage('legacy', 0, 'assistant'); msg.fragments = [{ text: 'Saved reply', time: 0, kind: 'Assistant' }, { text: 'Unpaired tool text', time: 0, kind: 'Tool' }];
     old.replace(candidate, [msg], false); old.db.prepare('INSERT INTO search_cache VALUES (?,?,?)').run(candidate.session.id, '{"keep":true}', 10);
     old.db.exec('DROP TABLE timeline_items; DROP TABLE timeline_coverage; PRAGMA user_version=3;'); old.close();
-    const current = new SessionAtlasStore(path);
+    const current = new SessionGraphStore(path);
     const page = current.events(candidate.session.id);
     assert.equal(page.total, 2); assert.equal(page.partial, true); assert.match(page.note!, /older flattened import/);
     assert.equal(page.items[1].kind, 'event'); assert.equal(page.items[1].time, null);
     assert.equal(current.db.prepare('SELECT data FROM search_cache').get()!.data, '{"keep":true}'); current.close();
-    const reopened = new SessionAtlasStore(path); assert.equal(reopened.events(candidate.session.id).revision, page.revision); reopened.close();
+    const reopened = new SessionGraphStore(path); assert.equal(reopened.events(candidate.session.id).revision, page.revision); reopened.close();
   } finally { await rm(dir, { recursive: true }); }
 });
 
@@ -106,7 +106,7 @@ test('Codex and Cursor keep tool results, lifecycle events, unknown times and na
 });
 
 test('marker limits disclose unplotted events and never place unknown or outside-lifetime timestamps', () => {
-  const store = new SessionAtlasStore(':memory:');
+  const store = new SessionGraphStore(':memory:');
   try {
     store.upsert(candidate);
     store.replace(candidate, [message('early', 50), message('untimed', 0), ...Array.from({ length: 2010 }, (_, i) => message(`m${i}`, 100 + i))], false);

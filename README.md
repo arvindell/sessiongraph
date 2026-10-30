@@ -1,12 +1,12 @@
-<h1 align="center">Session Atlas</h1>
+<h1 align="center">SessionGraph</h1>
 <p align="center">Search &amp; visualize all your LLM sessions</p>
 <p align="center">
-  <a href="https://github.com/arvindell/session-atlas/releases/latest">Download</a> ·
+  <a href="https://github.com/arvindell/sessiongraph/releases/latest">Download</a> ·
   <a href="docs/guide.md">Documentation</a> ·
   <a href="docs/releases.md">Releases</a>
 </p>
 
-![Session Atlas showing a timeline of demo sessions](docs/screenshot.png)
+![SessionGraph showing a timeline of demo sessions](docs/screenshot.png)
 
 Explore **OpenCode, Claude Code, Codex, and Cursor** in one local-first app.
 Search conversations, explore clickable messages and tool calls, inspect changed files, and continue in another harness.
@@ -15,7 +15,7 @@ Importing, searching, and visualization stay on your computer.
 
 ### Install
 
-Download a desktop app from [Releases](https://github.com/arvindell/session-atlas/releases/latest):
+Download a desktop app from [Releases](https://github.com/arvindell/sessiongraph/releases/latest):
 
 | macOS | Windows | Linux |
 | --- | --- | --- |
@@ -24,11 +24,11 @@ Download a desktop app from [Releases](https://github.com/arvindell/session-atla
 Or launch with **Node.js 24+**:
 
 ```sh
-npx @arvindell/session-atlas
-npx @arvindell/session-atlas --browser
+npx sessiongraph
+npx sessiongraph --browser
 ```
 
-Private preview: GitHub and npm access are required. Run `npm login` first.
+The npm launcher and platform packages are public; no npm login is needed.
 
 ### Develop
 

@@ -54,7 +54,7 @@ function pump() {
       try {
         const params = new URLSearchParams({ updated: String(state.session.updated) });
         if (state.cursor) params.set('cursor', state.cursor);
-        const response = await fetch(`/api/session-atlas/session/${encodeURIComponent(state.session.id)}/content?${params}`, { signal: controller.signal });
+        const response = await fetch(`/api/sessiongraph/session/${encodeURIComponent(state.session.id)}/content?${params}`, { signal: controller.signal });
         if (!response.ok) throw new Error('Conversation unavailable');
         const page = await response.json() as ContentPage;
         if (version !== revision || controller.signal.aborted) return;

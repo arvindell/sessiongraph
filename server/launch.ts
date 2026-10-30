@@ -9,7 +9,7 @@ import type { Session } from '../src/types';
 import { serviceFile } from './config';
 import { harnessExecutable, launchCommand, terminalExecutable } from './harnesses';
 import { saveHandoff } from './handoff';
-import type { SessionAtlasStore } from './store';
+import type { SessionGraphStore } from './store';
 
 const exec = promisify(execFile);
 export async function getLaunchConnection(session: Session): Promise<LaunchConnection> {
@@ -30,7 +30,7 @@ export async function getLaunchConnection(session: Session): Promise<LaunchConne
   return { webBaseUrl, terminalAvailable: Boolean(terminal), targets };
 }
 
-export async function prepareLaunch(store: SessionAtlasStore, session: Session, target: HarnessID, directory = session.directory): Promise<PreparedLaunch> {
+export async function prepareLaunch(store: SessionGraphStore, session: Session, target: HarnessID, directory = session.directory): Promise<PreparedLaunch> {
   if (!isHarness(target)) throw new Error('Choose a supported destination app.');
   if (typeof directory !== 'string' || !isAbsolute(directory) || /[\x00-\x1f\x7f]/.test(directory)) throw new Error('Choose an absolute working directory.');
   if (!(await stat(directory).catch(() => undefined))?.isDirectory()) throw new Error('Working directory is unavailable. Choose an existing directory.');

@@ -12,7 +12,7 @@ if (!commit) throw new Error('GITHUB_SHA is required to identify the release com
 const packages = files.map((file) => {
   const path = join(directory, file);
   const manifest = JSON.parse(execFileSync('tar', ['-xOf', path, 'package/package.json'], { encoding: 'utf8', maxBuffer: 2_000_000 }));
-  if (!expected.delete(manifest.name) || !manifest.name.startsWith('@arvindell/session-atlas') || manifest.version !== version || manifest.sessionAtlasCommit !== commit || manifest.publishConfig?.access !== 'restricted' || manifest.publishConfig?.registry !== 'https://registry.npmjs.org/') throw new Error(`Unexpected or non-private package: ${file}`);
+  if (!expected.delete(manifest.name) || manifest.version !== version || manifest.sessionGraphCommit !== commit || manifest.publishConfig?.access !== 'public' || manifest.publishConfig?.registry !== 'https://registry.npmjs.org/') throw new Error(`Unexpected package or publishing configuration: ${file}`);
   if (manifest.name === pkg.name && Object.keys(pkg.optionalDependencies).some((name) => manifest.optionalDependencies?.[name] !== version)) throw new Error('Launcher native dependencies must match the release version.');
   return { path, manifest };
 });
@@ -22,21 +22,21 @@ packages.sort((a, b) => Number(a.manifest.name === pkg.name) - Number(b.manifest
 function npm(...args) {
   return spawnSync('npm', [...args, '--registry=https://registry.npmjs.org/', '--json'], { encoding: 'utf8', maxBuffer: 4_000_000 });
 }
-function requirePrivate(name) {
+function requirePublic(name) {
   const status = npm('access', 'get', 'status', name);
-  if (status.status !== 0 || JSON.parse(status.stdout)[name] !== 'private') throw new Error(`Could not verify private npm visibility for ${name}.`);
+  if (status.status !== 0 || JSON.parse(status.stdout)[name] !== 'public') throw new Error(`Could not verify public npm visibility for ${name}.`);
 }
 for (const { path, manifest } of packages) {
   const spec = `${manifest.name}@${version}`;
   const existing = npm('view', spec);
   if (existing.status === 0) {
-    if (JSON.parse(existing.stdout).sessionAtlasCommit !== commit) throw new Error(`${spec} already belongs to another commit.`);
-    requirePrivate(manifest.name);
-    console.log(`Already published privately: ${spec}`);
+    if (JSON.parse(existing.stdout).sessionGraphCommit !== commit) throw new Error(`${spec} already belongs to another commit.`);
+    requirePublic(manifest.name);
+    console.log(`Already published: ${spec}`);
     continue;
   }
   let error; try { error = JSON.parse(existing.stdout).error; } catch { /* Report registry failure below. */ }
   if (error?.code !== 'E404') throw new Error(`Registry lookup failed for ${spec}: ${existing.stderr}`);
-  execFileSync('npm', ['publish', path, '--access=restricted', '--ignore-scripts', '--registry=https://registry.npmjs.org/'], { stdio: 'inherit' });
-  requirePrivate(manifest.name);
+  execFileSync('npm', ['publish', path, '--access=public', '--ignore-scripts', '--registry=https://registry.npmjs.org/'], { stdio: 'inherit' });
+  requirePublic(manifest.name);
 }

@@ -13,7 +13,7 @@ import { createEventExplorer } from './event-explorer';
 import { createEventHover } from './event-hover';
 import { TimelineClient } from './timeline-client';
 import type { TimelineMarkers } from './timeline';
-import type { SessionAtlasData, Graph, Session, SessionDetail } from './types';
+import type { SessionGraphData, Graph, Session, SessionDetail } from './types';
 import './style.css';
 
 const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX };
@@ -33,7 +33,7 @@ const inputDate = (value: number) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-let data: SessionAtlasData | undefined;
+let data: SessionGraphData | undefined;
 let graph: Graph = { nodes: [], edges: [], lanes: [], start: 0, end: 0 };
 let filtered: Session[] = [];
 let sortedSessions: Session[] = [], filteredIDs = new Set<string>(), sessionsByID = new Map<string, Session>();
@@ -67,14 +67,14 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 $('#app').innerHTML = `
   <main class="map" aria-label="Session map">
-    <h1 class="sr-only">Session Atlas — Search &amp; visualize all your LLM sessions</h1>
+    <h1 class="sr-only">SessionGraph — Search &amp; visualize all your LLM sessions</h1>
     <div id="scene"></div>
     <div class="canvas-vignette"></div>
     <div id="graph-message" class="graph-message"><div class="loading-orbit"><span></span><span></span><span></span></div><h3>Loading sessions…</h3></div>
     <div id="tooltip" class="node-tooltip" hidden></div>
   </main>
   <header class="app-header glass">
-    <a class="brand" href="/" aria-label="Session Atlas home" title="Search &amp; visualize all your LLM sessions"><img src="/favicon.svg" alt=""/><span>session-atlas<span class="brand-dot">.</span></span></a>
+    <a class="brand" href="/" aria-label="SessionGraph home" title="Search &amp; visualize all your LLM sessions"><img src="/favicon.svg" alt=""/><span>SessionGraph<span class="brand-dot">.</span></span></a>
     <span class="connection" role="status" title="Connecting"><span class="status-dot"></span><span id="connection-label" class="sr-only">Connecting</span></span>
     <span class="toolbar-divider"></span>
     <button class="toolbar-button" id="toggle-explorer" aria-label="Toggle sessions" aria-controls="explorer" aria-expanded="true" title="Sessions">${icon('search')}<span>Sessions</span></button>
@@ -151,7 +151,7 @@ applyPreferences();
 const launcher = createSessionLauncher(modalVisibility);
 const imports = createImports(load, modalVisibility);
 $('#manage-sources').addEventListener('click', () => void imports.open());
-document.addEventListener('session-atlas-import-status', (event) => {
+document.addEventListener('sessiongraph-import-status', (event) => {
   const status = (event as CustomEvent<import('./types').ImportStatus>).detail;
   $('#refresh').classList.toggle('spinning', status.running);
   $('.connection').title = status.running ? `Importing ${sourceName(status.source)} · ${status.imported} sessions saved` : 'Local library · SQLite';
@@ -227,7 +227,7 @@ async function initializeScene() { try {
     if (selectedTimeline) scene.setEvents(selectedTimeline.items);
   }
 } catch (error) {
-  console.error('[session-atlas] Graphics initialization failed', error);
+  console.error('[sessiongraph] Graphics initialization failed', error);
   showToast('3D requires WebGL. You can still browse sessions in the list.');
 } finally { sceneLoading = false; if (data) renderGraphMessage(); } }
 void initializeScene();
@@ -246,7 +246,7 @@ async function load() {
   refresh.disabled = true;
   refresh.classList.add('spinning');
   try {
-    data = await fetchJSON<SessionAtlasData>('/api/session-atlas');
+    data = await fetchJSON<SessionGraphData>('/api/sessiongraph');
     timelineClient.clear();
     sessionsByID = new Map(data.sessions.map((session) => [session.id, session]));
     $<HTMLSelectElement>('#source').innerHTML = '<option value="">All sources</option>' + (data.sources || []).map((s) => `<option value="${escape(s.id)}">${escape(s.name)} · ${s.sessions.toLocaleString()}</option>`).join('');
@@ -481,7 +481,7 @@ async function loadTimeline(session: Session) {
   const request = ++timelineRequest;
   timelineController?.abort(); const controller = new AbortController(); timelineController = controller;
   try {
-    const timeline = await fetchJSON<TimelineMarkers>(`/api/session-atlas/session/${encodeURIComponent(session.id)}/event-markers`, controller.signal);
+    const timeline = await fetchJSON<TimelineMarkers>(`/api/sessiongraph/session/${encodeURIComponent(session.id)}/event-markers`, controller.signal);
     if (controller.signal.aborted || request !== timelineRequest || selectedID !== session.id) return;
     selectedTimeline = timeline; scene?.setEvents(timeline.items); renderTimeline(session, timeline);
   } catch {
@@ -526,7 +526,7 @@ async function loadFiles(id: string, cursor?: string) {
   const earlier = $<HTMLButtonElement>('#load-earlier');
   if (earlier) { earlier.disabled = true; earlier.textContent = 'Scanning earlier messages…'; }
   try {
-    const result = await fetchJSON<SessionDetail>(`/api/session-atlas/session/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, controller.signal);
+    const result = await fetchJSON<SessionDetail>(`/api/sessiongraph/session/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, controller.signal);
     if (controller.signal.aborted || request !== detailRequest || selectedID !== id) return;
     selectedDetail = cursor && selectedDetail ? mergeDetail(selectedDetail, result) : result;
     renderDetail(selectedDetail);
@@ -638,5 +638,5 @@ document.addEventListener('keydown', (event) => {
 });
 
 void load().then(() => { if (data?.importing) imports.resume(); });
-if (import.meta.env.DEV) Object.assign(window, { sessionAtlasDiagnostics: () => scene?.diagnostics(), sessionAtlasAudioDiagnostics: () => audio.diagnostics(), sessionAtlasSearchDiagnostics: sessionSearch.diagnostics });
+if (import.meta.env.DEV) Object.assign(window, { sessionGraphDiagnostics: () => scene?.diagnostics(), sessionGraphAudioDiagnostics: () => audio.diagnostics(), sessionGraphSearchDiagnostics: sessionSearch.diagnostics });
 if (import.meta.hot) import.meta.hot.dispose(() => { detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });

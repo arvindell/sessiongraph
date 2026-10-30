@@ -26,7 +26,7 @@ export class TimelineClient {
     if (!pending) {
       const controller = new AbortController(), generation = this.generation;
       const params = new URLSearchParams({ filter, ...query });
-      const promise = this.request(`/api/session-atlas/session/${encodeURIComponent(sessionID)}/events?${params}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]) }).then(async (response) => {
+      const promise = this.request(`/api/sessiongraph/session/${encodeURIComponent(sessionID)}/events?${params}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]) }).then(async (response) => {
         const page = await response.json();
         if (!response.ok) { if (response.status === 409) this.clear(); throw new Error(page.error || 'Could not load events.'); }
         if (controller.signal.aborted || generation !== this.generation) throw new DOMException('Request cancelled', 'AbortError');

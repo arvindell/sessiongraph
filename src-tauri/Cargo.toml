@@ -1,5 +1,5 @@
 [package]
-name = "session-atlas"
+name = "sessiongraph"
 version = "0.1.0"
 description = "Search & visualize all your LLM sessions"
 edition = "2021"

@@ -18,7 +18,7 @@ test('web links use the discovered origin and V2 server route without credential
 });
 
 test('launch commands preserve paths and arguments as data through a POSIX shell', { skip: process.platform === 'win32' }, async () => {
-  const root = await mkdtemp(join(tmpdir(), 'session-atlas-quote-')), directory = join(root, "a 'quote' $(echo nope); & space");
+  const root = await mkdtemp(join(tmpdir(), 'sessiongraph-quote-')), directory = join(root, "a 'quote' $(echo nope); & space");
   const args = ["a 'quote'", '$(echo injection)', 'a;b & c', 'back`tick', '雪'];
   try {
     await mkdir(directory);

@@ -92,9 +92,9 @@ export function createSessionLauncher(onVisibility: () => void) {
     prepareController = new AbortController();
     status.textContent = 'Preparing command…';
     try {
-      const response = await fetch(`/api/session-atlas/session/${encodeURIComponent(current.id)}/prepare-launch`, {
+      const response = await fetch(`/api/sessiongraph/session/${encodeURIComponent(current.id)}/prepare-launch`, {
         method: 'POST', signal: prepareController.signal,
-        headers: { 'Content-Type': 'application/json', 'X-Session-Atlas-Action': 'prepare-launch' },
+        headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'prepare-launch' },
         body: JSON.stringify({ target: select.value, directory: directory.value }),
       });
       const value = await response.json();
@@ -106,7 +106,7 @@ export function createSessionLauncher(onVisibility: () => void) {
     }
   }
   select.addEventListener('change', () => {
-    try { localStorage.setItem('session-atlas.open-target', select.value); } catch { /* Preferences are optional. */ }
+    try { localStorage.setItem('sessiongraph.open-target', select.value); } catch { /* Preferences are optional. */ }
     void prepare();
   }, options);
   directory.addEventListener('input', () => {
@@ -124,8 +124,8 @@ export function createSessionLauncher(onVisibility: () => void) {
     const request = version;
     terminal.disabled = select.disabled = directory.disabled = true; status.textContent = 'Opening Terminal…';
     try {
-      const response = await fetch(`/api/session-atlas/session/${encodeURIComponent(current.id)}/open-terminal`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Session-Atlas-Action': 'open-terminal' },
+      const response = await fetch(`/api/sessiongraph/session/${encodeURIComponent(current.id)}/open-terminal`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'open-terminal' },
         body: JSON.stringify({ target: select.value, directory: prepared.directory }),
       });
       const value = await response.json();
@@ -148,7 +148,7 @@ export function createSessionLauncher(onVisibility: () => void) {
       select.querySelector<HTMLOptionElement>('[value="web"]')!.disabled = !web;
       for (const harness of HARNESSES) select.querySelector<HTMLOptionElement>(`[value="${harness.id}"]`)!.textContent = harness.name;
       try {
-        const saved = localStorage.getItem('session-atlas.open-target') || localStorage.getItem('atlas.open-target');
+        const saved = localStorage.getItem('sessiongraph.open-target') || localStorage.getItem('session-atlas.open-target') || localStorage.getItem('atlas.open-target');
         if (isHarness(saved) || (saved === 'web' && web)) select.value = saved;
       } catch { /* Preferences are optional. */ }
       command.placeholder = 'Preparing command…';
@@ -156,7 +156,7 @@ export function createSessionLauncher(onVisibility: () => void) {
       if (!dialog.open) dialog.showModal();
       onVisibility(); select.focus(); void prepare();
       try {
-        const response = await fetch(`/api/session-atlas/session/${encodeURIComponent(session.id)}/connection`, { signal: connectionController.signal });
+        const response = await fetch(`/api/sessiongraph/session/${encodeURIComponent(session.id)}/connection`, { signal: connectionController.signal });
         if (!response.ok) throw new Error('Connection unavailable');
         const value = await response.json() as LaunchConnection;
         if (version !== request) return;

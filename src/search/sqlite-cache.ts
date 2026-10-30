@@ -1,7 +1,7 @@
 import type { Session } from '../types';
 import { MAX_CHARACTERS, validRecord, type CachedContent } from './persistence';
 
-/** Browser worker bridge to Session Atlas's local SQLite index. No source/agent calls. */
+/** Browser worker bridge to SessionGraph's local SQLite index. No source/agent calls. */
 export class SQLiteSearchCache {
   available = true;
   private epoch = 0;
@@ -10,7 +10,7 @@ export class SQLiteSearchCache {
     let cursor: string | undefined, characters = 0;
     try {
       do {
-        const response = await fetch(`/api/session-atlas/index${cursor ? `?after=${encodeURIComponent(cursor)}` : ''}`);
+        const response = await fetch(`/api/sessiongraph/index${cursor ? `?after=${encodeURIComponent(cursor)}` : ''}`);
         if (!response.ok) throw new Error('Index unavailable');
         const page = await response.json() as { records: CachedContent[]; cursor?: string; epoch: number };
         this.epoch = page.epoch;
@@ -24,12 +24,12 @@ export class SQLiteSearchCache {
   async save(record: CachedContent) {
     if (!this.available) return;
     try {
-      const response = await fetch('/api/session-atlas/index', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Session-Atlas-Action': 'index' }, body: JSON.stringify({ record, epoch: this.epoch }) });
+      const response = await fetch('/api/sessiongraph/index', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'index' }, body: JSON.stringify({ record, epoch: this.epoch }) });
       if (!response.ok && response.status !== 409) this.available = false;
     } catch { this.available = false; }
   }
   async clear() {
-    const response = await fetch('/api/session-atlas/index', { method: 'DELETE', headers: { 'X-Session-Atlas-Action': 'index' } });
+    const response = await fetch('/api/sessiongraph/index', { method: 'DELETE', headers: { 'X-SessionGraph-Action': 'index' } });
     this.available = response.ok;
     if (!response.ok) throw new Error('Could not clear saved index.');
   }

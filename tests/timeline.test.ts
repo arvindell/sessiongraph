@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { SessionAtlasStore } from '../server/store';
+import { SessionGraphStore } from '../server/store';
 import { blankMessage, blankSession } from '../server/adapters/common';
 import { connectionPositions, makeGraph, sessionEnd, timeX, trailPosition } from '../src/layout';
 import type { ImportedMessage } from '../server/adapters/types';
@@ -13,7 +13,7 @@ const user = (id: string, time: number): ImportedMessage => ({ ...blankMessage(i
 const candidate = { session: { ...blankSession('test', 'session'), created: 100, updated: 999_999 }, revision: 'r1', locator: {} };
 
 test('activity follows saved message time, excludes tool-result user envelopes, and preserves simultaneous turns', () => {
-  const store = new SessionAtlasStore(':memory:');
+  const store = new SessionGraphStore(':memory:');
   try {
     store.upsert(candidate);
     const messages = [user('earlier', 80), user('first', 100), user('same-time', 100), user('unknown', 0), { ...blankMessage('tool-result', 110, 'user'), fragments: [{ kind: 'Tool' as const, text: 'ok', time: 110 }] }, blankMessage('reply', 400, 'assistant')];
@@ -38,7 +38,7 @@ test('activity follows saved message time, excludes tool-result user envelopes, 
 });
 
 test('message markers are bounded, chronological and do not collapse identical timestamps', () => {
-  const store = new SessionAtlasStore(':memory:');
+  const store = new SessionGraphStore(':memory:');
   try {
     store.upsert(candidate);
     store.replace(candidate, Array.from({ length: 2105 }, (_, i) => user(`m${i}`, 100 + Math.floor(i / 2))), false);
@@ -52,7 +52,7 @@ test('message markers are bounded, chronological and do not collapse identical t
 });
 
 test('v2 libraries gain activity from saved history without losing checkpoints or rereading sources', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'session-atlas-migration-')), path = join(dir, 'library.sqlite');
+  const dir = await mkdtemp(join(tmpdir(), 'sessiongraph-migration-')), path = join(dir, 'library.sqlite');
   const legacy = new DatabaseSync(path);
   legacy.exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, native_id TEXT NOT NULL, metadata TEXT NOT NULL, imported_revision TEXT, locator TEXT NOT NULL, UNIQUE(source,native_id));
     CREATE TABLE messages (session_id TEXT NOT NULL, id TEXT NOT NULL, ordinal INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,id));
@@ -62,14 +62,14 @@ test('v2 libraries gain activity from saved history without losing checkpoints o
   legacy.prepare('INSERT INTO search_cache VALUES (?,?,?)').run(candidate.session.id, '{"saved":true}', 10);
   legacy.close();
   try {
-    const store = new SessionAtlasStore(path);
+    const store = new SessionGraphStore(path);
     try {
       assert.equal(store.getSession(candidate.session.id)!.activity!.lastMessageAt, 800);
       assert.deepEqual(store.timeline(candidate.session.id).userMessages, [{ id: 'm1', time: 800 }]);
       assert.equal(store.db.prepare('SELECT data FROM search_cache').get()!.data, '{"saved":true}');
       assert.equal(store.db.prepare('PRAGMA user_version').get()!.user_version, 4);
     } finally { store.close(); }
-    const reopened = new SessionAtlasStore(path);
+    const reopened = new SessionGraphStore(path);
     try { assert.equal(reopened.getSession(candidate.session.id)!.activity!.userMessages, 1); } finally { reopened.close(); }
   } finally { await rm(dir, { recursive: true }); }
 });

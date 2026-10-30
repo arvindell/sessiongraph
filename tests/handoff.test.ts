@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { SessionAtlasStore } from '../server/store';
+import { SessionGraphStore } from '../server/store';
 import { blankMessage, blankSession } from '../server/adapters/common';
 import { handoffDocument, saveHandoff } from '../server/handoff';
 import { prepareLaunch } from '../server/launch';
@@ -12,7 +12,7 @@ import { HARNESSES, type HarnessID } from '../src/launch-links';
 const messages = (length: number) => Array.from({ length }, (_, i) => ({ ...blankMessage(`m${i}`, 1_000 + i, i % 2 ? 'assistant' : 'user'), fragments: [{ kind: i % 2 ? 'Assistant' as const : 'You' as const, text: `turn-${i}-end`, time: 1_000 + i }] }));
 
 test('handoffs preserve the original request and latest chronological context with honest coverage', () => {
-  const store = new SessionAtlasStore(':memory:');
+  const store = new SessionGraphStore(':memory:');
   const c = { session: blankSession('opencode', 'ses_test'), revision: 'r1', locator: {} };
   try {
     store.upsert(c); store.replace(c, messages(250), false);
@@ -36,7 +36,7 @@ test('handoffs preserve the original request and latest chronological context wi
 });
 
 test('handoff files are private, atomic, stable and saved outside the working project', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'session-atlas-handoff-'));
+  const dir = await mkdtemp(join(tmpdir(), 'sessiongraph-handoff-'));
   const snapshot = { session: { ...blankSession('test', 'id'), coverage: { history: 'complete' as const } }, messages: messages(3), firstUser: undefined, totalMessages: 3 };
   try {
     const [a, b] = await Promise.all([saveHandoff(snapshot, dir), saveHandoff(snapshot, dir)]);
@@ -47,8 +47,8 @@ test('handoff files are private, atomic, stable and saved outside the working pr
 });
 
 test('all harness pairs prepare native resumes or saved-context launches without executing agents', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'session-atlas-prepare-'));
-  const store = new SessionAtlasStore(join(dir, 'library.sqlite'));
+  const dir = await mkdtemp(join(tmpdir(), 'sessiongraph-prepare-'));
+  const store = new SessionGraphStore(join(dir, 'library.sqlite'));
   try {
     for (const source of HARNESSES) {
       const c = { session: { ...blankSession(source.id, source.id === 'opencode' ? 'ses_native' : 'native-id', dir), nativeResume: true }, revision: 'r1', locator: {} };

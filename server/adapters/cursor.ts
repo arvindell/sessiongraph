@@ -65,7 +65,7 @@ async function workspacePaths(root: string, warnings: string[]) {
 }
 
 export function createCursorAdapter(options: { home?: string; userData?: string } = {}): SessionAdapter {
-  const root = () => options.home || process.env.SESSION_ATLAS_CURSOR_HOME || join(homedir(), '.cursor');
+  const root = () => options.home || process.env.SESSIONGRAPH_CURSOR_HOME || process.env.SESSION_ATLAS_CURSOR_HOME || join(homedir(), '.cursor');
   return {
     id: 'cursor', name: 'Cursor', description: 'Local IDE JSONL transcripts, subagents, and CLI / ACP stores · read-only',
     capabilities: { history: true, forks: false, children: true, files: false },
@@ -77,7 +77,7 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
     },
     async discover() {
       const warnings: string[] = [], found = new Map<string, Candidate>(), blocked = new Set<string>();
-      const paths = await workspacePaths(options.userData || process.env.SESSION_ATLAS_CURSOR_USER_DATA_DIR || userData(), warnings);
+      const paths = await workspacePaths(options.userData || process.env.SESSIONGRAPH_CURSOR_USER_DATA_DIR || process.env.SESSION_ATLAS_CURSOR_USER_DATA_DIR || userData(), warnings);
       const match = (key: string, encode: (value: string) => string) => {
         const matches = paths.filter((path) => encode(path) === key); return matches.length === 1 ? matches[0] : '';
       };

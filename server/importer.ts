@@ -1,20 +1,20 @@
 import { setImmediate as yieldToIO } from 'node:timers/promises';
 import type { ImportStatus, SourceStatus } from '../src/types';
 import type { ImportedMessage, SessionAdapter } from './adapters/types';
-import { SessionAtlasStore } from './store';
+import { SessionGraphStore } from './store';
 import { boundEventPayloads } from './events';
 
 export class Importer {
   status: ImportStatus = { running: false, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [] };
   private job?: Promise<void>;
-  constructor(readonly store: SessionAtlasStore, readonly adapters: SessionAdapter[]) {}
+  constructor(readonly store: SessionGraphStore, readonly adapters: SessionAdapter[]) {}
   async sources(): Promise<SourceStatus[]> {
     return Promise.all(this.adapters.map(async (adapter) => ({ id: adapter.id, name: adapter.name, description: adapter.description, capabilities: adapter.capabilities, available: await adapter.detect().catch(() => false), selected: this.store.selected().includes(adapter.id), ...this.store.sourceInfo(adapter.id) })));
   }
   start(ids?: string[]) {
     if (this.job) return this.status;
     if (ids?.some((id) => !this.adapters.some((a) => a.id === id))) throw new Error('Unknown session source.');
-    if (!this.store.acquireImport()) throw new Error('Another Session Atlas window is importing this library.');
+    if (!this.store.acquireImport()) throw new Error('Another SessionGraph window is importing this library.');
     if (ids) {
       this.store.setting('selected', [...new Set(ids)]);
     }

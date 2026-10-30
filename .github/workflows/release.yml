@@ -81,7 +81,7 @@ jobs:
       - run: node scripts/collect-release.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: session-atlas-${{ matrix.target }}
+          name: sessiongraph-${{ matrix.target }}
           path: release/assets/*
           if-no-files-found: error
           retention-days: 14
@@ -98,7 +98,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: session-atlas-*
+          pattern: sessiongraph-*
           path: release
           merge-multiple: true
       - name: Checksums
@@ -107,7 +107,7 @@ jobs:
       - name: Tag and release
         run: |
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --target "$GITHUB_SHA" --title "Session Atlas $TAG" --generate-notes --draft
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "SessionGraph $TAG" --generate-notes --draft
           fi
           gh release upload "$TAG" release/* --clobber
           gh release edit "$TAG" --draft=false --latest
@@ -123,13 +123,12 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          scope: '@arvindell'
       - uses: actions/download-artifact@v4
         with:
-          pattern: session-atlas-*
+          pattern: sessiongraph-*
           path: release/assets
           merge-multiple: true
-      - name: Publish private packages
+      - name: Publish public packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |

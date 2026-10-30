@@ -13,7 +13,7 @@ const bundles = await files('src-tauri/target/release/bundle');
 for (const extension of extensions) {
   const candidates = bundles.filter((path) => path.endsWith(extension));
   if (candidates.length !== 1) throw new Error(`Expected one ${extension} installer, found ${candidates.length}.`);
-  await copyFile(candidates[0], join(output, `session-atlas-${pkg.version}-${target}${extension}`));
+  await copyFile(candidates[0], join(output, `sessiongraph-${pkg.version}-${target}${extension}`));
 }
 const prefix = pkg.name.replace('@', '').replace('/', '-');
 const platform = `${prefix}-app-${target}-${pkg.version}.tgz`;

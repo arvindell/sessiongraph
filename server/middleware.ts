@@ -1,22 +1,22 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { adapters } from './adapters';
-import { SessionAtlasStore } from './store';
+import { SessionGraphStore } from './store';
 import { Importer } from './importer';
 import { getLaunchConnection, prepareLaunch, launchTerminal } from './launch';
 import { isHarness } from '../src/launch-links';
 import { EventReadError } from './event-store';
 
-const generation = Symbol('session-atlas-backend');
-const runtime = globalThis as typeof globalThis & { sessionAtlasRuntime?: { store: SessionAtlasStore; importer: Importer; generation?: symbol } };
+const generation = Symbol('sessiongraph-backend');
+const runtime = globalThis as typeof globalThis & { sessionGraphRuntime?: { store: SessionGraphStore; importer: Importer; generation?: symbol } };
 export function library() {
-  if (runtime.sessionAtlasRuntime?.importer.status.running && runtime.sessionAtlasRuntime.generation !== generation) {
+  if (runtime.sessionGraphRuntime?.importer.status.running && runtime.sessionGraphRuntime.generation !== generation) {
     // HMR can fix an adapter while a long import is in progress. Keep the job
     // and connection, but replace the methods it calls for subsequent pages.
-    for (const live of runtime.sessionAtlasRuntime.importer.adapters) { const updated = adapters.find((adapter) => adapter.id === live.id); if (updated) Object.assign(live, updated); }
+    for (const live of runtime.sessionGraphRuntime.importer.adapters) { const updated = adapters.find((adapter) => adapter.id === live.id); if (updated) Object.assign(live, updated); }
   }
-  if (runtime.sessionAtlasRuntime && runtime.sessionAtlasRuntime.generation !== generation && !runtime.sessionAtlasRuntime.importer.status.running) { runtime.sessionAtlasRuntime.store.close(); runtime.sessionAtlasRuntime = undefined; }
-  if (!runtime.sessionAtlasRuntime) { const store = new SessionAtlasStore(); runtime.sessionAtlasRuntime = { store, importer: new Importer(store, adapters), generation }; }
-  return runtime.sessionAtlasRuntime;
+  if (runtime.sessionGraphRuntime && runtime.sessionGraphRuntime.generation !== generation && !runtime.sessionGraphRuntime.importer.status.running) { runtime.sessionGraphRuntime.store.close(); runtime.sessionGraphRuntime = undefined; }
+  if (!runtime.sessionGraphRuntime) { const store = new SessionGraphStore(); runtime.sessionGraphRuntime = { store, importer: new Importer(store, adapters), generation }; }
+  return runtime.sessionGraphRuntime;
 }
 async function body(req: IncomingMessage): Promise<any> {
   let size = 0; const chunks: Buffer[] = [];
@@ -24,9 +24,9 @@ async function body(req: IncomingMessage): Promise<any> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
 
-export async function sessionAtlasMiddleware(req: IncomingMessage, res: ServerResponse, next: () => void) {
+export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerResponse, next: () => void) {
   const url = new URL(req.url || '/', 'http://localhost');
-  if (!url.pathname.startsWith('/api/session-atlas')) return next();
+  if (!url.pathname.startsWith('/api/sessiongraph')) return next();
   res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff');
   const json = (status: number, value: unknown) => { if (!res.writableEnded) { res.statusCode = status; res.end(JSON.stringify(value)); } };
   if (req.headers['sec-fetch-site'] === 'cross-site') return json(403, { error: 'Cross-site requests are not allowed.' });
@@ -34,11 +34,11 @@ export async function sessionAtlasMiddleware(req: IncomingMessage, res: ServerRe
     try { if (new URL(req.headers.origin).host !== req.headers.host) return json(403, { error: 'Origin mismatch.' }); }
     catch { return json(403, { error: 'Invalid origin.' }); }
   }
-  if (req.method !== 'GET' && typeof req.headers['x-session-atlas-action'] !== 'string') return json(403, { error: 'Use the Session Atlas application.' });
+  if (req.method !== 'GET' && typeof req.headers['x-sessiongraph-action'] !== 'string') return json(403, { error: 'Use the SessionGraph application.' });
   try {
     const { store, importer } = library();
-    if (url.pathname === '/api/session-atlas/sources' && req.method === 'GET') return json(200, { sources: await importer.sources(), onboarding: store.setting('selected') === undefined });
-    if (url.pathname === '/api/session-atlas/import') {
+    if (url.pathname === '/api/sessiongraph/sources' && req.method === 'GET') return json(200, { sources: await importer.sources(), onboarding: store.setting('selected') === undefined });
+    if (url.pathname === '/api/sessiongraph/import') {
       if (req.method === 'GET') return json(200, importer.status);
       if (req.method === 'POST') {
         const value = await body(req);
@@ -47,16 +47,16 @@ export async function sessionAtlasMiddleware(req: IncomingMessage, res: ServerRe
         return json(202, importer.start(value.sources));
       }
     }
-    if (url.pathname === '/api/session-atlas/index') {
+    if (url.pathname === '/api/sessiongraph/index') {
       if (req.method === 'GET') return json(200, store.checkpoints(url.searchParams.get('after') || ''));
       if (req.method === 'POST') { const value = await body(req); return value.record && store.saveCheckpoint(value.record, value.epoch) ? json(200, { saved: true }) : json(409, { error: 'Index snapshot is stale.' }); }
       if (req.method === 'DELETE') { store.clearIndex(); return json(200, { cleared: true }); }
     }
-    if (url.pathname === '/api/session-atlas' && req.method === 'GET') {
+    if (url.pathname === '/api/sessiongraph' && req.method === 'GET') {
       const sources = adapters.map((a) => ({ id: a.id, name: a.name, description: a.description, capabilities: a.capabilities, selected: store.selected().includes(a.id), available: false, ...store.sourceInfo(a.id) }));
       return json(200, store.library(sources, importer.status.running));
     }
-    const match = /^\/api\/session-atlas\/session\/([^/]+)(?:\/(content|timeline|events|event-markers|connection|prepare-launch|open-terminal))?$/.exec(url.pathname);
+    const match = /^\/api\/sessiongraph\/session\/([^/]+)(?:\/(content|timeline|events|event-markers|connection|prepare-launch|open-terminal))?$/.exec(url.pathname);
     if (match) {
       const id = decodeURIComponent(match[1]);
       const session = store.getSession(id);
@@ -85,7 +85,7 @@ export async function sessionAtlasMiddleware(req: IncomingMessage, res: ServerRe
     return json(404, { error: 'Not found.' });
   } catch (error) {
     if (error instanceof EventReadError) return json(error.status, { error: error.message });
-    console.error('[session-atlas] Local operation failed:', error instanceof Error ? error.name : 'Unknown error');
+    console.error('[sessiongraph] Local operation failed:', error instanceof Error ? error.name : 'Unknown error');
     return json(500, { error: 'Local operation failed. Check the import status or retry.' });
   }
 }

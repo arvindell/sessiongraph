@@ -29,7 +29,7 @@ export interface Project {
   worktrees: string[];
 }
 
-export interface SessionAtlasData {
+export interface SessionGraphData {
   onboarding?: boolean;
   sources?: SourceStatus[];
   importing?: boolean;

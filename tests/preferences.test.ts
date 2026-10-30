@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled } from '../src/preferences';
+import { DEFAULT_PREFERENCES, PREFERENCES_KEY, loadPreferences, savePreferences, normalizePreferences, motionEnabled } from '../src/preferences';
 
 test('preferences recover corrupt storage, reject invalid values, clamp rendering budgets and respect system motion', () => {
   assert.deepEqual(loadPreferences({ getItem: () => '{broken' }), DEFAULT_PREFERENCES);
@@ -15,4 +15,16 @@ test('preferences recover corrupt storage, reject invalid values, clamp renderin
   assert.equal(savePreferences({ setItem: (_key, value) => { saved = value; } }, values), true);
   assert.deepEqual(loadPreferences({ getItem: () => saved }), values);
   assert.equal(savePreferences({ setItem: () => { throw new Error('blocked'); } }, values), false);
+});
+
+test('SessionGraph restores legacy preferences and new saves take precedence', () => {
+  const legacy = JSON.stringify({ version: 1, values: { muted: true, bloom: 18, trailFlow: true } });
+  const entries = new Map([['session-atlas.preferences', legacy]]);
+  const storage = { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => { entries.set(key, value); } };
+  const values = loadPreferences(storage);
+  assert.equal(values.muted, true); assert.equal(values.bloom, 18); assert.equal(values.trailFlow, true);
+  assert.equal(savePreferences(storage, { ...values, muted: false }), true);
+  assert.ok(entries.has(PREFERENCES_KEY));
+  assert.equal(loadPreferences(storage).muted, false);
+  assert.equal(entries.get('session-atlas.preferences'), legacy);
 });

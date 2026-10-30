@@ -1,7 +1,7 @@
 import { Service } from '@opencode/client/service';
 import { basename } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { SessionAtlasData, FileChange, Project, Session, SessionDetail } from '../src/types';
+import type { SessionGraphData, FileChange, Project, Session, SessionDetail } from '../src/types';
 import { serviceFile } from './config';
 
 export interface RawSession {
@@ -41,7 +41,7 @@ export async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
   const endpoint = await Service.discover({ file: serviceFile() });
   if (!endpoint) throw new Error('No healthy OpenCode service was found.');
   const origin = new URL(endpoint.url);
-  if (!['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname) || !['http:', 'https:'].includes(origin.protocol)) throw new Error('Session Atlas only imports from a loopback OpenCode service.');
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname) || !['http:', 'https:'].includes(origin.protocol)) throw new Error('SessionGraph only imports from a loopback OpenCode service.');
   const response = await fetch(new URL(path, endpoint.url), {
     headers: Service.headers(endpoint),
     redirect: 'error',
@@ -60,17 +60,17 @@ export async function getSessionInfo(id: string) {
   return sessionFromResponse(await api<RawSession | { data: RawSession }>(`/api/session/${encodeURIComponent(id)}`), id);
 }
 
-let cache: SessionAtlasData | undefined;
-let pending: Promise<SessionAtlasData> | undefined;
+let cache: SessionGraphData | undefined;
+let pending: Promise<SessionGraphData> | undefined;
 
-export async function getSessionAtlas(force = false): Promise<SessionAtlasData> {
+export async function getSessionGraph(force = false): Promise<SessionGraphData> {
   if (!force && cache && Date.now() - cache.loadedAt < 30_000) return cache;
   if (pending) return pending;
-  pending = loadSessionAtlas().then((data) => (cache = data)).finally(() => { pending = undefined; });
+  pending = loadSessionGraph().then((data) => (cache = data)).finally(() => { pending = undefined; });
   return pending;
 }
 
-async function loadSessionAtlas(): Promise<SessionAtlasData> {
+async function loadSessionGraph(): Promise<SessionGraphData> {
   const endpoint = await Service.discover({ file: serviceFile() });
   if (!endpoint) throw new Error('No healthy OpenCode service was found.');
   // Scope the browser cache to this service without exposing its credentials.

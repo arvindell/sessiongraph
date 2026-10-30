@@ -19,7 +19,7 @@ function withStore<T>(path: string, read: (db: DatabaseSync) => T): T {
       return [s.ino, s.size, s.mtimeMs, s.ctimeMs];
     } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT' && file !== path) return null; throw error; }
   });
-  const before = stats(), directory = mkdtempSync(join(tmpdir(), 'session-atlas-cursor-'));
+  const before = stats(), directory = mkdtempSync(join(tmpdir(), 'sessiongraph-cursor-'));
   let db: DatabaseSync | undefined;
   try {
     chmodSync(directory, 0o700);

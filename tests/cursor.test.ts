@@ -10,7 +10,7 @@ import { createCursorAdapter } from '../server/adapters/cursor';
 import { cursorEnvelopeTime, cursorMessage } from '../server/adapters/cursor-message';
 import { cursorStoreMetadata, readCursorStore } from '../server/adapters/cursor-store';
 import { Importer } from '../server/importer';
-import { SessionAtlasStore } from '../server/store';
+import { SessionGraphStore } from '../server/store';
 import { blankSession } from '../server/adapters/common';
 import { prepareLaunch } from '../server/launch';
 import type { ImportedMessage } from '../server/adapters/types';
@@ -24,7 +24,7 @@ const ref = (field: number, id: string) => Buffer.concat([Buffer.from([field * 8
 const uint = (value: number) => { const out = []; do { out.push((value & 127) | (value > 127 ? 128 : 0)); value = Math.floor(value / 128); } while (value); return Buffer.from(out); };
 
 async function fixture() {
-  const dir = await mkdtemp(join(tmpdir(), 'session-atlas-cursor-test-'));
+  const dir = await mkdtemp(join(tmpdir(), 'sessiongraph-cursor-test-'));
   const home = join(dir, 'cursor'), userData = join(dir, 'editor'), directory = join(dir, 'my-project');
   const bucket = directory.replace(/^\/+|\/+$/g, '').replace(/[/:\\]+/g, '-');
   await mkdir(directory, { recursive: true });
@@ -84,7 +84,7 @@ test('Cursor discovers IDE layouts, explicit subagents, unique workspace mapping
 });
 
 test('Cursor transcript pagination preserves identical turns, deduplicates native IDs and rejects changed snapshots', async () => {
-  const f = await fixture(), store = new SessionAtlasStore(':memory:');
+  const f = await fixture(), store = new SessionGraphStore(':memory:');
   try {
     const path = join(f.transcripts, 'parent.jsonl');
     await write(path, lines(...Array.from({ length: 240 }, (_, i) => user('same 星🌌é', i < 2 ? { uuid: 'repeated-native-id' } : {}))) + '{broken\n');
@@ -106,7 +106,7 @@ test('Cursor transcript pagination preserves identical turns, deduplicates nativ
 });
 
 test('Cursor reads committed WAL roots in order without modifying source DB, WAL, SHM or importing abandoned blobs', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'session-atlas-cursor-wal-')), path = join(dir, 'store.db');
+  const dir = await mkdtemp(join(tmpdir(), 'sessiongraph-cursor-wal-')), path = join(dir, 'store.db');
   const f = await database(path, 'native', true);
   try {
     const first = f.leaf({ role: 'user', content: 'Repeated request' });
@@ -128,7 +128,7 @@ test('Cursor reads committed WAL roots in order without modifying source DB, WAL
 });
 
 test('Cursor bounds corrupt, missing, oversized and cyclic blobs and fails an unreadable root', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'session-atlas-cursor-bounds-')), path = join(dir, 'store.db');
+  const dir = await mkdtemp(join(tmpdir(), 'sessiongraph-cursor-bounds-')), path = join(dir, 'store.db');
   const f = await database(path);
   try {
     const good = f.leaf({ role: 'user', content: 'Keep readable history' });
@@ -149,7 +149,7 @@ test('Cursor chooses one representation per native session, discovers ACP, and l
   const path = join(f.home, 'chats', workspace, 'native/store.db');
   const cli = await database(path);
   const acp = await database(join(f.home, 'acp-sessions/acp/store.db'), 'acp');
-  const store = new SessionAtlasStore(':memory:');
+  const store = new SessionGraphStore(':memory:');
   try {
     cli.commit(cli.blob(ref(1, cli.leaf({ role: 'user', content: 'Canonical store' })))); cli.db.close();
     acp.commit(acp.blob(ref(1, acp.leaf({ role: 'user', content: 'ACP history' })))); acp.db.close();
@@ -173,7 +173,7 @@ test('Cursor chooses one representation per native session, discovers ACP, and l
 });
 
 test('Cursor IDE/subagents use handoffs; only verified CLI sessions in their original directory resume', async () => {
-  const f = await fixture(), store = new SessionAtlasStore(join(f.dir, 'library.sqlite'));
+  const f = await fixture(), store = new SessionGraphStore(join(f.dir, 'library.sqlite'));
   try {
     const session = blankSession('cursor', 'native', f.directory);
     const candidate = { session, locator: {}, revision: 'r1' };

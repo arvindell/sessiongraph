@@ -27,7 +27,7 @@ export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({
   quality: 'balanced', bloom: 32, stars: true, labels: true, nodeScale: 100, focusDimming: true,
   trails: 'all', trailOpacity: 34, trailFlow: false, trailSpeed: 25, relationships: true, messageDots: true, playbackSpeed: 1,
 });
-export const PREFERENCES_KEY = 'session-atlas.preferences';
+export const PREFERENCES_KEY = 'sessiongraph.preferences';
 const choices = { motion: ['system', 'on', 'off'], view: ['3d', '2d'], density: ['comfortable', 'compact'], quality: ['performance', 'balanced', 'high'], trails: ['all', 'selected', 'off'] };
 const ranges = { clickVolume: [0, 100], panelOpacity: [55, 100], bloom: [0, 75], nodeScale: [60, 180], trailOpacity: [0, 100], trailSpeed: [10, 100], playbackSpeed: [.25, 3] };
 
@@ -48,7 +48,7 @@ export function normalizePreferences(value: unknown): Preferences {
 }
 
 export function loadPreferences(storage: Pick<Storage, 'getItem'>): Preferences {
-  try { const saved = JSON.parse(storage.getItem(PREFERENCES_KEY) || 'null'); return normalizePreferences(saved?.version === 1 ? saved.values : undefined); }
+  try { const saved = JSON.parse(storage.getItem(PREFERENCES_KEY) || storage.getItem('session-atlas.preferences') || 'null'); return normalizePreferences(saved?.version === 1 ? saved.values : undefined); }
   catch { return { ...DEFAULT_PREFERENCES }; }
 }
 export function savePreferences(storage: Pick<Storage, 'setItem'>, values: Preferences): boolean {

@@ -1,10 +1,10 @@
-# Session Atlas guide
+# SessionGraph guide
 
 **Search & visualize all your LLM sessions**
 
 A local-first galaxy of your LLM sessions. Import **OpenCode, Claude Code, Codex, and Cursor**, explore relationships and changed files, search conversations, and fly through their timeline.
 
-## Open Session Atlas
+## Open SessionGraph
 
 ### Desktop
 
@@ -17,16 +17,16 @@ pnpm install
 pnpm desktop:build
 ```
 
-Installers appear in `src-tauri/target/release/bundle/`. On macOS, open `macos/Session Atlas.app` or install using the DMG. `pnpm desktop:dev` builds and runs the native shell locally. The Rust toolchain is pinned in `rust-toolchain.toml`.
+Installers appear in `src-tauri/target/release/bundle/`. On macOS, open `macos/SessionGraph.app` or install using the DMG. `pnpm desktop:dev` builds and runs the native shell locally. The Rust toolchain is pinned in `rust-toolchain.toml`.
 
 ### npm launcher
 
-The launcher and platform packages use the private `@arvindell` npm scope. Sign in with an account that has access:
+The launcher and platform packages are public on npm. No sign-in is needed:
 
 ```sh
-npx @arvindell/session-atlas
+npx sessiongraph
 # Or use your browser with a local backend:
-npx @arvindell/session-atlas --browser
+npx sessiongraph --browser
 ```
 
 To test installation before publishing:
@@ -34,17 +34,17 @@ To test installation before publishing:
 ```sh
 pnpm package:desktop
 # macOS Apple Silicon example:
-npx --package ./release/arvindell-session-atlas-0.1.0.tgz \
-    --package ./release/arvindell-session-atlas-app-darwin-arm64-0.1.0.tgz session-atlas
+npx --package ./release/sessiongraph-0.1.0.tgz \
+    --package ./release/sessiongraph-app-darwin-arm64-0.1.0.tgz sessiongraph
 ```
 
-The launcher requires Node 24+. Platform packages are optional dependencies selected by OS/architecture. The browser build is bundled into the launcher package. `scripts/package-desktop.mjs` builds both tarballs. Pushes to `main` build platform installers, create a version tag and GitHub release, and publish restricted npm packages. See [Releases](releases.md) for the workflow and credentials. macOS builds are currently unsigned/unnotarized.
+The launcher requires Node 24+. Platform packages are optional dependencies selected by OS/architecture. The browser build is bundled into the launcher package. `scripts/package-desktop.mjs` builds both tarballs. Pushes to `main` build platform installers, create a version tag and GitHub release, and publish public npm packages. See [Releases](releases.md) for the workflow and credentials. macOS builds are ad-hoc signed but not notarized.
 
 ### Browser development
 
 ```sh
 pnpm install
-portless session-atlas pnpm dev
+portless sessiongraph pnpm dev
 # or: pnpm dev
 pnpm typecheck
 pnpm test
@@ -62,7 +62,7 @@ On first launch, choose the apps to import. Reopen **Manage sources** next to th
 - Unchanged source revisions skip history reads. Changed sessions are reread and their normalized messages, timeline events, file evidence, and index version are replaced in one SQLite transaction.
 - Failed or interrupted updates retain the previous saved history. Re-import retries unfinished sessions. Import status reports counts, failures, and coverage limitations.
 - Forks and children remain distinct even if their text overlaps. Different harnesses' sessions are not merged based on matching titles, timestamps, or similar text.
-- Deselecting a source stops future imports; saved sessions remain browsable offline. Missing source files are not treated as a request to erase Session Atlas's local copy.
+- Deselecting a source stops future imports; saved sessions remain browsable offline. Missing source files are not treated as a request to erase SessionGraph's local copy.
 - Imported data contains normalized conversation text, structured tool calls/results, recorded reasoning or summaries, lifecycle events, and file evidence. This is not a byte-for-byte backup: binary content, encrypted reasoning, and shortened payloads are disclosed. Unfamiliar event types retain their native type in a generic event envelope where available.
 
 ### Source coverage
@@ -74,7 +74,7 @@ On first launch, choose the apps to import. Reopen **Manage sources** next to th
 | Codex | Bounded streaming reads of active and archived local JSONL rollouts | Explicit recorded fork/parent fields; completed file-change events. Mirrored event text is not imported twice. Store-only/cloud-only history and ordinary ChatGPT desktop/web chats are not imported. No agent process is started. |
 | Cursor | IDE JSONL transcripts in `~/.cursor/projects/*/agent-transcripts/`, CLI `~/.cursor/chats/` and ACP `~/.cursor/acp-sessions/` stores | Explicit subagent directories; one representation per native ID, preferring the committed store conversation. No inferred forks or successful edits. Legacy Composer databases, older `.txt` transcripts, cloud-only and SDK-only history are excluded. |
 
-Source roots respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`. `SESSION_ATLAS_SERVICE_FILE` selects a local OpenCode service registration. Adapters never read authentication files or execute source configuration, hooks, or agents. Source formats can evolve: unsupported history is disclosed rather than fabricated.
+Source roots respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`. `SESSIONGRAPH_SERVICE_FILE` selects a local OpenCode service registration. Adapters never read authentication files or execute source configuration, hooks, or agents. Source formats can evolve: unsupported history is disclosed rather than fabricated.
 
 ### Cursor details
 
@@ -83,18 +83,18 @@ Source roots respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`. `SESSION_ATLAS_SERVIC
 - Only recorded message timestamps and Cursor's leading timezone-qualified timestamp envelope place message dots. Missing timestamps remain unknown. When session creation is unavailable, placement uses the first recorded message or the file timestamp, with a coverage note.
 - Working directories come from recorded metadata or an unambiguous forward match against Cursor's workspace folder metadata. Encoded project names are never reverse-decoded into guessed paths. Choose a folder in the launcher when the original directory is unknown.
 - Store reads copy the database and its WAL into a temporary private directory, verify that the source stayed stable, and open only the copy with read-only SQLite. Temporary copies are removed after reading. Limits: 20,000 histories, 256 MB per database/WAL, 2 MB per blob, and 64 MB / 50,000 nodes / 16 million text characters per store conversation. Changing or unsupported stores preserve previously saved history.
-- Override discovery with `SESSION_ATLAS_CURSOR_HOME` (the `.cursor` directory) and `SESSION_ATLAS_CURSOR_USER_DATA_DIR` (Cursor's application data directory, containing `User/workspaceStorage`). These are Session Atlas settings. Custom-root histories use saved-context continuation.
+- Override discovery with `SESSIONGRAPH_CURSOR_HOME` (the `.cursor` directory) and `SESSIONGRAPH_CURSOR_USER_DATA_DIR` (Cursor's application data directory, containing `User/workspaceStorage`). These are SessionGraph settings. Custom-root histories use saved-context continuation.
 
 ## Local storage and privacy
 
-Session Atlas's own SQLite database stores source preferences, session metadata, normalized messages and timeline events, file evidence, import revisions, and bounded search checkpoints:
+SessionGraph's own SQLite database stores source preferences, session metadata, normalized messages and timeline events, file evidence, import revisions, and bounded search checkpoints. New installations use:
 
-- macOS: `~/Library/Application Support/Session Atlas/session-atlas.sqlite`
-- Linux: `$XDG_DATA_HOME/session-atlas/session-atlas.sqlite` (default `~/.local/share/session-atlas/session-atlas.sqlite`)
-- Windows: `%LOCALAPPDATA%/Session Atlas/session-atlas.sqlite`
-- Override with `SESSION_ATLAS_DATA_DIR`.
+- macOS: `~/Library/Application Support/SessionGraph/sessiongraph.sqlite`
+- Linux: `$XDG_DATA_HOME/sessiongraph/sessiongraph.sqlite` (default `~/.local/share/sessiongraph/sessiongraph.sqlite`)
+- Windows: `%LOCALAPPDATA%/SessionGraph/sessiongraph.sqlite`
+- Override with `SESSIONGRAPH_DATA_DIR`.
 
-Existing installations automatically reuse their previous `Atlas/atlas.sqlite` library (or `atlas/atlas.sqlite` on Linux), including imported sessions and search checkpoints. The old `ATLAS_DATA_DIR` and `ATLAS_SERVICE_FILE` environment variables remain supported as aliases.
+Existing installations reuse `Session Atlas/session-atlas.sqlite` or `Atlas/atlas.sqlite` in place (lowercase directory names on Linux), including saved sessions, source selection, search checkpoints, WAL files, and import locks. A current `sessiongraph.sqlite` library takes precedence if one already exists. Explicit data-directory overrides search only that directory. The previous `SESSION_ATLAS_*` settings and original `ATLAS_DATA_DIR` / `ATLAS_SERVICE_FILE` remain supported as aliases; `SESSIONGRAPH_*` settings take precedence. Browser preferences and the last launch target also accept their previous storage keys when using the same origin.
 
 All parsing, deduplication, indexing, and visualization run on this computer. No telemetry, embeddings service, model inference, uploads, or remote fonts are used. Source histories are read-only. OpenCode uses its authenticated API; Cursor databases are parsed only from temporary private copies. The native app binds its backend to `127.0.0.1` on a random port with an ephemeral authentication cookie; imports from other origins are rejected. Source credentials stay in the backend.
 
@@ -133,7 +133,7 @@ Select a session, click **Open session**, and choose **Open in → OpenCode / Cl
 - Cursor CLI sessions from the default store can resume with [`cursor-agent --resume`](https://cursor.com/docs/cli/reference/parameters) in their verified original folder. Cursor IDE, ACP, subagent, custom-root, and relocated histories start a new Cursor Agent session with saved context. Install the Cursor Agent CLI to use this destination.
 - A different harness starts a **new session with saved context**. It reads a local Markdown handoff, recaps where the conversation left off, and asks what to do next. Preparing or copying the command does not start an agent. Saved context works even when the original source app is offline.
 - Handoffs preserve the initial user request and up to 200 recent messages in conversation order, bounded to roughly 166,000 text characters. Long messages/tool outputs are shortened. The chooser displays coverage and the context file path. Files, credentials, tool state, and native session identities are not migrated.
-- Context files live in `handoffs/` beside Session Atlas's database, with private filesystem permissions. Identical saved context reuses the same file. They stay on disk so a copied command can be used later; remove them when no longer needed.
+- Context files live in `handoffs/` beside SessionGraph's database, with private filesystem permissions. Identical saved context reuses the same file. They stay on disk so a copied command can be used later; remove them when no longer needed.
 - Installed CLIs are detected locally, including Codex's macOS app-bundled CLI. **Open in …** opens macOS Terminal, Windows PowerShell, or an available Linux terminal. **Copy command** is available when automatic opening is unavailable; install a missing target CLI before running it. Windows commands use PowerShell syntax.
 
 ## Search
@@ -156,7 +156,7 @@ server/adapters/types.ts   SessionAdapter, Candidate, HistoryPage, ImportedMessa
 server/adapters/index.ts   Source registry
 server/adapters/*.ts       Source discovery, revisions, normalization, evidence
 server/importer.ts        Selected-source import queue, deduplication, progress
-server/store.ts           Session Atlas SQLite schema, migrations, atomic replacement
+server/store.ts           SessionGraph SQLite schema, migrations, atomic replacement
 server/activity.ts        Saved-message timing and human-turn classification
 server/events.ts          Harness-neutral event normalization and payload bounds
 server/event-store.ts     Ordered event storage, coverage, snapshot-safe pagination
@@ -173,7 +173,7 @@ src/event-hover.ts        Bounded, cancellable message previews on marker hover
 src/preferences.ts        Validated, versioned local appearance/audio settings
 src/settings.ts, audio.ts Settings dialog and offline procedural audio lifecycle
 src-tauri/                Native WebView shell, owned backend lifecycle
-bin/session-atlas.mjs     npm desktop/browser launcher
+bin/sessiongraph.mjs      npm desktop/browser launcher
 scripts/                 Bundling and platform npm package staging
 ```
 

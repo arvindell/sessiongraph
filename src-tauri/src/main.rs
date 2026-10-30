@@ -36,7 +36,7 @@ fn main() {
             });
             let line = match receiver.recv_timeout(Duration::from_secs(30)) {
                 Ok(Ok(line)) => line,
-                _ => { let _ = child.kill(); return Err("Session Atlas local backend could not start".into()); }
+                _ => { let _ = child.kill(); return Err("SessionGraph local backend could not start".into()); }
             };
             let ready: serde_json::Value = serde_json::from_str(&line)?;
             let url: tauri::Url = ready["url"].as_str().ok_or("Missing backend URL")?.parse()?;
@@ -46,7 +46,7 @@ fn main() {
             let handle = app.handle().clone();
             let external = app.handle().clone();
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
-                .title("Session Atlas — Search & visualize all your LLM sessions").inner_size(1440.0, 960.0).min_inner_size(380.0, 600.0)
+                .title("SessionGraph — Search & visualize all your LLM sessions").inner_size(1440.0, 960.0).min_inner_size(380.0, 600.0)
                 .on_new_window(move |url, _| {
                     if ["http", "https"].contains(&url.scheme()) { let _ = external.opener().open_url(url.as_str(), None::<&str>); }
                     tauri::webview::NewWindowResponse::Deny
@@ -59,7 +59,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("Could not build Session Atlas")
+        .expect("Could not build SessionGraph")
         .run(|handle, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 if let Some(backend) = handle.try_state::<Backend>() { if let Ok(mut child) = backend.0.lock() { let _ = child.kill(); let _ = child.wait(); } }

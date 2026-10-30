@@ -10,11 +10,11 @@ const require = createRequire(import.meta.url);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const args = new Set(process.argv.slice(2));
-if (args.has('--version')) { console.log(`Session Atlas ${pkg.version}`); process.exit(0); }
+if (args.has('--version')) { console.log(`SessionGraph ${pkg.version}`); process.exit(0); }
 if (args.has('--help')) {
-  console.log(`Session Atlas — Search & visualize all your LLM sessions\n\n  npx ${pkg.name}            Open the desktop app\n  npx ${pkg.name} --browser  Open the local browser app\n\nChoose session sources on first launch. All imports and indexing stay local.`); process.exit(0);
+  console.log(`SessionGraph — Search & visualize all your LLM sessions\n\n  npx ${pkg.name}            Open the desktop app\n  npx ${pkg.name} --browser  Open the local browser app\n\nChoose session sources on first launch. All imports and indexing stay local.`); process.exit(0);
 }
-if (Number(process.versions.node.split('.')[0]) < 24) { console.error('Session Atlas requires Node.js 24 or later for its launcher.'); process.exit(1); }
+if (Number(process.versions.node.split('.')[0]) < 24) { console.error('SessionGraph requires Node.js 24 or later for its launcher.'); process.exit(1); }
 function open(target) {
   const [file, params] = process.platform === 'darwin' ? ['open', [target]] : process.platform === 'win32' ? ['rundll32.exe', ['url.dll,FileProtocolHandler', target]] : ['xdg-open', [target]];
   const child = spawn(file, params, { stdio: 'ignore', detached: true });
@@ -24,9 +24,9 @@ if (!args.has('--browser')) {
   const name = `${pkg.name}-app-${process.platform}-${process.arch}`;
   try {
     const manifest = require.resolve(`${name}/package.json`);
-    const app = join(dirname(manifest), 'payload', process.platform === 'darwin' ? 'Session Atlas.app' : process.platform === 'win32' ? 'Session Atlas.exe' : 'Session Atlas.AppImage');
+    const app = join(dirname(manifest), 'payload', process.platform === 'darwin' ? 'SessionGraph.app' : process.platform === 'win32' ? 'SessionGraph.exe' : 'SessionGraph.AppImage');
     if (process.platform === 'darwin') open(app);
-    else { const child = spawn(app, [], { detached: true, stdio: 'ignore', env: { ...process.env, ...(process.platform === 'linux' ? { APPIMAGE_EXTRACT_AND_RUN: '1' } : {}) } }); child.on('error', (e) => console.error(`Session Atlas could not open: ${e.message}`)); child.unref(); }
+    else { const child = spawn(app, [], { detached: true, stdio: 'ignore', env: { ...process.env, ...(process.platform === 'linux' ? { APPIMAGE_EXTRACT_AND_RUN: '1' } : {}) } }); child.on('error', (e) => console.error(`SessionGraph could not open: ${e.message}`)); child.unref(); }
   } catch {
     console.error(`Desktop package ${name} is not installed.\nUse npx ${pkg.name} --browser, or install the matching desktop package.\nFor a source checkout: pnpm desktop:dev`); process.exitCode = 1;
   }
@@ -35,8 +35,8 @@ if (!args.has('--browser')) {
   child.on('error', (e) => { console.error(e.message); process.exitCode = 1; });
   const lines = createInterface({ input: child.stdout });
   lines.once('line', (line) => {
-    try { const { url } = JSON.parse(line); open(url); console.log('Session Atlas is open in your browser. Press Ctrl+C to close the local server.'); }
-    catch { console.error('Session Atlas local server did not start.'); child.kill(); }
+    try { const { url } = JSON.parse(line); open(url); console.log('SessionGraph is open in your browser. Press Ctrl+C to close the local server.'); }
+    catch { console.error('SessionGraph local server did not start.'); child.kill(); }
   });
   child.on('exit', (code) => { process.exitCode = code || 0; });
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { child.kill(); });
