@@ -1,0 +1,15 @@
+node_modules/
+dist/
+tmp/
+.playwright-mcp/
+.DS_Store
+.env*
+!.env.example
+dist-server/
+src-tauri/target/
+src-tauri/resources/
+src-tauri/gen/schemas/
+packages/*/payload/
+release/
+*.tgz
+*.sqlite*
