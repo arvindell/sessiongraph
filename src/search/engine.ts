@@ -62,6 +62,8 @@ export class SessionSearchIndex {
       const old = this.entries.get(session.id);
       const keep = old && contentVersion(old.session) === contentVersion(session);
       const doc: Document = { id: session.id, title: session.title, project: names.get(session.projectID) || '', directory: session.directory, model: session.model, sessionID: session.id, body: keep ? old.doc.body : '', files: keep ? old.doc.files : '', tools: keep ? old.doc.tools : '' };
+      // Metadata refreshes should not tokenize unchanged conversation bodies again.
+      if (keep && (Object.keys(doc) as (keyof Document)[]).every((key) => old.doc[key] === doc[key])) { old.session = session; continue; }
       this.entries.set(session.id, { session, doc, fragments: keep ? old.fragments : [] });
       if (old) this.index.remove(old.doc);
       this.index.add(doc);

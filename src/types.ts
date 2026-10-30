@@ -1,6 +1,7 @@
 export interface Session {
   source?: string;
   nativeID?: string;
+  nativeResume?: boolean;
   revision?: string;
   coverage?: { history: 'complete' | 'partial' | 'pending'; note?: string; importedAt?: number };
   id: string;
@@ -11,6 +12,7 @@ export interface Session {
   directory: string;
   created: number;
   updated: number;
+  activity?: { firstMessageAt: number | null; lastMessageAt: number | null; userMessages: number; untimedUserMessages: number };
   archived: boolean;
   model: string;
   provider: string;
@@ -57,6 +59,16 @@ export interface SessionDetail {
   loadedAt: number;
 }
 
+export interface SessionTimeline {
+  id: string;
+  userMessages: { id: string; time: number }[];
+  totalUserMessages: number;
+  untimedUserMessages: number;
+  earlierUserMessages: number;
+  partial: boolean;
+  note?: string;
+}
+
 export interface SourceStatus {
   id: string;
   name: string;
@@ -82,6 +94,7 @@ export interface ImportStatus {
 export interface GraphNode {
   session: Session;
   position: [number, number, number];
+  startPosition: [number, number, number];
   color: string;
   radius: number;
 }

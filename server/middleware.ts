@@ -2,7 +2,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { adapters } from './adapters';
 import { SessionAtlasStore } from './store';
 import { Importer } from './importer';
-import { getLaunchConnection, launchTerminal } from './launch';
+import { getLaunchConnection, prepareLaunch, launchTerminal } from './launch';
+import { isHarness } from '../src/launch-links';
+import { EventReadError } from './event-store';
 
 const generation = Symbol('session-atlas-backend');
 const runtime = globalThis as typeof globalThis & { sessionAtlasRuntime?: { store: SessionAtlasStore; importer: Importer; generation?: symbol } };
@@ -54,13 +56,27 @@ export async function sessionAtlasMiddleware(req: IncomingMessage, res: ServerRe
       const sources = adapters.map((a) => ({ id: a.id, name: a.name, description: a.description, capabilities: a.capabilities, selected: store.selected().includes(a.id), available: false, ...store.sourceInfo(a.id) }));
       return json(200, store.library(sources, importer.status.running));
     }
-    const match = /^\/api\/session-atlas\/session\/([^/]+)(?:\/(content|connection|open-terminal))?$/.exec(url.pathname);
+    const match = /^\/api\/session-atlas\/session\/([^/]+)(?:\/(content|timeline|events|event-markers|connection|prepare-launch|open-terminal))?$/.exec(url.pathname);
     if (match) {
       const id = decodeURIComponent(match[1]);
       const session = store.getSession(id);
       if (!session) return json(404, { error: 'Session not imported.' });
-      if (match[2] === 'open-terminal' && req.method === 'POST') { await launchTerminal(session); return json(200, { opened: true }); }
+      if (['prepare-launch', 'open-terminal'].includes(match[2]) && req.method === 'POST') {
+        const value = await body(req);
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return json(400, { error: 'Invalid launch request.' });
+        const target = value.target ?? session.source ?? 'opencode';
+        if (!isHarness(target)) return json(400, { error: 'Choose a supported destination app.' });
+        try {
+          const prepared = await prepareLaunch(store, session, target, value.directory);
+          if (match[2] === 'open-terminal') await launchTerminal(session, prepared);
+          return json(200, prepared);
+        } catch (error) { return json(400, { error: error instanceof Error ? error.message : 'Could not prepare this session.' }); }
+      }
       if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
+      if (['prepare-launch', 'open-terminal'].includes(match[2])) return json(405, { error: 'Method not allowed.' });
+      if (match[2] === 'timeline') return json(200, store.timeline(id));
+      if (match[2] === 'event-markers') return json(200, store.eventMarkers(id));
+      if (match[2] === 'events') return json(200, store.events(id, Object.fromEntries(['cursor', 'item', 'filter', 'revision'].flatMap((key) => url.searchParams.has(key) ? [[key, url.searchParams.get(key)!]] : []))));
       if (match[2] === 'connection') return json(200, await getLaunchConnection(session));
       const cursor = url.searchParams.get('cursor') || undefined;
       if (cursor && (!/^\d{1,9}$/.test(cursor) || Number(cursor) > 50_000)) return json(400, { error: 'Invalid cursor.' });
@@ -68,6 +84,7 @@ export async function sessionAtlasMiddleware(req: IncomingMessage, res: ServerRe
     }
     return json(404, { error: 'Not found.' });
   } catch (error) {
+    if (error instanceof EventReadError) return json(error.status, { error: error.message });
     console.error('[session-atlas] Local operation failed:', error instanceof Error ? error.name : 'Unknown error');
     return json(500, { error: 'Local operation failed. Check the import status or retry.' });
   }

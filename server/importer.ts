@@ -2,6 +2,7 @@ import { setImmediate as yieldToIO } from 'node:timers/promises';
 import type { ImportStatus, SourceStatus } from '../src/types';
 import type { ImportedMessage, SessionAdapter } from './adapters/types';
 import { SessionAtlasStore } from './store';
+import { boundEventPayloads } from './events';
 
 export class Importer {
   status: ImportStatus = { running: false, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [] };
@@ -58,6 +59,7 @@ export class Importer {
                   remaining -= text.length;
                   return text ? [{ ...fragment, text }] : [];
                 });
+                characters += boundEventPayloads(message, remaining);
                 partial ||= Boolean(message.partial);
                 characters += message.fragments.reduce((n, f) => n + f.text.length, 0);
                 messages.set(message.id, message);

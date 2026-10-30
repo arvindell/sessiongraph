@@ -16,11 +16,20 @@ export function directoryLabel(directory: string): string {
   return directory.replace(/\/$/, '').split('/').at(-1) || '/';
 }
 
+// Metadata updates can be title changes or filesystem writes, not messages.
+// Unknown message times stay at creation until a timestamp is available.
+export const sessionEnd = (session: Session) => Math.max(session.created, session.activity?.lastMessageAt || session.created);
+export const timeX = (time: number, graph: Pick<Graph, 'start' | 'end'>) => (time - graph.start) / Math.max(1, graph.end - graph.start) * 300 - 150;
+export const trailPosition = (node: GraphNode, x: number): [number, number, number] => [x, node.position[1], node.position[2]];
+export const connectionPositions = (from: GraphNode, to: GraphNode) => [
+  trailPosition(from, Math.max(from.startPosition[0], Math.min(to.startPosition[0], from.position[0]))), to.startPosition,
+] as const;
+
 export function makeGraph(sessions: Session[], projects: Project[]): Graph {
   if (!sessions.length) return { nodes: [], edges: [], lanes: [], start: 0, end: 0 };
   const ordered = [...sessions].sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
   const start = ordered[0].created;
-  const end = Math.max(start + 3_600_000, ordered.at(-1)!.created);
+  const end = ordered.reduce((latest, session) => Math.max(latest, sessionEnd(session)), start + 3_600_000);
   const groups = new Map<string, Session[]>();
   for (const session of ordered) {
     const key = `${session.projectID}:${session.directory}`;
@@ -33,7 +42,7 @@ export function makeGraph(sessions: Session[], projects: Project[]): Graph {
   const nodes: GraphNode[] = [];
   sortedGroups.forEach(([key, group], index) => {
     // The busiest directory is the central trunk. Other directories fan out in
-    // depth and height; every node's X coordinate remains its creation timestamp.
+    // depth and height; every node's X coordinate is its latest saved message.
     const angle = index * 2.399963;
     const distance = index === 0 ? 0 : 15 + Math.sqrt(index) * 14;
     const y = Math.cos(angle) * distance;
@@ -47,14 +56,16 @@ export function makeGraph(sessions: Session[], projects: Project[]): Graph {
       y, z, nodes: [],
     };
     for (const session of group) {
-      const x = (session.created - start) / (end - start) * 300 - 150;
+      const x = timeX(sessionEnd(session), { start, end });
+      const startX = timeX(session.created, { start, end });
       const seed = hash(session.id);
       const isBranch = Boolean(session.parentID || session.forkID);
       const spread = isBranch ? 12 : 6;
-      const wave = Math.sin((x + 150) / 65 + index * 0.7) * 3.5;
+      const wave = Math.sin((startX + 150) / 65 + index * 0.7) * 3.5;
       const node: GraphNode = {
         session,
         position: [x, y + wave + (seed - 0.5) * spread, z + (hash(session.id + 'z') - 0.5) * spread],
+        startPosition: [startX, 0, 0],
         color,
         radius: 0.35 + Math.min(0.65, Math.log10(1 + (session.tokens || 0)) * 0.08),
       };
@@ -88,5 +99,6 @@ export function makeGraph(sessions: Session[], projects: Project[]): Graph {
     placed.add(id);
   }
   ordered.forEach((session) => place(byID.get(session.id)!));
+  nodes.forEach((node) => { node.startPosition = trailPosition(node, node.startPosition[0]); });
   return { nodes, edges, lanes, start, end };
 }

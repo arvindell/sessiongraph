@@ -1,18 +1,47 @@
 import type { Session } from './types';
-export interface LaunchConnection { webBaseUrl?: string; terminalAvailable: boolean }
+export const HARNESSES = [
+  { id: 'opencode', name: 'OpenCode', command: 'opencode' },
+  { id: 'claude-code', name: 'Claude Code', command: 'claude' },
+  { id: 'codex', name: 'Codex', command: 'codex' },
+  { id: 'cursor', name: 'Cursor Agent', command: 'cursor-agent' },
+] as const;
+export type HarnessID = typeof HARNESSES[number]['id'];
+export const isHarness = (value: unknown): value is HarnessID => HARNESSES.some((h) => h.id === value);
+export interface LaunchConnection {
+  webBaseUrl?: string;
+  terminalAvailable: boolean;
+  targets: { id: HarnessID; available: boolean }[];
+}
+export interface PreparedLaunch {
+  command: string;
+  directory: string;
+  terminalAvailable: boolean;
+  targetAvailable: boolean;
+  mode: 'resume' | 'handoff';
+  context?: { path: string; messages: number; totalMessages: number; partial: boolean; note: string };
+}
 export const validSessionID = (id: string) => /^ses[a-zA-Z0-9_-]+$/.test(id);
 
 export function cliCommand(value: string | Session): string {
   const source = typeof value === 'string' ? 'opencode' : value.source || 'opencode';
+  const harness = HARNESSES.find((h) => h.id === source);
+  if (!harness) throw new Error('This source does not provide a launcher.');
+  const args = resumeArgs(value);
+  return `${harness.command} ${args.slice(0, -1).join(' ')} '${args.at(-1)}'`;
+}
+
+export function resumeArgs(value: string | Session): string[] {
+  const source = typeof value === 'string' ? 'opencode' : value.source || 'opencode';
   const id = typeof value === 'string' ? value : value.nativeID || value.id;
   if (source !== 'opencode') {
-    if (!/^[a-zA-Z0-9_-]{1,160}$/.test(id)) throw new Error('This session cannot be resumed directly. Open its parent session.');
-    if (source === 'codex') return `codex resume '${id}'`;
-    if (source === 'claude-code') return `claude --resume '${id}'`;
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,159}$/.test(id)) throw new Error('This session cannot be resumed directly.');
+    if (source === 'codex') return ['resume', id];
+    if (source === 'claude-code') return ['--resume', id];
+    if (source === 'cursor' && typeof value !== 'string' && value.nativeResume) return ['--resume', id];
     throw new Error('This source does not provide a launcher.');
   }
   if (!validSessionID(id)) throw new Error('Invalid session ID.');
-  return `opencode --session '${id}'`;
+  return ['--session', id];
 }
 
 // OpenCode V2 keys browser server routes by the UTF-8 base64url origin.

@@ -50,6 +50,19 @@ test('refresh invalidates changed/deleted transcript evidence while keeping unch
   assert.equal(index.search('nebula').total, 0);
 });
 
+test('unchanged search documents still refresh filter metadata and changed titles or project names', () => {
+  const index = new SessionSearchIndex(), original = session('kept', 'Original title');
+  index.setData([original], projects);
+  index.addContent(original.id, [{ kind: 'You', time: 1, text: 'nebula retained passage' }]);
+  assert.equal(index.search('is:archived').total, 0);
+  index.setData([{ ...original, archived: true }], projects);
+  assert.equal(index.search('is:archived nebula').total, 1);
+  index.setData([{ ...original, title: 'Updated title' }], [{ ...projects[0], name: 'Accounting' }]);
+  assert.equal(index.search('original in:title').total, 0);
+  assert.equal(index.search('updated in:title').total, 1);
+  assert.equal(index.search('project:accounting nebula').total, 1);
+});
+
 test('content extraction includes conversation, files and tools with bounded output', () => {
   const result = extractContent([
     { type: 'user', time: { created: 1 }, text: 'Investigate payments', files: [{ name: 'invoice.csv' }] },

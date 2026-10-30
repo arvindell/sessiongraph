@@ -1,5 +1,6 @@
 import type { FileChange, Project, Session, SourceStatus } from '../../src/types';
 import type { Fragment } from '../../src/search/types';
+import type { TimelineEvent } from '../../src/timeline';
 
 /** Native identity is independent of file locations, titles, and timestamps.
  * Adapters never execute an agent turn or modify the source's storage.
@@ -13,6 +14,8 @@ export interface ImportedMessage {
   tools: string[];
   snapshots?: number;
   partial?: boolean;
+  /** Ordered source-neutral items. Undefined means a legacy flattened import. */
+  events?: TimelineEvent[];
 }
 export interface Candidate {
   session: Session;

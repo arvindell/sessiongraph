@@ -4,9 +4,10 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { addText, blankMessage, blankSession, digest, identity, project, toolText } from './common';
 import type { Candidate, ImportedMessage, SessionAdapter } from './types';
+import { blockEvents, eventFor, eventText } from '../events';
 
 const root = () => join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
-const revision = async (path: string) => { const s = await stat(path); return digest([4, s.mtimeMs, s.size]); };
+const revision = async (path: string) => { const s = await stat(path); return digest([5, s.mtimeMs, s.size]); };
 
 export function claudeMessages(rows: SessionMessage[], candidate: Candidate): ImportedMessage[] {
   // Match tool results explicitly; a requested edit alone is not file evidence.
@@ -32,6 +33,8 @@ export function claudeMessages(rows: SessionMessage[], candidate: Candidate): Im
         }
       }
     }
+    msg.events = blockEvents(msg, raw?.content).map((event) => ({ ...event, parentID: row.parent_tool_use_id || undefined }));
+    if (!msg.events.length) msg.events = [eventFor(msg, 'event', raw?.subtype === 'compact_boundary' ? 'compaction' : 'event', raw?.subtype || `${row.type} event`, eventText(raw), { nativeType: raw?.subtype || row.type, partial: true })];
     return msg;
   });
 }

@@ -4,9 +4,10 @@ import { join, sep } from 'node:path';
 import { addText, blankMessage, blankSession, digest, identity, project, toolText } from './common';
 import { readJSONL, transcriptFiles } from './jsonl';
 import type { Candidate, SessionAdapter } from './types';
+import { blockEvents, eventFor, eventText } from '../events';
 
 const root = () => process.env.CODEX_HOME || join(homedir(), '.codex');
-const revision = async (path: string) => { const s = await stat(path); return digest([6, s.mtimeMs, s.size]); };
+const revision = async (path: string) => { const s = await stat(path); return digest([7, s.mtimeMs, s.size]); };
 function changedPaths(value: unknown): string[] {
   if (!value || typeof value !== 'object') return [];
   const changes = Array.isArray(value) ? value : Object.entries(value).map(([path, change]) => ({ ...(change && typeof change === 'object' ? change : {}), path }));
@@ -40,9 +41,10 @@ async function sessionNames() {
 export function codexRecord(raw: any, offset: number, candidate: Candidate) {
   const p = raw.payload;
   if (!p || typeof p !== 'object') return;
-  if (raw.type === 'turn_context') { if (typeof p.model === 'string') candidate.session.model = p.model; return; }
+  if (raw.type === 'turn_context' && typeof p.model === 'string') candidate.session.model = p.model;
   if (raw.type === 'event_msg' && p.type === 'item_completed' && ['FileChange', 'fileChange'].includes(p.item?.type)) {
     const msg = blankMessage(`event:${p.item.id || raw.ordinal || offset}`, p.completed_at_ms || Date.parse(raw.timestamp) || 0, 'tool');
+    msg.events = [eventFor(msg, 'change', 'event', 'File-change result', eventText(p.item), { nativeType: p.type, status: ['completed', 'Completed'].includes(p.item.status) ? 'completed' : 'unknown' })];
     if (['completed', 'Completed'].includes(p.item.status)) for (const path of changedPaths(p.item.changes)) {
       msg.files.push({ path, source: 'file change', steps: 1 }); addText(msg, path, 'File');
     }
@@ -52,16 +54,30 @@ export function codexRecord(raw: any, offset: number, candidate: Candidate) {
   // text; importing both would duplicate it. Keep only completed edit evidence.
   if (raw.type === 'event_msg' && p.type === 'patch_apply_end') {
     const msg = blankMessage(`event:${p.call_id || raw.ordinal || offset}`, Date.parse(raw.timestamp) || 0, 'tool');
+    msg.events = [eventFor(msg, 'patch', 'tool_result', 'apply_patch', '', { callID: p.call_id, output: eventText(p), nativeType: p.type, status: p.success === true ? 'completed' : p.success === false ? 'failed' : 'unknown' })];
     if (p.success === true) for (const [path, change] of Object.entries(p.changes || {})) {
       msg.files.push({ path, source: 'file change', steps: 1 }); addText(msg, path, 'File');
       if ((change as any)?.move_path) { msg.files.push({ path: (change as any).move_path, source: 'file change', steps: 1 }); addText(msg, (change as any).move_path, 'File'); }
     }
     return msg;
   }
-  if (raw.type !== 'response_item') return;
+  if (raw.type !== 'response_item') {
+    // These event_msg records mirror canonical response items. Keep lifecycle,
+    // compaction and unfamiliar events without duplicating conversation text.
+    if (raw.type === 'session_meta' || (raw.type === 'event_msg' && ['user_message', 'agent_message', 'agent_reasoning', 'agent_reasoning_raw_content'].includes(p.type))) return;
+    const msg = blankMessage(`event:${raw.ordinal ?? offset}`, Date.parse(raw.timestamp) || 0, 'system');
+    msg.events = [eventFor(msg, 'event', /compact/.test(p.type || raw.type) ? 'compaction' : p.type === 'error' ? 'error' : 'event', p.type || raw.type, eventText(p), { nativeType: `${raw.type}:${p.type || ''}` })];
+    return msg;
+  }
   const role = p.role === 'user' ? 'user' : p.role === 'assistant' ? 'assistant' : p.type === 'message' ? 'system' : 'tool';
   // Reused call_id across request/response isn't a unique message ID.
   const msg = blankMessage(`item:${raw.ordinal ?? offset}`, Date.parse(raw.timestamp) || 0, role);
+  const fields = { nativeID: p.id, nativeType: p.type, callID: p.call_id };
+  msg.events = p.type === 'message' ? blockEvents(msg, p.content)
+    : ['function_call', 'custom_tool_call'].includes(p.type) ? [eventFor(msg, 'call', 'tool_call', p.name || 'Tool call', '', { ...fields, role: 'assistant', input: eventText(p.arguments ?? p.input), status: 'unknown' })]
+    : ['function_call_output', 'custom_tool_call_output'].includes(p.type) ? [eventFor(msg, 'result', 'tool_result', 'Tool result', '', { ...fields, output: eventText(p.output, 64_000), status: 'unknown' })]
+    : [eventFor(msg, 'event', p.type === 'reasoning' ? 'reasoning' : 'event', p.type === 'reasoning' ? 'Recorded reasoning summary' : p.type || 'Unknown event', eventText(p.type === 'reasoning' ? p.summary : p), { ...fields, partial: p.type === 'reasoning' })];
+  if (role === 'user') msg.events = msg.events.map((event) => event.kind === 'message' && event.text && !codexUserText(event.text) ? { ...event, kind: 'event', role: 'system', name: 'Session context', nativeType: 'user-context' } : event);
   if (p.type === 'message') {
     for (const part of Array.isArray(p.content) ? p.content : []) if (['input_text', 'output_text', 'text'].includes(part.type)) addText(msg, role === 'user' ? codexUserText(part.text) : part.text, role === 'user' ? 'You' : 'Assistant');
   } else if (['function_call', 'custom_tool_call'].includes(p.type)) {
@@ -70,7 +86,7 @@ export function codexRecord(raw: any, offset: number, candidate: Candidate) {
   else if (p.type === 'file_change' || p.type === 'fileChange') {
     if (p.status === 'completed') for (const path of changedPaths(p.changes)) { msg.files.push({ path, source: 'file change', steps: 1 }); addText(msg, path, 'File'); }
   }
-  return msg.fragments.length || msg.files.length ? msg : undefined;
+  return msg;
 }
 
 export const codexAdapter: SessionAdapter = {
@@ -113,6 +129,6 @@ export const codexAdapter: SessionAdapter = {
   async read(candidate, cursor) {
     const page = await readJSONL(candidate.locator.path, Number(cursor || 0));
     if (page.cursor === undefined && await revision(candidate.locator.path) !== candidate.revision) throw new Error('Session changed during import; import again to capture the latest messages.');
-    return { messages: page.rows.flatMap((r) => { const msg = codexRecord(r.value, r.offset, candidate); return msg ? [msg] : []; }), cursor: page.cursor === undefined ? undefined : String(page.cursor), partial: page.partial, note: 'Local rollout text and completed file-change events. Unsupported item types, images, and store-only history are excluded.' };
+    return { messages: page.rows.flatMap((r) => { const msg = codexRecord(r.value, r.offset, candidate); return msg ? [msg] : []; }), cursor: page.cursor === undefined ? undefined : String(page.cursor), partial: page.partial, note: 'Local rollout messages, tools, and lifecycle events. Mirrored conversation events are deduplicated. Images, encrypted reasoning, and store-only history are unavailable.' };
   },
 };

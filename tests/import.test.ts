@@ -86,7 +86,9 @@ test('Codex desktop scaffolding is excluded from human prompts and titles withou
   assert.equal(codexUserText('# AGENTS.md instructions for /work\nBuild notes'), '');
   assert.equal(codexUserText('Explain <div>hello</div>'), 'Explain <div>hello</div>');
   const c = { session: blankSession('codex', 'test'), revision: 'r', locator: {} };
-  assert.equal(codexRecord({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<external_codex_apps_open_page>{}</external_codex_apps_open_page>' }] } }, 0, c), undefined);
+  const context = codexRecord({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<external_codex_apps_open_page>{}</external_codex_apps_open_page>' }] } }, 0, c)!;
+  assert.deepEqual(context.fragments, []);
+  assert.equal(context.events![0].kind, 'event'); assert.equal(context.events![0].role, 'system');
 });
 
 test('JSONL skips an oversized record without returning a repeated cursor or losing the next line', async () => {

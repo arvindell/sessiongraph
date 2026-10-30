@@ -1,23 +1,33 @@
-import { createIcons, Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight } from 'lucide';
+import { createIcons, Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX } from 'lucide';
 import type { TimelineScene } from './scene';
-import { directoryLabel, makeGraph } from './layout';
+import { directoryLabel, makeGraph, sessionEnd } from './layout';
 import { setupPanelDragging } from './panels';
 import { createSessionSearch } from './search/ui';
 import { createSessionLauncher } from './launcher';
 import { createImports } from './imports';
 import { sourceName, sourceIcon } from './sources';
+import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from './preferences';
+import { createSettings } from './settings';
+import { InteractionAudio } from './audio';
+import { createEventExplorer } from './event-explorer';
+import { createEventHover } from './event-hover';
+import { TimelineClient } from './timeline-client';
+import type { TimelineMarkers } from './timeline';
 import type { SessionAtlasData, Graph, Session, SessionDetail } from './types';
 import './style.css';
 
-const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight };
+const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX };
 const refreshIcons = () => createIcons({ icons, attrs: { 'stroke-width': 1.5 } });
 const icon = (name: string, cls = '') => `<i data-lucide="${name}" class="${cls}" aria-hidden="true"></i>`;
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const compact = (value: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 const count = (value: number) => value.toLocaleString('en');
-const date = (value: number, year = false) => new Date(value).toLocaleDateString('en', { month: 'short', day: 'numeric', ...(year ? { year: 'numeric' } : {}) });
-const timestamp = (value: number) => new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const dates = [new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }), new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' })];
+const timestamps = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+const date = (value: number, year = false) => dates[Number(year)].format(value);
+const timestamp = (value: number) => timestamps.format(value);
 const inputDate = (value: number) => {
   const d = new Date(value);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -26,9 +36,15 @@ const inputDate = (value: number) => {
 let data: SessionAtlasData | undefined;
 let graph: Graph = { nodes: [], edges: [], lanes: [], start: 0, end: 0 };
 let filtered: Session[] = [];
+let sortedSessions: Session[] = [], filteredIDs = new Set<string>(), sessionsByID = new Map<string, Session>();
+let sessionCards = new Map<string, HTMLButtonElement>(), nodeColors = new Map<string, string>();
 let scene: TimelineScene | undefined;
+let sceneLoading = true;
+let tooltipSession: Session | undefined;
 let selectedID: string | null = new URLSearchParams(location.search).get('session');
 let selectedDetail: SessionDetail | undefined;
+let selectedTimeline: TimelineMarkers | undefined;
+let timelineRequest = 0;
 let projectID = '';
 let sourceID = '';
 let directory = '';
@@ -39,11 +55,15 @@ let includeChildren = true;
 let includeArchived = true;
 let listLimit = 60;
 let detailRequest = 0;
+let detailController: AbortController | undefined, timelineController: AbortController | undefined;
 let playFrame = 0;
 let playing = false;
 let playback = 1;
 let lastPlayTime = 0;
 const PLAYBACK_DURATION = 30_000;
+let preferences: Preferences = { ...DEFAULT_PREFERENCES }, preferencesSaved = true;
+try { preferences = loadPreferences(localStorage); } catch { preferencesSaved = false; }
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 $('#app').innerHTML = `
   <main class="map" aria-label="Session map">
@@ -66,29 +86,68 @@ $('#app').innerHTML = `
     <button class="icon-button" id="toggle-timeline" aria-label="Toggle timeline" aria-controls="timeline" aria-expanded="true" title="Timeline">${icon('clock')}</button>
     <button class="icon-button" id="toggle-inspector" aria-label="Toggle session details" aria-controls="inspector" aria-expanded="false" title="Session details" hidden>${icon('panel-right')}</button>
     <button class="icon-button" id="help" aria-label="Help" title="Help">${icon('circle-help')}</button>
+    <button class="icon-button" id="mute-audio" aria-label="Mute sound" title="Mute sound" aria-pressed="false" data-sound="none">${icon('volume-2')}</button>
+    <button class="icon-button" id="open-settings" aria-label="Settings" title="Settings" aria-haspopup="dialog">${icon('settings-2')}</button>
   </nav>
   <aside class="sidebar floating-panel glass" id="explorer" aria-label="Sessions">
       <div class="panel-heading"><button class="panel-handle" data-drag-panel="explorer" aria-label="Move sessions panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span>Sessions</span><span class="small-badge" id="list-count">—</span></button><button class="icon-button" id="refresh" aria-label="Refresh sessions" title="Refresh sessions">${icon('refresh-cw')}</button><button class="icon-button" id="close-explorer" aria-label="Close sessions">${icon('x')}</button></div>
       <button class="search-box search-trigger" id="search" aria-label="Search all sessions">${icon('search')}<span>Search everything…</span><kbd>/</kbd></button>
       <div class="filters">
-        <div class="select-wrap"><span id="source-filter-icon">${sourceIcon()}</span><select id="source" aria-label="Session source"><option value="">All sources</option></select><button class="icon-button" id="manage-sources" aria-label="Manage sources" title="Import sources">${icon('sliders-horizontal')}</button></div>
+        <div class="filter-row"><div class="select-wrap"><span id="source-filter-icon">${sourceIcon()}</span><select id="source" aria-label="Session source"><option value="">All sources</option></select>${icon('chevron-down')}</div><button class="icon-button" id="manage-sources" aria-label="Manage sources" title="Import sources">${icon('sliders-horizontal')}</button></div>
         <div class="select-wrap">${icon('folder')}<select id="project" aria-label="Project"><option value="">All projects</option></select>${icon('chevron-down')}</div>
         <div class="select-wrap">${icon('git-branch')}<select id="directory" aria-label="Worktree or directory"><option value="">All directories</option></select>${icon('chevron-down')}</div>
         <div class="filter-toggles"><label><input type="checkbox" id="children" checked/><span>Child sessions</span></label><label><input type="checkbox" id="archived" checked/><span>Archived</span></label></div>
       </div>
       <nav class="session-list" id="session-list" aria-label="Sessions"><div class="list-loading">${[0, 1, 2, 3, 4].map(() => '<div class="skeleton"></div>').join('')}</div></nav>
   </aside>
-  <aside class="inspector floating-panel glass" id="inspector" aria-label="Session details" hidden></aside>
+  <div class="inspector-stack floating-panel" id="inspector" hidden><aside class="inspector glass" id="session-inspector" aria-label="Session details"></aside></div>
   <section class="timeline-panel floating-panel glass" id="timeline" aria-label="Timeline controls">
     <div class="timeline-top"><button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90" class="active">90D</button><button data-days="0">All</button></div><details class="custom-dates"><summary class="icon-button" aria-label="Custom date range" title="Custom date range">${icon('sliders-horizontal')}</summary><div class="date-popover"><label>From<input type="date" id="from-date" aria-label="From date"/></label><label>To<input type="date" id="to-date" aria-label="To date"/></label><button id="apply-dates" class="secondary-button">Apply ${icon('arrow-right')}</button></div></details><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button></div>
     <div class="timeline-track"><button id="play" class="play-button" aria-label="Play timeline">${icon('play')}</button><div class="histogram-wrap"><div id="histogram" class="histogram"></div><input id="scrubber" type="range" min="0" max="1000" value="1000" aria-label="Timeline playback position"/><div class="timeline-cursor" id="timeline-cursor"></div></div><div class="playback-date" id="playback-date">—</div></div>
   </section>
-  <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div><div class="graph-legend"><span><i class="legend-node"></i>Session</span><span><i class="legend-line fork"></i>Fork</span><span><i class="legend-line child"></i>Child</span><span><i class="legend-line lane"></i>Directory timeline</span><span id="file-legend" hidden><i class="legend-file"></i>File</span></div><p>Time runs left to right. Directory streams group sessions; only fork and child links represent ancestry.</p><button class="secondary-button motion-button" id="motion" aria-pressed="true">${icon('sparkles')}Animate map</button></dialog>
+  <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div>
+    <div class="graph-legend"><span><i class="legend-node"></i>Latest message</span><span><i class="legend-node message"></i>Message / event</span><span><i class="legend-line lane"></i>Session lifetime</span><span><i class="legend-line fork"></i>Fork</span><span><i class="legend-line child"></i>Child</span><span id="file-legend" hidden><i class="legend-file"></i>File</span></div>
+    <p>Time runs left to right. A session's trail begins at creation and ends at its latest saved message. Select it to reveal clickable messages, tools, and events. Untimed items remain available in the event explorer. Directory colors group sessions; only fork and child links represent ancestry.</p><button class="secondary-button motion-button" id="motion" aria-pressed="true">${icon('sparkles')}Animate map</button></dialog>
   <div id="toast" class="toast" role="status" hidden></div>
 `;
 refreshIcons();
 const disposePanelDragging = setupPanelDragging();
 const modalVisibility = () => { const open = Boolean(document.querySelector('dialog[open]')); if (open && playing) stopPlayback(); scene?.setSuspended(open); };
+const timelineClient = new TimelineClient();
+const eventHover = createEventHover($('#tooltip'), $('#scene'), timelineClient);
+const eventExplorer = createEventExplorer($('#inspector'), timelineClient, { select: (item) => {
+  eventHover.clear(); scene?.selectEvent(item?.id || null);
+  if (item) { stopPlayback(); playback = 1; updateScrubber(); scene?.focusEvent(item); }
+} });
+function openEvents(item?: string) {
+  const session = data?.sessions.find((s) => s.id === selectedID);
+  if (session) { eventHover.clear(); stopPlayback(); setPanel('inspector', true); eventExplorer.open(session, item, item ? selectedTimeline?.revision : undefined); }
+}
+const settings = createSettings({ change: changePreferences, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, resetPanels: () => {
+  document.querySelectorAll<HTMLElement>('.floating-panel').forEach((panel) => { panel.removeAttribute('style'); delete panel.dataset.positioned; });
+} });
+const audio = new InteractionAudio(preferences, settings.audioStatus);
+function applyPreferences() {
+  scene?.applyPreferences(preferences); audio.configure(preferences);
+  document.documentElement.dataset.density = preferences.density;
+  document.documentElement.dataset.motion = String(motionEnabled(preferences, reducedMotion.matches));
+  document.documentElement.style.setProperty('--panel-opacity', `${preferences.panelOpacity}%`);
+  $('#motion').setAttribute('aria-pressed', String(motionEnabled(preferences, reducedMotion.matches)));
+  for (const view of ['2d', '3d']) { const button = $(`#view-${view}`); button.classList.toggle('active', preferences.view === view); button.setAttribute('aria-pressed', String(preferences.view === view)); }
+  const mute = $('#mute-audio'); mute.setAttribute('aria-pressed', String(preferences.muted)); mute.setAttribute('aria-label', preferences.muted ? 'Unmute sound' : 'Mute sound'); mute.title = preferences.muted ? 'Unmute sound' : 'Mute sound'; mute.innerHTML = icon(preferences.muted ? 'volume-x' : 'volume-2');
+  settings.render(preferences, preferencesSaved); refreshIcons();
+}
+function changePreferences(patch: Partial<Preferences>) {
+  preferences = normalizePreferences({ ...preferences, ...patch });
+  try { preferencesSaved = savePreferences(localStorage, preferences); } catch { preferencesSaved = false; }
+  applyPreferences();
+}
+$('#open-settings').addEventListener('click', settings.open);
+$('#mute-audio').addEventListener('click', () => changePreferences({ muted: !preferences.muted }));
+const onSystemMotion = () => applyPreferences(); reducedMotion.addEventListener('change', onSystemMotion);
+const onPreferencesStorage = (event: StorageEvent) => { if (event.key === PREFERENCES_KEY) { try { preferences = loadPreferences(localStorage); applyPreferences(); } catch {} } };
+window.addEventListener('storage', onPreferencesStorage);
+applyPreferences();
 const launcher = createSessionLauncher(modalVisibility);
 const imports = createImports(load, modalVisibility);
 $('#manage-sources').addEventListener('click', () => void imports.open());
@@ -97,7 +156,7 @@ document.addEventListener('session-atlas-import-status', (event) => {
   $('#refresh').classList.toggle('spinning', status.running);
   $('.connection').title = status.running ? `Importing ${sourceName(status.source)} · ${status.imported} sessions saved` : 'Local library · SQLite';
 });
-const sessionSearch = createSessionSearch((id) => { selectSession(id); scene?.focus(id); }, modalVisibility, (session) => void launcher.open(session));
+const sessionSearch = createSessionSearch(selectSession, modalVisibility, (session) => void launcher.open(session));
 $('#search').addEventListener('click', sessionSearch.open);
 
 type PanelID = 'explorer' | 'timeline' | 'inspector';
@@ -131,33 +190,52 @@ function showToast(text: string) {
 
 function emptyInspector() {
   setPanel('inspector', false);
-  $('#inspector').replaceChildren();
+  eventExplorer.close(); eventHover.clear(); $('#session-inspector').replaceChildren();
   $('#toggle-inspector').hidden = true;
 }
 emptyInspector();
 
-try {
+async function initializeScene() { try {
   const { TimelineScene } = await import('./scene');
   scene = new TimelineScene($('#scene'), {
-    onSelect: (id) => selectSession(id),
+    onSelect: (id) => { void audio.play('select'); selectSession(id); },
     onPlaybackInterrupt: stopPlayback,
+    onEvent: (id) => { void audio.play('select'); openEvents(id); },
+    onEventHover: (item, overlapping, x, y) => {
+      tooltipSession = undefined;
+      if (item && selectedID && selectedTimeline) eventHover.show(item, selectedID, selectedTimeline.revision, overlapping, x, y);
+      else eventHover.clear();
+    },
     onHover: (node, x, y) => {
       const tooltip = $('#tooltip');
-      tooltip.hidden = !node;
+      if (tooltip.classList.contains('message-tooltip')) { eventHover.clear(); tooltipSession = undefined; }
+      if (tooltip.hidden !== !node) tooltip.hidden = !node;
       if (!node) return;
-      tooltip.innerHTML = `<strong>${escape(node.session.title)}</strong><span>${escape(sourceName(node.session.source))} · ${date(node.session.created)} · ${escape(node.session.model)}</span>`;
+      if (tooltipSession !== node.session) {
+        tooltipSession = node.session;
+        tooltip.innerHTML = `<strong>${escape(node.session.title)}</strong><span>${escape(sourceName(node.session.source))} · ${node.session.activity?.lastMessageAt ? `Last message ${timestamp(node.session.activity.lastMessageAt)}` : 'Message time unavailable'}<br>Started ${timestamp(node.session.created)}</span>`;
+      }
       tooltip.style.left = `${Math.min(x + 18, $('#scene').clientWidth - 280)}px`;
       tooltip.style.top = `${Math.max(8, Math.min(y - 32, $('#scene').clientHeight - 110))}px`;
     },
   });
+  scene.applyPreferences(preferences);
+  if (data) {
+    scene.setGraph(graph, true);
+    if (selectedID) { scene.select(selectedID); scene.focus(selectedID); }
+    if (selectedDetail) scene.setFiles(selectedDetail.files);
+    if (selectedTimeline) scene.setEvents(selectedTimeline.items);
+  }
 } catch (error) {
   console.error('[session-atlas] Graphics initialization failed', error);
   showToast('3D requires WebGL. You can still browse sessions in the list.');
-}
+} finally { sceneLoading = false; if (data) renderGraphMessage(); } }
+void initializeScene();
 $('#scene').addEventListener('scene-error', (event) => showToast((event as CustomEvent<string>).detail));
 
-async function fetchJSON<T>(url: string): Promise<T> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(180_000) });
+async function fetchJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const timeout = AbortSignal.timeout(180_000);
+  const response = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Request failed.');
   return result as T;
@@ -169,6 +247,8 @@ async function load() {
   refresh.classList.add('spinning');
   try {
     data = await fetchJSON<SessionAtlasData>('/api/session-atlas');
+    timelineClient.clear();
+    sessionsByID = new Map(data.sessions.map((session) => [session.id, session]));
     $<HTMLSelectElement>('#source').innerHTML = '<option value="">All sources</option>' + (data.sources || []).map((s) => `<option value="${escape(s.id)}">${escape(s.name)} · ${s.sessions.toLocaleString()}</option>`).join('');
     $<HTMLSelectElement>('#source').value = sourceID;
     $('#source-filter-icon').innerHTML = sourceIcon(sourceID);
@@ -227,20 +307,29 @@ function updateFilters(fit = false) {
     (includeChildren || !s.parentID || Boolean(s.forkID)) && (includeArchived || !s.archived) &&
     s.created >= min && s.created <= max,
   );
+  sortedSessions = [...filtered].sort((a, b) => sessionEnd(b) - sessionEnd(a));
+  filteredIDs = new Set(filtered.map((s) => s.id));
   sessionSearch.setScope(filtered.map((s) => s.id));
   graph = makeGraph(filtered, data.projects);
+  nodeColors = new Map(graph.nodes.map((n) => [n.session.id, n.color]));
   scene?.setCutoff(1);
   scene?.setGraph(graph, fit);
-  const message = $('#graph-message');
-  message.hidden = Boolean(filtered.length && scene);
-  if (!filtered.length) message.innerHTML = `${icon('search')}<h3>No matching sessions</h3><button class="text-button" id="clear-filters">Reset filters ${icon('rotate-ccw')}</button>`;
-  else if (!scene) message.innerHTML = `${icon('box')}<h3>WebGL is unavailable.</h3><p>You can explore every session and its file details in the list.</p>`;
-  $('#clear-filters')?.addEventListener('click', resetFilters);
+  renderGraphMessage();
   document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.classList.toggle('active', !fromDate && !toDate && Number(button.dataset.days) === days));
   renderList();
   renderHistogram();
   if (selectedID && !filtered.some((s) => s.id === selectedID)) clearSelection();
   else if (selectedID && selectedDetail) scene?.setFiles(selectedDetail.files);
+  if (selectedID && selectedTimeline) scene?.setEvents(selectedTimeline.items);
+  refreshIcons();
+}
+
+function renderGraphMessage() {
+  const message = $('#graph-message');
+  message.hidden = Boolean(filtered.length && scene);
+  if (!filtered.length) message.innerHTML = `${icon('search')}<h3>No matching sessions</h3><button class="text-button" id="clear-filters">Reset filters ${icon('rotate-ccw')}</button>`;
+  else if (!scene) message.innerHTML = sceneLoading ? '<h3>Preparing the map…</h3>' : `${icon('box')}<h3>WebGL is unavailable.</h3><p>You can explore every session and its file details in the list.</p>`;
+  $('#clear-filters')?.addEventListener('click', resetFilters);
   refreshIcons();
 }
 
@@ -259,25 +348,32 @@ function resetFilters() {
 
 function renderList() {
   $('#list-count').textContent = count(filtered.length);
-  const sorted = [...filtered].sort((a, b) => b.created - a.created);
-  const nodeColors = new Map(graph.nodes.map((n) => [n.session.id, n.color]));
+  const sorted = sortedSessions;
   let lastDate = '';
   $('#session-list').innerHTML = sorted.slice(0, listLimit).map((session) => {
-    const d = date(session.created);
-    const header = d !== lastDate ? `<div class="list-date">${d}<span>${new Date(session.created).getFullYear()}</span></div>` : '';
+    const end = sessionEnd(session), d = date(end);
+    const header = d !== lastDate ? `<div class="list-date">${d}<span>${new Date(end).getFullYear()}</span></div>` : '';
     lastDate = d;
-    return `${header}<button class="session-card ${selectedID === session.id ? 'selected' : ''}" data-session="${escape(session.id)}" aria-pressed="${selectedID === session.id}" title="${escape(session.title)}"><span class="session-dot" style="--node-color:${nodeColors.get(session.id)}"></span><span class="session-card-body"><span class="session-title">${escape(session.title)}</span><span class="session-meta">${session.forkID ? icon('git-fork') : session.parentID ? icon('network') : ''}<span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><span>${new Date(session.created).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></span></span></button>`;
+    return `${header}<button class="session-card ${selectedID === session.id ? 'selected' : ''}" data-session="${escape(session.id)}" aria-pressed="${selectedID === session.id}" title="${escape(session.title)}"><span class="session-dot" style="--node-color:${nodeColors.get(session.id)}"></span><span class="session-card-body"><span class="session-title">${escape(session.title)}</span><span class="session-meta">${session.forkID ? icon('git-fork') : session.parentID ? icon('network') : ''}<span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><span title="${session.activity?.lastMessageAt ? 'Latest saved message' : 'Session created; message time unavailable'}">${clock.format(end)}</span></span></span></button>`;
   }).join('') + (sorted.length > listLimit ? `<button id="more-sessions" class="load-more">Show more sessions ${icon('chevron-down')}</button>` : !sorted.length ? '<p class="empty-list">No sessions match your filters.</p>' : '');
   $('#more-sessions')?.addEventListener('click', () => { listLimit += 100; const scroll = $('#session-list').scrollTop; renderList(); $('#session-list').scrollTop = scroll; refreshIcons(); });
+  sessionCards = new Map([...$('#session-list').querySelectorAll<HTMLButtonElement>('.session-card')].map((card) => [card.dataset.session!, card]));
   refreshIcons();
+}
+
+function updateListSelection(previous: string | null) {
+  for (const id of [previous, selectedID]) {
+    const card = id ? sessionCards.get(id) : undefined;
+    if (card) { card.classList.toggle('selected', id === selectedID); card.setAttribute('aria-pressed', String(id === selectedID)); }
+  }
 }
 
 function renderHistogram() {
   const buckets = new Array<number>(70).fill(0);
   const duration = Math.max(1, graph.end - graph.start);
-  for (const session of filtered) buckets[Math.min(69, Math.floor((session.created - graph.start) / duration * 70))]++;
+  for (const session of filtered) buckets[Math.min(69, Math.floor((sessionEnd(session) - graph.start) / duration * 70))]++;
   const peak = Math.max(...buckets, 1);
-  $('#histogram').innerHTML = buckets.map((n) => `<span style="height:${Math.max(4, n / peak * 100)}%;opacity:${n ? 0.8 : 0.15}" title="${n} sessions"></span>`).join('');
+  $('#histogram').innerHTML = buckets.map((n) => `<span style="height:${Math.max(4, n / peak * 100)}%;opacity:${n ? 0.8 : 0.15}" title="${n} session endpoints"></span>`).join('');
   $('#date-label').textContent = graph.start ? `${date(graph.start)} — ${date(graph.end, true)}` : 'No sessions';
   if (graph.start) {
     $<HTMLInputElement>('#from-date').value = fromDate || inputDate(graph.start);
@@ -307,21 +403,25 @@ function animatePlayback(time: number) {
   if (!playing) return;
   const delta = Math.min(time - lastPlayTime, 100);
   lastPlayTime = time;
-  if (!document.hidden) playback = Math.min(1, playback + delta / PLAYBACK_DURATION);
+  if (!document.hidden) playback = Math.min(1, playback + delta * preferences.playbackSpeed / PLAYBACK_DURATION);
   updateScrubber();
   if (playback >= 1) stopPlayback();
   else playFrame = requestAnimationFrame(animatePlayback);
 }
 
 function clearSelection() {
+  const previous = selectedID;
+  detailController?.abort(); timelineController?.abort();
   $('#file-legend').hidden = true;
   detailRequest++;
+  timelineRequest++;
   selectedID = null;
   selectedDetail = undefined;
+  selectedTimeline = undefined;
   scene?.select(null);
   history.replaceState(null, '', location.pathname);
   emptyInspector();
-  renderList();
+  updateListSelection(previous);
 }
 
 function relationHTML(session: Session): string {
@@ -338,11 +438,12 @@ function renderInspector(session: Session) {
   const project = data!.projects.find((p) => p.id === session.projectID);
   const kind = session.forkID ? 'Fork' : session.parentID ? 'Child session' : 'Session';
   const isWorktree = project?.worktrees.includes(session.directory);
-  $('#inspector').innerHTML = `
+  $('#session-inspector').innerHTML = `
     <div class="panel-heading"><button class="panel-handle" data-drag-panel="inspector" aria-label="Move session details panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span>${kind}</span></button><button id="close-inspector" class="icon-button" aria-label="Close session details">${icon('x')}</button></div>
     <div class="detail-scroll">
       <div class="detail-title"><span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><h2>${escape(session.title)}</h2><span class="detail-date">${timestamp(session.created)}</span></div>
       <div class="detail-actions"><button id="open-session" class="secondary-button">${icon('arrow-up-right')}Open session</button><button id="focus-session" class="icon-button" title="Focus node" aria-label="Focus node">${icon('crosshair')}</button><button id="copy-id" class="icon-button" title="Copy session ID" aria-label="Copy session ID">${icon('copy')}</button></div>
+      <section id="message-detail" class="detail-section"></section>
       <div id="file-detail"><section class="detail-section"><div class="section-label">Changed files</div><div class="detail-loading">${icon('loader-circle', 'spinning')}Loading changes…</div></section></div>
       ${relationHTML(session)}
       <details class="more-details detail-section"><summary>Session info ${icon('chevron-down')}</summary><dl class="metadata"><div><dt>Project</dt><dd>${escape(project?.name || 'Unknown')}</dd></div><div><dt>Model</dt><dd>${escape(session.model)}</dd></div><div><dt>Agent</dt><dd>${escape(session.agent || 'Unknown')}</dd></div><div><dt>Tokens incl. cache</dt><dd>${session.tokens === null ? 'Not recorded' : compact(session.tokens)}</dd></div><div><dt>Recorded cost</dt><dd>${session.cost === null ? 'Not recorded' : `$${session.cost.toFixed(2)}`}</dd></div><div><dt>Updated</dt><dd>${date(session.updated)}</dd></div><div><dt>Imported</dt><dd>${session.coverage?.importedAt ? date(session.coverage.importedAt) : 'Pending'}</dd></div></dl><div class="directory-card"><span>${isWorktree ? 'Worktree' : 'Directory'}</span><code>${escape(session.directory)}</code></div></details>
@@ -354,7 +455,41 @@ function renderInspector(session: Session) {
   $('#focus-session').addEventListener('click', () => { stopPlayback(); scene?.focus(session.id); });
   $('#open-session').addEventListener('click', () => void launcher.open(session));
   $('#copy-id').addEventListener('click', async () => { try { await navigator.clipboard.writeText(session.nativeID || session.id); showToast('Session ID copied'); } catch { showToast(session.nativeID || session.id); } });
+  renderTimeline(session);
   refreshIcons();
+}
+
+function renderTimeline(session: Session, timeline?: TimelineMarkers) {
+  const endpointMessages = timeline?.items.filter((item) => item.kind === 'message' && item.time === session.activity?.lastMessageAt).length || 0;
+  const notes = timeline ? [
+    `${count(timeline.items.length - endpointMessages)} of ${count(timeline.total)} saved events plotted. Click a dot to explore.`,
+    endpointMessages ? 'The session sphere represents the latest message; read it in the explorer.' : '',
+    timeline.untimed ? `${count(timeline.untimed)} have no recorded timestamp; browse them in the explorer.` : '',
+    timeline.outsideLifetime ? `${count(timeline.outsideLifetime)} fall outside this lifetime; available in the explorer.` : '',
+    timeline.limited ? 'Map shows the latest 2,000 timed events. The explorer pages through all saved items.' : '',
+    timeline.partial ? 'Partial history.' : '',
+    'Nearby items can overlap; use Previous / Next in the explorer.',
+  ].filter(Boolean) : ['Loading message & event markers…'];
+  $('#message-detail').innerHTML = `<div class="section-label">Session timeline</div><dl class="metadata">
+    <div><dt>Trail starts</dt><dd>${timestamp(session.created)}</dd></div>
+    <div><dt>Node · last message</dt><dd>${session.activity?.lastMessageAt ? timestamp(session.activity.lastMessageAt) : 'Unknown · at session start'}</dd></div>
+    </dl><div class="event-key"><span style="--event-color:#fff"><i></i>Messages & events · hover to preview</span></div><p class="coverage-note">${notes.map(escape).join('<br>')}</p><button class="secondary-button explore-events">Explore messages & events ${icon('arrow-right')}</button>${timeline?.note ? `<details class="more-details history-coverage"><summary>History coverage ${icon('chevron-down')}</summary><p class="coverage-note">${escape(timeline.note)}</p></details>` : ''}`;
+  $('.explore-events').addEventListener('click', () => openEvents()); refreshIcons();
+}
+
+async function loadTimeline(session: Session) {
+  const request = ++timelineRequest;
+  timelineController?.abort(); const controller = new AbortController(); timelineController = controller;
+  try {
+    const timeline = await fetchJSON<TimelineMarkers>(`/api/session-atlas/session/${encodeURIComponent(session.id)}/event-markers`, controller.signal);
+    if (controller.signal.aborted || request !== timelineRequest || selectedID !== session.id) return;
+    selectedTimeline = timeline; scene?.setEvents(timeline.items); renderTimeline(session, timeline);
+  } catch {
+    if (controller.signal.aborted || request !== timelineRequest || selectedID !== session.id) return;
+    $('#message-detail').innerHTML = '<div class="section-label">Session timeline</div><p class="coverage-note">Event timing unavailable.</p><button class="secondary-button explore-events">Explore messages & events</button><button class="load-more" id="retry-timeline">Retry event markers</button>';
+    $('.explore-events').addEventListener('click', () => openEvents());
+    $('#retry-timeline').addEventListener('click', () => void loadTimeline(session));
+  }
 }
 
 function mergeDetail(previous: SessionDetail, next: SessionDetail): SessionDetail {
@@ -387,15 +522,16 @@ function renderDetail(detail: SessionDetail) {
 
 async function loadFiles(id: string, cursor?: string) {
   const request = ++detailRequest;
+  detailController?.abort(); const controller = new AbortController(); detailController = controller;
   const earlier = $<HTMLButtonElement>('#load-earlier');
   if (earlier) { earlier.disabled = true; earlier.textContent = 'Scanning earlier messages…'; }
   try {
-    const result = await fetchJSON<SessionDetail>(`/api/session-atlas/session/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
-    if (request !== detailRequest || selectedID !== id) return;
+    const result = await fetchJSON<SessionDetail>(`/api/session-atlas/session/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, controller.signal);
+    if (controller.signal.aborted || request !== detailRequest || selectedID !== id) return;
     selectedDetail = cursor && selectedDetail ? mergeDetail(selectedDetail, result) : result;
     renderDetail(selectedDetail);
   } catch (error) {
-    if (request !== detailRequest || selectedID !== id) return;
+    if (controller.signal.aborted || request !== detailRequest || selectedID !== id) return;
     if (selectedDetail) { renderDetail(selectedDetail); showToast('Could not load earlier history. Try again.'); }
     else {
       $('#file-detail').innerHTML = `<section class="detail-section"><div class="section-label">Changed files</div><p class="coverage-note">${escape(error instanceof Error ? error.message : 'Details unavailable.')}</p><button class="load-more" id="retry-detail">Retry file details</button></section>`;
@@ -405,20 +541,25 @@ async function loadFiles(id: string, cursor?: string) {
 }
 
 function selectSession(id: string) {
-  const session = data?.sessions.find((s) => s.id === id);
+  const session = sessionsByID.get(id);
   if (!session) return;
-  if (!filtered.some((s) => s.id === id)) resetFilters();
+  const previous = selectedID;
+  eventExplorer.close(); eventHover.clear();
+  if (!filteredIDs.has(id)) resetFilters();
   stopPlayback();
   playback = 1;
   updateScrubber();
   selectedID = id;
   selectedDetail = undefined;
+  selectedTimeline = undefined;
   $('#file-legend').hidden = true;
   history.replaceState(null, '', `?session=${encodeURIComponent(id)}`);
   scene?.select(id);
   renderInspector(session);
-  renderList();
+  scene?.focus(id);
+  updateListSelection(previous);
   void loadFiles(id);
+  void loadTimeline(session);
 }
 
 $('#session-list').addEventListener('click', (event) => {
@@ -427,7 +568,7 @@ $('#session-list').addEventListener('click', (event) => {
 });
 $('#inspector').addEventListener('click', (event) => {
   const button = (event.target as HTMLElement).closest<HTMLElement>('[data-related]');
-  if (button?.dataset.related) { selectSession(button.dataset.related); scene?.focus(button.dataset.related); }
+  if (button?.dataset.related) selectSession(button.dataset.related);
 });
 $('#project').addEventListener('change', (event) => { projectID = (event.target as HTMLSelectElement).value; directory = ''; updateDirectories(); updateFilters(true); });
 $('#source').addEventListener('change', (event) => { sourceID = (event.target as HTMLSelectElement).value; $('#source-filter-icon').innerHTML = sourceIcon(sourceID); updateFilters(true); });
@@ -457,25 +598,37 @@ $('#play').addEventListener('click', () => {
   refreshIcons();
   playFrame = requestAnimationFrame(animatePlayback);
 });
-for (const flat of [false, true]) $(`#view-${flat ? '2d' : '3d'}`).addEventListener('click', () => {
-  scene?.setFlat(flat);
-  for (const value of [false, true]) { const button = $(`#view-${value ? '2d' : '3d'}`); button.classList.toggle('active', value === flat); button.setAttribute('aria-pressed', String(value === flat)); }
-});
-let motion = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-$('#motion').setAttribute('aria-pressed', String(motion));
-$('#motion').addEventListener('click', () => { motion = !motion; scene?.setMotion(motion); $('#motion').setAttribute('aria-pressed', String(motion)); });
+for (const flat of [false, true]) $(`#view-${flat ? '2d' : '3d'}`).addEventListener('click', () => changePreferences({ view: flat ? '2d' : '3d' }));
+$('#motion').addEventListener('click', () => changePreferences({ motion: motionEnabled(preferences, reducedMotion.matches) ? 'off' : 'on' }));
 $('#help').addEventListener('click', () => { $<HTMLDialogElement>('#help-dialog').showModal(); modalVisibility(); });
 $('#help-dialog').addEventListener('close', modalVisibility);
 $('#close-help').addEventListener('click', () => $<HTMLDialogElement>('#help-dialog').close());
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented) return;
   if (document.querySelector('dialog[open]')) return;
+  if (eventExplorer.handleKey(event)) return;
   if (event.key === 'Escape') {
     if (selectedID) clearSelection();
     else setPanel('explorer', false);
     return;
   }
   if ((event.target as HTMLElement).matches('input, select, textarea') || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key) && !(event.target as Element).closest('[data-drag-panel], [contenteditable="true"]')) {
+    const target = event.target as HTMLElement;
+    if (target.matches('canvas, body, .session-card') || target.closest('.session-card')) {
+      const sorted = sortedSessions;
+      const index = sorted.findIndex((s) => s.id === selectedID), direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+      const next = sorted[Math.max(0, Math.min(sorted.length - 1, index + direction))];
+      if (next) {
+        event.preventDefault(); selectSession(next.id);
+        if (target.closest('.session-card')) {
+          if (!sessionCards.has(next.id)) { listLimit = Math.min(sorted.length, listLimit + 100); renderList(); }
+          sessionCards.get(next.id)?.focus({ preventScroll: true });
+        }
+      }
+      return;
+    }
+  }
   if (event.key.toLowerCase() === 'f') { stopPlayback(); scene?.reset(); }
   if (event.key.toLowerCase() === 'h') {
     const visible = (['explorer', 'timeline', 'inspector'] as const).filter((id) => !$(`#${id}`).hidden);
@@ -485,5 +638,5 @@ document.addEventListener('keydown', (event) => {
 });
 
 void load().then(() => { if (data?.importing) imports.resume(); });
-if (import.meta.env.DEV) Object.assign(window, { sessionAtlasDiagnostics: () => scene?.diagnostics(), sessionAtlasSearchDiagnostics: sessionSearch.diagnostics });
-if (import.meta.hot) import.meta.hot.dispose(() => { scene?.dispose(); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });
+if (import.meta.env.DEV) Object.assign(window, { sessionAtlasDiagnostics: () => scene?.diagnostics(), sessionAtlasAudioDiagnostics: () => audio.diagnostics(), sessionAtlasSearchDiagnostics: sessionSearch.diagnostics });
+if (import.meta.hot) import.meta.hot.dispose(() => { detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });

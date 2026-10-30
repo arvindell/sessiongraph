@@ -8,9 +8,10 @@
 
 ![Session Atlas showing a timeline of demo sessions](docs/screenshot.png)
 
-Explore **OpenCode, Claude Code, and Codex** in one local-first app.
-Search conversations, follow forks, inspect changed files, and play back your timeline.
-Everything stays on your computer.
+Explore **OpenCode, Claude Code, Codex, and Cursor** in one local-first app.
+Search conversations, explore clickable messages and tool calls, inspect changed files, and continue in another harness.
+Hover to preview messages, click to focus, and tune the glowing map, trails, and click sounds in Settings.
+Importing, searching, and visualization stay on your computer.
 
 ### Install
 
