@@ -28,7 +28,7 @@ Use **Actions → Release → Run workflow** on `main` to retry manually. Pull r
 
 | Target | Installers | Build host |
 | --- | --- | --- |
-| macOS ARM64 / x64 | `.dmg` | macOS 14 / 15 Intel |
+| macOS ARM64 / x64 | `.dmg` | macOS 15 ARM / Intel |
 | Windows x64 | NSIS `.exe`, `.msi` | Windows Server 2022 |
 | Linux x64 | `.deb`, `.rpm`, `.AppImage` | Ubuntu 22.04 |
 | Linux ARM64 | `.deb`, `.rpm`, `.AppImage` | Ubuntu 24.04 ARM |
