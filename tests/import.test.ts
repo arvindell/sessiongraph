@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { AtlasStore } from '../server/store';
+import { SessionAtlasStore } from '../server/store';
 import { Importer } from '../server/importer';
 import { blankSession, blankMessage } from '../server/adapters/common';
 import { readJSONL } from '../server/adapters/jsonl';
@@ -13,8 +13,8 @@ import { contentVersion, type CachedContent } from '../src/search/persistence';
 import type { Candidate, SessionAdapter } from '../server/adapters/types';
 
 test('SQLite imports deduplicate native identities and messages; changed history replaces atomically and survives reopening', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'atlas-store-')), path = join(directory, 'atlas.sqlite');
-  let store = new AtlasStore(path), readCount = 0, revision = 'v1', fail = false;
+  const directory = await mkdtemp(join(tmpdir(), 'session-atlas-store-')), path = join(directory, 'session-atlas.sqlite');
+  let store = new SessionAtlasStore(path), readCount = 0, revision = 'v1', fail = false;
   const candidate = (): Candidate => ({ session: { ...blankSession('test', 'native'), updated: revision === 'v1' ? 1 : 2 }, revision, locator: {} });
   const adapter: SessionAdapter = { id: 'test', name: 'Test', description: '', capabilities: { history: true, files: false, forks: true, children: true }, async detect() { return true; },
     async discover() { return { sessions: [candidate(), candidate()], projects: [], warnings: [] }; },
@@ -38,8 +38,8 @@ test('SQLite imports deduplicate native identities and messages; changed history
     store.upsert(second); store.replace(second, [], false);
     const fork = { ...candidate(), session: { ...blankSession('test', 'fork'), forkID: 'test:native' } };
     store.upsert(fork); store.replace(fork, [], false);
-    assert.equal(store.atlas([], false).sessions.length, 3);
-    store.close(); store = new AtlasStore(path); importer = new Importer(store, []);
+    assert.equal(store.library([], false).sessions.length, 3);
+    store.close(); store = new SessionAtlasStore(path); importer = new Importer(store, []);
     assert.equal(store.content('test:native').fragments[0].text, 'v2');
     assert.deepEqual(store.selected(), ['test']);
     assert.equal(store.getSession('test:fork')?.forkID, 'test:native');
@@ -47,7 +47,7 @@ test('SQLite imports deduplicate native identities and messages; changed history
 });
 
 test('SQLite index persists checkpoints, rejects stale versions, and clear prevents older tabs resurrecting it', () => {
-  const store = new AtlasStore(':memory:');
+  const store = new SessionAtlasStore(':memory:');
   try {
     const c = { session: blankSession('test', 'id'), revision: 'r1', locator: {} }; store.upsert(c); store.replace(c, [], false);
     const record: CachedContent = { id: c.session.id, version: contentVersion(store.getSession(c.session.id)!), fragments: [], characters: 0, pages: 1, complete: true, partial: false, capped: false };
@@ -60,7 +60,7 @@ test('SQLite index persists checkpoints, rejects stale versions, and clear preve
 });
 
 test('JSONL byte cursors do not skip or duplicate Unicode records and disclose malformed lines', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'atlas-jsonl-')), path = join(dir, 'history.jsonl');
+  const dir = await mkdtemp(join(tmpdir(), 'session-atlas-jsonl-')), path = join(dir, 'history.jsonl');
   try {
     await writeFile(path, Array.from({ length: 500 }, (_, i) => JSON.stringify({ i, text: '星🌌é' })).join('\n') + '\n{broken');
     let cursor: number | undefined, partial = false; const values: number[] = [];
@@ -90,7 +90,7 @@ test('Codex desktop scaffolding is excluded from human prompts and titles withou
 });
 
 test('JSONL skips an oversized record without returning a repeated cursor or losing the next line', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'atlas-long-jsonl-')), path = join(dir, 'history.jsonl');
+  const dir = await mkdtemp(join(tmpdir(), 'session-atlas-long-jsonl-')), path = join(dir, 'history.jsonl');
   try {
     await writeFile(path, JSON.stringify({ text: 'x'.repeat(2_500_000) }) + '\n' + JSON.stringify({ id: 'after' }) + '\n');
     let cursor: number | undefined, partial = false; const rows: unknown[] = [];

@@ -40,7 +40,7 @@ svg { width: 16px; height: 16px; flex-shrink: 0; }
 .app-header { left: 24px; padding-left: 13px; gap: 10px; }
 .brand { display: flex; align-items: center; gap: 8px; }
 .brand img { width: 24px; height: 24px; }
-.brand > span { font-size: 23px; font-weight: 510; letter-spacing: -1.3px; line-height: 1; }
+.brand > span { font-size: 21px; font-weight: 510; letter-spacing: -1px; line-height: 1; white-space: nowrap; }
 .brand-dot { color: var(--mint); }
 .connection { display: flex; align-items: center; }
 .status-dot { width: 5px; height: 5px; border-radius: 50%; background: #d6b578; }
@@ -230,6 +230,8 @@ dialog p { font-size: 12px; line-height: 1.8; color: #92ad9e; margin: 18px 0; }
 }
 @media (max-width: 759px) {
   .app-header { top: 12px; left: 12px; height: 44px; }
+  .brand > span { font-size: 19px; }
+  .app-header .toolbar-button { padding-inline: 7px; }
   .map-controls { top: auto; right: auto; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%); height: 46px; }
   .floating-panel { border-radius: 14px; }
   .sidebar, .inspector { top: 70px; left: 12px; right: auto; width: min(330px, calc(100% - 24px)); max-height: calc(100dvh - 280px); }

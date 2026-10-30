@@ -4,15 +4,16 @@ import { promisify } from 'node:util';
 import { cliCommand, type LaunchConnection } from '../src/launch-links';
 import { getSessionInfo } from './opencode';
 import type { Session } from '../src/types';
+import { serviceFile } from './config';
 
 const exec = promisify(execFile);
 export async function getLaunchConnection(session?: Session): Promise<LaunchConnection> {
   if (session?.source && session.source !== 'opencode') return { terminalAvailable: process.platform === 'darwin' && !session.nativeID?.includes('/') };
-  const endpoint = await Service.discover({ file: process.env.ATLAS_SERVICE_FILE });
+  const endpoint = await Service.discover({ file: serviceFile() });
   if (!endpoint) throw new Error('OpenCode is unavailable.');
   const url = new URL(endpoint.url);
   if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('Only local services are supported.');
-  return { webBaseUrl: url.origin, terminalAvailable: process.platform === 'darwin' && !process.env.ATLAS_SERVICE_FILE };
+  return { webBaseUrl: url.origin, terminalAvailable: process.platform === 'darwin' && !serviceFile() };
 }
 
 export function terminalInvocation(id: string | Session) {
@@ -23,7 +24,7 @@ export function terminalInvocation(id: string | Session) {
 }
 
 export async function launchTerminal(value: Session) {
-  if (process.platform !== 'darwin' || process.env.ATLAS_SERVICE_FILE) throw new Error('Use the copied command in your terminal.');
+  if (process.platform !== 'darwin' || serviceFile()) throw new Error('Use the copied command in your terminal.');
   const invocation = terminalInvocation(value);
   // Verify it still exists: --session would otherwise create a new session.
   if (!value.source || value.source === 'opencode') {

@@ -1,16 +1,16 @@
 import { defineConfig, type Plugin } from 'vite';
-import { atlasMiddleware } from './server/middleware';
+import { sessionAtlasMiddleware } from './server/middleware';
 
-function atlasApi(): Plugin {
+function sessionAtlasApi(): Plugin {
   return {
-    name: 'atlas-local-api',
-    configureServer(server) { server.middlewares.use(atlasMiddleware); },
-    configurePreviewServer(server) { server.middlewares.use(atlasMiddleware); },
+    name: 'session-atlas-local-api',
+    configureServer(server) { server.middlewares.use(sessionAtlasMiddleware); },
+    configurePreviewServer(server) { server.middlewares.use(sessionAtlasMiddleware); },
   };
 }
 
 export default defineConfig({
-  plugins: [atlasApi()],
+  plugins: [sessionAtlasApi()],
   build: {
     rollupOptions: {
       output: { manualChunks: (id) => id.includes('/node_modules/three/') || id.includes('/node_modules/.pnpm/three@') ? 'three' : undefined },
@@ -19,7 +19,8 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: Number(process.env.PORT) || 5173,
-    allowedHosts: ['atlas.localhost', 'opencode-atlas.localhost'],
+    // Keep existing local bookmarks working after the rename.
+    allowedHosts: ['session-atlas.localhost', 'atlas.localhost', 'opencode-atlas.localhost'],
   },
-  preview: { host: '127.0.0.1', allowedHosts: ['atlas.localhost', 'opencode-atlas.localhost'] },
+  preview: { host: '127.0.0.1', allowedHosts: ['session-atlas.localhost', 'atlas.localhost', 'opencode-atlas.localhost'] },
 });

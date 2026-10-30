@@ -1,31 +1,24 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { AtlasData, Session, SessionDetail, SourceStatus } from '../src/types';
+import type { SessionAtlasData, Session, SessionDetail, SourceStatus } from '../src/types';
 import type { ContentPage } from '../src/search/types';
 import { MAX_CHARACTERS, validRecord, type CachedContent } from '../src/search/persistence';
 import type { Candidate, ImportedMessage } from './adapters/types';
+import { databasePath } from './config';
 
-export function dataDirectory() {
-  if (process.env.ATLAS_DATA_DIR) return process.env.ATLAS_DATA_DIR;
-  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Application Support', 'Atlas');
-  if (process.platform === 'win32') return join(process.env.LOCALAPPDATA || homedir(), 'Atlas');
-  return join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'atlas');
-}
-
-/** Atlas owns this database. No adapter opens or modifies a harness database. */
-export class AtlasStore {
+/** Session Atlas owns this database. No adapter opens or modifies a harness database. */
+export class SessionAtlasStore {
   private owner = randomUUID();
   readonly db: DatabaseSync;
-  constructor(readonly path = join(dataDirectory(), 'atlas.sqlite')) {
+  constructor(readonly path = databasePath()) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(path);
     if (path !== ':memory:') chmodSync(path, 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
-    if (version > 2) throw new Error('This Atlas database requires a newer version of the app.');
+    if (version > 2) throw new Error('This Session Atlas database requires a newer version of the app.');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, last_import INTEGER, error TEXT);
@@ -105,7 +98,7 @@ export class AtlasStore {
     const count = this.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE source=?').get(id)!;
     return { sessions: Number(count.n), lastImport: row?.last_import ? Number(row.last_import) : undefined, error: row?.error ? String(row.error) : undefined };
   }
-  atlas(sources: SourceStatus[], importing: boolean): AtlasData {
+  library(sources: SourceStatus[], importing: boolean): SessionAtlasData {
     return { sourceID: this.setting('libraryID'), onboarding: this.setting('selected') === undefined, sources, importing,
       sessions: this.db.prepare('SELECT metadata FROM sessions').all().map((r) => JSON.parse(String(r.metadata))),
       projects: this.db.prepare('SELECT data FROM projects').all().map((r) => JSON.parse(String(r.data))), loadedAt: Date.now(), warnings: [],

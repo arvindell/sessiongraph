@@ -32,7 +32,7 @@ export function createSessionLauncher(onVisibility: () => void) {
   let current: Session | undefined, version = 0;
   let controller: AbortController | undefined;
   let returnFocus: HTMLElement | null = null;
-  try { if (localStorage.getItem('atlas.open-target') === 'cli') select.value = 'cli'; } catch { /* Preferences are optional. */ }
+  try { if ((localStorage.getItem('session-atlas.open-target') || localStorage.getItem('atlas.open-target')) === 'cli') select.value = 'cli'; } catch { /* Preferences are optional. */ }
 
   function renderChoice() {
     $('.launch-web').hidden = select.value !== 'web';
@@ -48,7 +48,7 @@ export function createSessionLauncher(onVisibility: () => void) {
   }
   select.addEventListener('change', () => {
     renderChoice(); status.textContent = '';
-    try { localStorage.setItem('atlas.open-target', select.value); } catch { /* Preferences are optional. */ }
+    try { localStorage.setItem('session-atlas.open-target', select.value); } catch { /* Preferences are optional. */ }
   }, options);
   $('.dialog-close').addEventListener('click', close, options);
   dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); }, options);
@@ -60,7 +60,7 @@ export function createSessionLauncher(onVisibility: () => void) {
     const request = version, id = current.id;
     terminal.disabled = true; status.textContent = 'Opening Terminal…';
     try {
-      const response = await fetch(`/api/atlas/session/${encodeURIComponent(id)}/open-terminal`, { method: 'POST', headers: { 'X-Atlas-Action': 'open-terminal' } });
+      const response = await fetch(`/api/session-atlas/session/${encodeURIComponent(id)}/open-terminal`, { method: 'POST', headers: { 'X-Session-Atlas-Action': 'open-terminal' } });
       if (!response.ok) throw new Error('Terminal unavailable');
       if (version === request) status.textContent = 'Session sent to Terminal.';
     } catch { if (version === request) status.textContent = 'Could not open Terminal. Copy the command and run it in your terminal.'; }
@@ -85,7 +85,7 @@ export function createSessionLauncher(onVisibility: () => void) {
       onVisibility(); select.focus();
       if (commandError) return;
       try {
-        const response = await fetch(`/api/atlas/session/${encodeURIComponent(session.id)}/connection`, { signal: controller.signal });
+        const response = await fetch(`/api/session-atlas/session/${encodeURIComponent(session.id)}/connection`, { signal: controller.signal });
         if (!response.ok) throw new Error('Source app unavailable');
         const connection = await response.json() as LaunchConnection;
         if (version !== request) return;

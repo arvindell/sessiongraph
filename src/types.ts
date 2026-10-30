@@ -27,7 +27,7 @@ export interface Project {
   worktrees: string[];
 }
 
-export interface AtlasData {
+export interface SessionAtlasData {
   onboarding?: boolean;
   sources?: SourceStatus[];
   importing?: boolean;

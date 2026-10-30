@@ -1,4 +1,4 @@
 Claude, OpenAI, and OpenCode SVG paths are from Simple Icons (CC0-1.0).
 Claude and OpenCode: https://github.com/simple-icons/simple-icons/tree/develop/icons
 OpenAI: https://github.com/simple-icons/simple-icons/blob/11.15.0/icons/openai.svg
-Brand names and marks belong to their respective owners. Atlas is independent.
+Brand names and marks belong to their respective owners. Session Atlas is independent.

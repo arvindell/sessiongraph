@@ -1,4 +1,4 @@
-import { getAtlas, api, getSessionInfo, summarizeMessages, type RawMessage } from '../opencode';
+import { getSessionAtlas, api, getSessionInfo, summarizeMessages, type RawMessage } from '../opencode';
 import { extractContent } from '../search';
 import { digest, identity } from './common';
 import type { SessionAdapter } from './types';
@@ -8,7 +8,7 @@ export const opencodeAdapter: SessionAdapter = {
   capabilities: { history: true, forks: true, children: true, files: true },
   async detect() { try { await api('/api/info', AbortSignal.timeout(3000)); return true; } catch { return false; } },
   async discover() {
-    const data = await getAtlas(true);
+    const data = await getSessionAtlas(true);
     return {
       projects: data.projects.map((p) => ({ ...p, id: identity('opencode', p.id) })), warnings: data.warnings,
       sessions: data.sessions.map((s) => ({ locator: {}, revision: digest([2, s.updated, s.created, s.directory]), session: {

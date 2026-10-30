@@ -1,5 +1,5 @@
 import { excerpt, normalize, parseQuery, words } from './engine';
-import type { AtlasData, Session } from '../types';
+import type { SessionAtlasData, Session } from '../types';
 import { sourceName, sourceIcon } from '../sources';
 import { contentVersion } from './persistence';
 import type { ContentPage, IndexStatus, SearchHit, SearchRequest, SearchResponse } from './types';
@@ -110,7 +110,7 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
       const controller = new AbortController();
       previewController = controller;
       try {
-        const response = await fetch(`/api/atlas/session/${encodeURIComponent(session.id)}/content?updated=${session.updated}`, { signal: controller.signal });
+        const response = await fetch(`/api/session-atlas/session/${encodeURIComponent(session.id)}/content?updated=${session.updated}`, { signal: controller.signal });
         if (!response.ok) throw new Error('Preview unavailable');
         const page = await response.json() as ContentPage;
         if (controller.signal.aborted || key !== previewKey) return;
@@ -222,7 +222,7 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
   observer.observe(list);
   return {
     open,
-    setData(data: AtlasData) {
+    setData(data: SessionAtlasData) {
       if (sourceID !== data.sourceID) { cache.clear(); previewKey = ''; previewController?.abort(); window.clearTimeout(previewTimer); }
       sourceID = data.sourceID;
       sessions = new Map(data.sessions.map((s) => [s.id, s])); projects = new Map(data.projects.map((p) => [p.id, p.name]));

@@ -1,7 +1,8 @@
 import { Service } from '@opencode/client/service';
 import { basename } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { AtlasData, FileChange, Project, Session, SessionDetail } from '../src/types';
+import type { SessionAtlasData, FileChange, Project, Session, SessionDetail } from '../src/types';
+import { serviceFile } from './config';
 
 export interface RawSession {
   id: string;
@@ -37,10 +38,10 @@ export interface RawMessage {
 // Official service discovery shares OpenCode's authenticated connection context.
 // GETs only; no service startup, database access, or browser-side credentials.
 export async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const endpoint = await Service.discover({ file: process.env.ATLAS_SERVICE_FILE });
+  const endpoint = await Service.discover({ file: serviceFile() });
   if (!endpoint) throw new Error('No healthy OpenCode service was found.');
   const origin = new URL(endpoint.url);
-  if (!['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname) || !['http:', 'https:'].includes(origin.protocol)) throw new Error('Atlas only imports from a loopback OpenCode service.');
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname) || !['http:', 'https:'].includes(origin.protocol)) throw new Error('Session Atlas only imports from a loopback OpenCode service.');
   const response = await fetch(new URL(path, endpoint.url), {
     headers: Service.headers(endpoint),
     redirect: 'error',
@@ -59,21 +60,21 @@ export async function getSessionInfo(id: string) {
   return sessionFromResponse(await api<RawSession | { data: RawSession }>(`/api/session/${encodeURIComponent(id)}`), id);
 }
 
-let cache: AtlasData | undefined;
-let pending: Promise<AtlasData> | undefined;
+let cache: SessionAtlasData | undefined;
+let pending: Promise<SessionAtlasData> | undefined;
 
-export async function getAtlas(force = false): Promise<AtlasData> {
+export async function getSessionAtlas(force = false): Promise<SessionAtlasData> {
   if (!force && cache && Date.now() - cache.loadedAt < 30_000) return cache;
   if (pending) return pending;
-  pending = loadAtlas().then((data) => (cache = data)).finally(() => { pending = undefined; });
+  pending = loadSessionAtlas().then((data) => (cache = data)).finally(() => { pending = undefined; });
   return pending;
 }
 
-async function loadAtlas(): Promise<AtlasData> {
-  const endpoint = await Service.discover({ file: process.env.ATLAS_SERVICE_FILE });
+async function loadSessionAtlas(): Promise<SessionAtlasData> {
+  const endpoint = await Service.discover({ file: serviceFile() });
   if (!endpoint) throw new Error('No healthy OpenCode service was found.');
   // Scope the browser cache to this service without exposing its credentials.
-  const sourceID = createHash('sha256').update(JSON.stringify([endpoint.url, process.env.ATLAS_SERVICE_FILE || 'default'])).digest('hex');
+  const sourceID = createHash('sha256').update(JSON.stringify([endpoint.url, serviceFile() || 'default'])).digest('hex');
   const rawProjects = await api<RawProject[]>('/api/project');
   const sessions = new Map<string, Session>();
   const warnings: string[] = [];

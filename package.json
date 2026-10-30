@@ -1,17 +1,18 @@
 {
-  "name": "atlas-sessions",
+  "name": "session-atlas",
   "version": "0.1.0",
   "private": false,
-  "description": "Explore your LLM sessions locally",
+  "description": "Search & visualize all your LLM sessions",
+  "repository": { "type": "git", "url": "git+https://github.com/arvindell/session-atlas.git" },
   "license": "UNLICENSED",
-  "bin": { "atlas": "bin/atlas.mjs" },
+  "bin": { "session-atlas": "bin/session-atlas.mjs" },
   "files": ["bin/", "dist/", "dist-server/", "README.md"],
   "optionalDependencies": {
-    "atlas-sessions-app-darwin-arm64": "0.1.0",
-    "atlas-sessions-app-darwin-x64": "0.1.0",
-    "atlas-sessions-app-linux-x64": "0.1.0",
-    "atlas-sessions-app-linux-arm64": "0.1.0",
-    "atlas-sessions-app-win32-x64": "0.1.0"
+    "session-atlas-app-darwin-arm64": "0.1.0",
+    "session-atlas-app-darwin-x64": "0.1.0",
+    "session-atlas-app-linux-x64": "0.1.0",
+    "session-atlas-app-linux-arm64": "0.1.0",
+    "session-atlas-app-win32-x64": "0.1.0"
   },
   "type": "module",
   "engines": {
@@ -24,7 +25,7 @@
     "build": "tsc --noEmit && vite build && node scripts/build-server.mjs",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
-    "start": "node bin/atlas.mjs --browser",
+    "start": "node bin/session-atlas.mjs --browser",
     "package:desktop": "node scripts/package-desktop.mjs",
     "preview": "vite preview"
   },

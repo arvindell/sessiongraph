@@ -6,7 +6,7 @@ import { createSessionSearch } from './search/ui';
 import { createSessionLauncher } from './launcher';
 import { createImports } from './imports';
 import { sourceName, sourceIcon } from './sources';
-import type { AtlasData, Graph, Session, SessionDetail } from './types';
+import type { SessionAtlasData, Graph, Session, SessionDetail } from './types';
 import './style.css';
 
 const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight };
@@ -23,7 +23,7 @@ const inputDate = (value: number) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-let data: AtlasData | undefined;
+let data: SessionAtlasData | undefined;
 let graph: Graph = { nodes: [], edges: [], lanes: [], start: 0, end: 0 };
 let filtered: Session[] = [];
 let scene: TimelineScene | undefined;
@@ -47,14 +47,14 @@ const PLAYBACK_DURATION = 30_000;
 
 $('#app').innerHTML = `
   <main class="map" aria-label="Session map">
-    <h1 class="sr-only">Atlas · your LLM sessions</h1>
+    <h1 class="sr-only">Session Atlas — Search &amp; visualize all your LLM sessions</h1>
     <div id="scene"></div>
     <div class="canvas-vignette"></div>
     <div id="graph-message" class="graph-message"><div class="loading-orbit"><span></span><span></span><span></span></div><h3>Loading sessions…</h3></div>
     <div id="tooltip" class="node-tooltip" hidden></div>
   </main>
   <header class="app-header glass">
-    <a class="brand" href="/" aria-label="Atlas home"><img src="/favicon.svg" alt=""/><span>atlas<span class="brand-dot">.</span></span></a>
+    <a class="brand" href="/" aria-label="Session Atlas home" title="Search &amp; visualize all your LLM sessions"><img src="/favicon.svg" alt=""/><span>session-atlas<span class="brand-dot">.</span></span></a>
     <span class="connection" role="status" title="Connecting"><span class="status-dot"></span><span id="connection-label" class="sr-only">Connecting</span></span>
     <span class="toolbar-divider"></span>
     <button class="toolbar-button" id="toggle-explorer" aria-label="Toggle sessions" aria-controls="explorer" aria-expanded="true" title="Sessions">${icon('search')}<span>Sessions</span></button>
@@ -92,7 +92,7 @@ const modalVisibility = () => { const open = Boolean(document.querySelector('dia
 const launcher = createSessionLauncher(modalVisibility);
 const imports = createImports(load, modalVisibility);
 $('#manage-sources').addEventListener('click', () => void imports.open());
-document.addEventListener('atlas-import-status', (event) => {
+document.addEventListener('session-atlas-import-status', (event) => {
   const status = (event as CustomEvent<import('./types').ImportStatus>).detail;
   $('#refresh').classList.toggle('spinning', status.running);
   $('.connection').title = status.running ? `Importing ${sourceName(status.source)} · ${status.imported} sessions saved` : 'Local library · SQLite';
@@ -151,7 +151,7 @@ try {
     },
   });
 } catch (error) {
-  console.error('[atlas] Graphics initialization failed', error);
+  console.error('[session-atlas] Graphics initialization failed', error);
   showToast('3D requires WebGL. You can still browse sessions in the list.');
 }
 $('#scene').addEventListener('scene-error', (event) => showToast((event as CustomEvent<string>).detail));
@@ -168,7 +168,7 @@ async function load() {
   refresh.disabled = true;
   refresh.classList.add('spinning');
   try {
-    data = await fetchJSON<AtlasData>('/api/atlas');
+    data = await fetchJSON<SessionAtlasData>('/api/session-atlas');
     $<HTMLSelectElement>('#source').innerHTML = '<option value="">All sources</option>' + (data.sources || []).map((s) => `<option value="${escape(s.id)}">${escape(s.name)} · ${s.sessions.toLocaleString()}</option>`).join('');
     $<HTMLSelectElement>('#source').value = sourceID;
     $('#source-filter-icon').innerHTML = sourceIcon(sourceID);
@@ -390,7 +390,7 @@ async function loadFiles(id: string, cursor?: string) {
   const earlier = $<HTMLButtonElement>('#load-earlier');
   if (earlier) { earlier.disabled = true; earlier.textContent = 'Scanning earlier messages…'; }
   try {
-    const result = await fetchJSON<SessionDetail>(`/api/atlas/session/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
+    const result = await fetchJSON<SessionDetail>(`/api/session-atlas/session/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
     if (request !== detailRequest || selectedID !== id) return;
     selectedDetail = cursor && selectedDetail ? mergeDetail(selectedDetail, result) : result;
     renderDetail(selectedDetail);
@@ -485,5 +485,5 @@ document.addEventListener('keydown', (event) => {
 });
 
 void load().then(() => { if (data?.importing) imports.resume(); });
-if (import.meta.env.DEV) Object.assign(window, { atlasDiagnostics: () => scene?.diagnostics(), atlasSearchDiagnostics: sessionSearch.diagnostics });
+if (import.meta.env.DEV) Object.assign(window, { sessionAtlasDiagnostics: () => scene?.diagnostics(), sessionAtlasSearchDiagnostics: sessionSearch.diagnostics });
 if (import.meta.hot) import.meta.hot.dispose(() => { scene?.dispose(); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });

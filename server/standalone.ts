@@ -4,7 +4,7 @@ import { stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, extname, sep } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { atlasMiddleware, library } from './middleware';
+import { sessionAtlasMiddleware, library } from './middleware';
 
 const arg = (name: string) => { const at = process.argv.indexOf(name); return at >= 0 ? process.argv[at + 1] : undefined; };
 const assets = resolve(arg('--assets') || fileURLToPath(new URL('../dist', import.meta.url)));
@@ -17,13 +17,13 @@ const server = createServer(async (req, res) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'");
-  if (url.pathname === '/__atlas' && equals(url.searchParams.get('token') || '')) {
-    res.setHeader('Set-Cookie', `atlas=${token}; HttpOnly; SameSite=Strict; Path=/`);
+  if (url.pathname === '/__session-atlas' && equals(url.searchParams.get('token') || '')) {
+    res.setHeader('Set-Cookie', `session-atlas=${token}; HttpOnly; SameSite=Strict; Path=/`);
     res.setHeader('Cache-Control', 'no-store'); res.writeHead(303, { Location: '/' }); res.end(); return;
   }
-  const cookie = /(?:^|;\s*)atlas=([a-f0-9]+)/.exec(req.headers.cookie || '')?.[1] || '';
-  if (!equals(cookie)) { res.writeHead(401); res.end('Open Atlas from the app or launcher.'); return; }
-  await atlasMiddleware(req, res, () => {
+  const cookie = /(?:^|;\s*)session-atlas=([a-f0-9]+)/.exec(req.headers.cookie || '')?.[1] || '';
+  if (!equals(cookie)) { res.writeHead(401); res.end('Open Session Atlas from the app or launcher.'); return; }
+  await sessionAtlasMiddleware(req, res, () => {
     void (async () => {
       try {
         if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); res.end(); return; }
@@ -41,7 +41,7 @@ const server = createServer(async (req, res) => {
 server.listen(0, '127.0.0.1', () => {
   const port = (server.address() as { port: number }).port;
   // This bootstrap URL is consumed by the native host/launcher, never logged to disk.
-  process.stdout.write(JSON.stringify({ url: `http://127.0.0.1:${port}/__atlas?token=${token}` }) + '\n');
+  process.stdout.write(JSON.stringify({ url: `http://127.0.0.1:${port}/__session-atlas?token=${token}` }) + '\n');
 });
 const parent = Number(arg('--parent-pid'));
 if (parent > 0) setInterval(() => { try { process.kill(parent, 0); } catch { process.exit(0); } }, 2000).unref();
