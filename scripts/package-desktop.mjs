@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import pkg from '../package.json' with { type: 'json' };
 
-const name = `session-atlas-app-${process.platform}-${process.arch}`;
-const stage = join('release', name);
+const name = `${pkg.name}-app-${process.platform}-${process.arch}`;
+const stage = join('release', name.split('/').at(-1));
 await rm(join(stage, 'payload'), { recursive: true, force: true });
 await mkdir(join(stage, 'payload'), { recursive: true });
 const target = 'src-tauri/target/release';
@@ -17,7 +17,9 @@ else if (process.platform === 'win32') {
   if (!file) throw new Error('Build a Linux AppImage first.');
   await cp(join(target, 'bundle/appimage', file), join(stage, 'payload/Session Atlas.AppImage'));
 }
-await writeFile(join(stage, 'package.json'), JSON.stringify({ name, version: pkg.version, description: `${pkg.description} — ${process.platform}/${process.arch}`, os: [process.platform], cpu: [process.arch], files: ['payload'], license: 'UNLICENSED' }, null, 2));
-execFileSync('npm', ['pack', `./${stage}`, '--pack-destination', 'release'], { stdio: 'inherit' });
-execFileSync('npm', ['pack', '--pack-destination', 'release'], { stdio: 'inherit' });
-console.log(`\nInstall locally without publishing:\n  npx --package ./release/session-atlas-${pkg.version}.tgz --package ./release/${name}-${pkg.version}.tgz session-atlas`);
+await writeFile(join(stage, 'package.json'), JSON.stringify({ name, version: pkg.version, description: `${pkg.description} — ${process.platform}/${process.arch}`, repository: pkg.repository, publishConfig: pkg.publishConfig, sessionAtlasCommit: pkg.sessionAtlasCommit, os: [process.platform], cpu: [process.arch], files: ['payload'], license: 'UNLICENSED' }, null, 2));
+const npmOptions = { stdio: 'inherit', shell: process.platform === 'win32' };
+execFileSync('npm', ['pack', `./${stage}`, '--pack-destination', 'release'], npmOptions);
+if (!process.argv.includes('--platform-only')) execFileSync('npm', ['pack', '--pack-destination', 'release'], npmOptions);
+const tarball = (name) => `${name.replace('@', '').replace('/', '-')}-${pkg.version}.tgz`;
+console.log(`\nInstall locally without publishing:\n  npx --package ./release/${tarball(pkg.name)} --package ./release/${tarball(name)} session-atlas`);

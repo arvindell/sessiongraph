@@ -12,7 +12,7 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const args = new Set(process.argv.slice(2));
 if (args.has('--version')) { console.log(`Session Atlas ${pkg.version}`); process.exit(0); }
 if (args.has('--help')) {
-  console.log('Session Atlas — Search & visualize all your LLM sessions\n\n  npx session-atlas            Open the desktop app\n  npx session-atlas --browser  Open the local browser app\n\nChoose session sources on first launch. All imports and indexing stay local.'); process.exit(0);
+  console.log(`Session Atlas — Search & visualize all your LLM sessions\n\n  npx ${pkg.name}            Open the desktop app\n  npx ${pkg.name} --browser  Open the local browser app\n\nChoose session sources on first launch. All imports and indexing stay local.`); process.exit(0);
 }
 if (Number(process.versions.node.split('.')[0]) < 24) { console.error('Session Atlas requires Node.js 24 or later for its launcher.'); process.exit(1); }
 function open(target) {
@@ -21,14 +21,14 @@ function open(target) {
   child.on('error', () => console.error('Could not open the application. Check your desktop environment.')); child.unref();
 }
 if (!args.has('--browser')) {
-  const name = `session-atlas-app-${process.platform}-${process.arch}`;
+  const name = `${pkg.name}-app-${process.platform}-${process.arch}`;
   try {
     const manifest = require.resolve(`${name}/package.json`);
     const app = join(dirname(manifest), 'payload', process.platform === 'darwin' ? 'Session Atlas.app' : process.platform === 'win32' ? 'Session Atlas.exe' : 'Session Atlas.AppImage');
     if (process.platform === 'darwin') open(app);
     else { const child = spawn(app, [], { detached: true, stdio: 'ignore', env: { ...process.env, ...(process.platform === 'linux' ? { APPIMAGE_EXTRACT_AND_RUN: '1' } : {}) } }); child.on('error', (e) => console.error(`Session Atlas could not open: ${e.message}`)); child.unref(); }
   } catch {
-    console.error(`Desktop package ${name} is not installed.\nUse npx session-atlas --browser, or install the matching desktop package.\nFor a source checkout: pnpm desktop:dev`); process.exitCode = 1;
+    console.error(`Desktop package ${name} is not installed.\nUse npx ${pkg.name} --browser, or install the matching desktop package.\nFor a source checkout: pnpm desktop:dev`); process.exitCode = 1;
   }
 } else {
   const child = spawn(process.execPath, [join(root, 'dist-server', 'server.mjs'), '--assets', join(root, 'dist'), '--parent-pid', String(process.pid)], { stdio: ['ignore', 'pipe', 'inherit'] });

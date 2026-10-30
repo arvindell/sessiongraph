@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck && pnpm test
+      - id: version
+        run: node scripts/release-version.mjs >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: darwin-arm64
+            bundles: app,dmg
+          - os: macos-15-intel
+            target: darwin-x64
+            bundles: app,dmg
+          - os: ubuntu-22.04
+            target: linux-x64
+            bundles: deb,rpm,appimage
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+            bundles: deb,rpm,appimage
+          - os: windows-2022
+            target: win32-x64
+            bundles: nsis,msi
+    runs-on: ${{ matrix.os }}
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+      RELEASE_VERSION: ${{ needs.version.outputs.version }}
+      # Dependencies are installed before stamping unpublished native package versions.
+      PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf rpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/set-release-version.mjs ${{ env.RELEASE_VERSION }}
+      - run: pnpm desktop:build --bundles ${{ matrix.bundles }}
+      - if: matrix.target == 'linux-x64'
+        run: pnpm package:desktop
+      - if: matrix.target != 'linux-x64'
+        run: pnpm package:desktop --platform-only
+      - run: node scripts/collect-release.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: session-atlas-${{ matrix.target }}
+          path: release/assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: session-atlas-*
+          path: release
+          merge-multiple: true
+      - name: Checksums
+        working-directory: release
+        run: sha256sum * > SHA256SUMS
+      - name: Tag and release
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Session Atlas $TAG" --generate-notes --draft
+          fi
+          gh release upload "$TAG" release/* --clobber
+          gh release edit "$TAG" --draft=false --latest
+
+  npm:
+    needs: [version, build, release]
+    runs-on: ubuntu-24.04
+    env:
+      RELEASE_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          scope: '@arvindell'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: session-atlas-*
+          path: release/assets
+          merge-multiple: true
+      - name: Publish private packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          test -n "$NODE_AUTH_TOKEN" || { echo 'Configure the NPM_TOKEN repository secret.'; exit 1; }
+          node scripts/publish-release.mjs

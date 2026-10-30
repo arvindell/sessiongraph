@@ -1,18 +1,19 @@
 {
-  "name": "session-atlas",
+  "name": "@arvindell/session-atlas",
   "version": "0.1.0",
   "private": false,
+  "publishConfig": { "access": "restricted", "registry": "https://registry.npmjs.org/" },
   "description": "Search & visualize all your LLM sessions",
   "repository": { "type": "git", "url": "git+https://github.com/arvindell/session-atlas.git" },
   "license": "UNLICENSED",
   "bin": { "session-atlas": "bin/session-atlas.mjs" },
-  "files": ["bin/", "dist/", "dist-server/", "README.md"],
+  "files": ["bin/", "dist/", "dist-server/", "docs/", "README.md"],
   "optionalDependencies": {
-    "session-atlas-app-darwin-arm64": "0.1.0",
-    "session-atlas-app-darwin-x64": "0.1.0",
-    "session-atlas-app-linux-x64": "0.1.0",
-    "session-atlas-app-linux-arm64": "0.1.0",
-    "session-atlas-app-win32-x64": "0.1.0"
+    "@arvindell/session-atlas-app-darwin-arm64": "0.1.0",
+    "@arvindell/session-atlas-app-darwin-x64": "0.1.0",
+    "@arvindell/session-atlas-app-linux-x64": "0.1.0",
+    "@arvindell/session-atlas-app-linux-arm64": "0.1.0",
+    "@arvindell/session-atlas-app-win32-x64": "0.1.0"
   },
   "type": "module",
   "engines": {
@@ -27,6 +28,7 @@
     "desktop:build": "tauri build",
     "start": "node bin/session-atlas.mjs --browser",
     "package:desktop": "node scripts/package-desktop.mjs",
+    "release:publish": "node scripts/publish-release.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {
