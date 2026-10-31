@@ -1,26 +1,35 @@
 import { DEFAULT_PREFERENCES, type Preferences } from './preferences';
-import { createElement, PanelsTopLeft, Volume2, Sparkles, Orbit, LockKeyhole, type IconNode } from 'lucide';
+import { createElement, PanelsTopLeft, Database, Volume2, Sparkles, Orbit, LockKeyhole, type IconNode } from 'lucide';
 import { refreshSelects } from './controls';
+import type { SaveState } from './library-settings';
+import type { ImportStatus, SourceStatus } from './types';
+import { sourceIcon } from './sources';
 
-type Section = 'interface' | 'audio' | 'graphics' | 'trails' | 'privacy';
-const tabs: [Section, string, IconNode][] = [['interface', 'Interface', PanelsTopLeft], ['audio', 'Sound', Volume2], ['graphics', 'Graphics', Sparkles], ['trails', 'Trails & playback', Orbit], ['privacy', 'Privacy', LockKeyhole]];
+type Section = 'interface' | 'sources' | 'audio' | 'graphics' | 'trails' | 'privacy';
+const tabs: [Section, string, IconNode][] = [['interface', 'Interface', PanelsTopLeft], ['sources', 'Sources', Database], ['audio', 'Sound', Volume2], ['graphics', 'Graphics', Sparkles], ['trails', 'Trails & playback', Orbit], ['privacy', 'Privacy', LockKeyhole]];
+const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const toggle = (key: keyof Preferences, label: string, hint: string) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><input type="checkbox" role="switch" data-pref="${key}" aria-label="${label}"/></label>`;
 const range = (key: keyof Preferences, label: string, hint: string, min: number, max: number, unit = '%', step = 1) => `<label class="setting-row setting-range"><span><strong>${label}</strong><small>${hint}</small></span><span class="setting-slider"><input type="range" data-pref="${key}" aria-label="${label}" min="${min}" max="${max}" step="${step}"/><output data-output="${key}" data-unit="${unit}"></output></span></label>`;
 const select = (key: keyof Preferences, label: string, hint: string, options: [string, string][]) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><select data-pref="${key}" aria-label="${label}">${options.map(([value, title]) => `<option value="${value}">${title}</option>`).join('')}</select></label>`;
 
-export function createSettings(callbacks: { change: (patch: Partial<Preferences>) => void; visibility: () => void; previewSound: () => void; resetPanels: () => void }) {
+export function createSettings(callbacks: { change: (patch: Partial<Preferences>) => void; visibility: () => void; previewSound: () => void; resetPanels: () => void; getSources: () => Promise<SourceStatus[]>; importSources: (ids: string[]) => Promise<void> }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'settings-dialog'; dialog.setAttribute('aria-labelledby', 'settings-title');
   dialog.innerHTML = `<header class="settings-heading"><div><h2 id="settings-title">Settings</h2><p>Import, appearance, and playback preferences.</p></div><button class="icon-button settings-close" aria-label="Close settings">×</button></header>
     <div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="Settings categories">${tabs.map(([id, name, glyph], i) => `<button role="tab" id="settings-tab-${id}" aria-controls="settings-${id}" aria-selected="${!i}" tabindex="${i ? -1 : 0}" data-tab="${id}">${createElement([glyph[0], { ...glyph[1], 'aria-hidden': 'true', 'stroke-width': 1.5 }, glyph[2]]).outerHTML}${name}</button>`).join('')}</nav>
     <div class="settings-content">
-      <section id="settings-interface" role="tabpanel" aria-labelledby="settings-tab-interface"><h3>Interface</h3><p class="settings-description">Manage imports and the session view.</p>
-        ${toggle('autoImport', 'Auto-import sessions', 'Check selected sources on startup, on return, and every minute while visible. Saved with your library.')}
+      <section id="settings-interface" role="tabpanel" aria-labelledby="settings-tab-interface"><h3>Interface</h3><p class="settings-description">View preferences and filters are saved with your library.</p>
         ${select('view', 'Default view', 'Switch between depth and a flat timeline.', [['3d', '3D galaxy'], ['2d', '2D timeline']])}
         ${select('motion', 'Motion', 'Camera transitions, reveals, and ambient movement.', [['system', 'Follow system'], ['on', 'On'], ['off', 'Off']])}
         ${select('density', 'Session list', 'Adjust spacing between sessions.', [['comfortable', 'Comfortable'], ['compact', 'Compact']])}
         ${range('panelOpacity', 'Panel opacity', 'Adjust panel background transparency.', 55, 100)}
         <div class="settings-note"><span>Restore the default panel layout.</span><button class="secondary-button settings-reset-panels">Reset panel positions</button></div>
+      </section>
+      <section id="settings-sources" role="tabpanel" aria-labelledby="settings-tab-sources" hidden><h3>Sources</h3><p class="settings-description">Choose the local apps to import. Importing is read-only.</p>
+        ${toggle('autoImport', 'Auto-import sessions', 'Check selected sources on startup, on return, and every minute while visible.')}
+        <div class="settings-sources-list import-sources"></div>
+        <div class="settings-import-progress" role="status"></div>
+        <div class="settings-note"><span>Source changes apply when you import. Previously saved history is kept.</span><button class="secondary-button settings-import" disabled>Import selected sources</button></div>
       </section>
       <section id="settings-audio" role="tabpanel" aria-labelledby="settings-tab-audio" hidden><h3>Sound</h3><p class="settings-description">Interaction sounds are synthesized locally.</p>
         ${toggle('muted', 'Mute all sound', 'Silence everything. Your volume levels are kept.')}
@@ -57,17 +66,47 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
   document.body.append(dialog);
   const events = new AbortController(), options = { signal: events.signal };
   let focus: HTMLElement | null = null;
+  let sourceRequest = 0, sourcesLoading = false, sourcesRunning = false, active: Section = 'interface';
+  const sourceControls = () => {
+    dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>('.settings-source, .settings-import').forEach((control) => { control.disabled = sourcesLoading || sourcesRunning; });
+    if (!dialog.querySelector('.settings-source')) (dialog.querySelector('.settings-import') as HTMLButtonElement).disabled = true;
+  };
+  async function loadSources() {
+    const request = ++sourceRequest; sourcesLoading = true; sourceControls();
+    const list = dialog.querySelector('.settings-sources-list')!;
+    list.textContent = 'Finding local session sources…';
+    try {
+      const sources = await callbacks.getSources();
+      if (events.signal.aborted || request !== sourceRequest) return;
+      list.innerHTML = sources.map((source) => `<label class="import-source"><input class="settings-source" type="checkbox" value="${escape(source.id)}" ${source.selected ? 'checked' : ''}/><span class="source-symbol">${sourceIcon(source.id)}</span><span><strong>${escape(source.name)}</strong><small>${escape(source.description)}</small><small class="source-imported">${source.sessions.toLocaleString()} saved${source.error ? ` · ${escape(source.error)}` : ''}</small></span><span class="source-detected ${source.available ? 'detected' : ''}">${source.available ? 'Detected' : 'Not found'}</span></label>`).join('');
+    } catch (error) {
+      if (events.signal.aborted || request !== sourceRequest) return;
+      list.textContent = error instanceof Error ? error.message : 'Could not detect sources.';
+      const retry = document.createElement('button'); retry.className = 'secondary-button'; retry.textContent = 'Retry'; retry.addEventListener('click', () => void loadSources(), options); list.append(retry);
+    } finally {
+      if (request === sourceRequest && !events.signal.aborted) { sourcesLoading = false; sourceControls(); (dialog.querySelector('.settings-import') as HTMLButtonElement).disabled ||= !list.querySelector('input'); }
+    }
+  }
+  dialog.querySelector('.settings-import')!.addEventListener('click', async () => {
+    const ids = [...dialog.querySelectorAll<HTMLInputElement>('.settings-source:checked')].map((input) => input.value);
+    sourcesRunning = true; sourceControls();
+    dialog.querySelector('.settings-import-progress')!.textContent = 'Starting import…';
+    try { await callbacks.importSources(ids); }
+    catch (error) { sourcesRunning = false; sourceControls(); dialog.querySelector('.settings-import-progress')!.textContent = error instanceof Error ? error.message : 'Import unavailable.'; }
+  }, options);
   const close = () => dialog.close();
   for (const selector of ['.settings-close', '.settings-done']) dialog.querySelector(selector)!.addEventListener('click', close, options);
   dialog.addEventListener('close', () => { callbacks.visibility(); focus?.focus({ preventScroll: true }); }, options);
   dialog.addEventListener('keydown', (event) => { event.stopPropagation(); }, options);
   function activate(id: string) {
+    active = id as Section;
     for (const [section] of tabs) {
       const tab = dialog.querySelector<HTMLButtonElement>(`[data-tab="${section}"]`)!;
       tab.setAttribute('aria-selected', String(section === id)); tab.tabIndex = section === id ? 0 : -1;
       dialog.querySelector<HTMLElement>(`#settings-${section}`)!.hidden = section !== id;
     }
     dialog.querySelector('.settings-content')!.scrollTop = 0;
+    if (active === 'sources') void loadSources();
   }
   for (const tab of dialog.querySelectorAll<HTMLButtonElement>('[data-tab]')) {
     tab.addEventListener('click', () => activate(tab.dataset.tab!), options);
@@ -88,8 +127,13 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
   dialog.querySelector('.settings-reset')!.addEventListener('click', () => callbacks.change({ ...DEFAULT_PREFERENCES }), options);
   dialog.querySelector('.settings-reset-panels')!.addEventListener('click', callbacks.resetPanels, options);
   return {
-    open() { if (dialog.open) return; focus = document.activeElement as HTMLElement; dialog.showModal(); callbacks.visibility(); dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus(); },
-    render(values: Preferences, saved: boolean, saving = false) {
+    open() { if (dialog.open) return; focus = document.activeElement as HTMLElement; dialog.showModal(); callbacks.visibility(); dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus(); if (active === 'sources') void loadSources(); },
+    importStatus(status: ImportStatus) {
+      const wasRunning = sourcesRunning; sourcesRunning = status.running; sourceControls();
+      dialog.querySelector('.settings-import-progress')!.textContent = status.running ? `Importing · ${status.imported.toLocaleString()} saved` : `${status.imported.toLocaleString()} imported · ${status.unchanged.toLocaleString()} unchanged${status.failed ? ` · ${status.failed} unavailable` : ''}${status.errors.length ? ` · ${status.errors[0]}` : ''}`;
+      if (wasRunning && !status.running && dialog.open && active === 'sources') void loadSources();
+    },
+    render(values: Preferences, saved: boolean, saving: SaveState = 'saved') {
       for (const control of dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-pref]')) {
         const key = control.dataset.pref as keyof Preferences;
         if (control.type === 'checkbox') (control as HTMLInputElement).checked = Boolean(values[key]);
@@ -98,7 +142,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
         if (output) output.value = `${values[key]}${output.dataset.unit}`;
         control.disabled = (key === 'bloom' && values.quality === 'performance') || (key === 'trailSpeed' && (!values.trailFlow || values.trails === 'off' || values.motion === 'off'));
       }
-      dialog.querySelector('.settings-save-status')!.textContent = saving ? 'Saving auto-import preference…' : saved ? 'Saved on this device · changes apply live.' : 'Appearance applied for this visit; local storage is unavailable.';
+      dialog.querySelector('.settings-save-status')!.textContent = saving === 'saving' ? 'Saving preferences…' : saving === 'error' ? 'Changes applied; could not save to the local library.' : saved ? 'Saved on this device · changes apply live.' : 'Applied for this visit; storage is unavailable.';
       (dialog.querySelector('.settings-preview') as HTMLButtonElement).disabled = values.muted || !values.clickSounds || !values.clickVolume;
       refreshSelects(dialog);
     },

@@ -85,5 +85,5 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
   $('.dialog-close').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => { view++; closeAfterImport = undefined; onVisibility(); returnFocus?.focus(); });
   dialog.addEventListener('keydown', (event) => event.stopPropagation());
-  return { open, get busy() { return running || starting || polling || Boolean(timer); }, refresh: (automatic = false) => start(undefined, automatic), resume: () => { background = true; running = true; window.clearTimeout(timer); void poll(); }, dispose: () => { disposed = true; requests.abort(); window.clearTimeout(timer); dialog.remove(); } };
+  return { open, sources: async () => (await request<{ sources: SourceStatus[] }>('sources')).sources, select: (sources: string[]) => start(sources), get busy() { return running || starting || polling || Boolean(timer); }, refresh: (automatic = false) => start(undefined, automatic), resume: () => { background = true; running = true; window.clearTimeout(timer); void poll(); }, dispose: () => { disposed = true; requests.abort(); window.clearTimeout(timer); dialog.remove(); } };
 }

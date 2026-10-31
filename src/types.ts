@@ -31,6 +31,8 @@ export interface Project {
 
 export interface SessionGraphData {
   autoImport?: boolean;
+  preferences?: import('./preferences').Preferences;
+  viewState?: import('./view-state').ViewState;
   onboarding?: boolean;
   sources?: SourceStatus[];
   importing?: boolean;

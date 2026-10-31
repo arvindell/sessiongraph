@@ -62,11 +62,13 @@ pnpm start
 
 ## Import and update
 
-On first launch, choose the apps to import. Reopen **Manage sources** next to the source filter to change that selection. **Refresh sessions** imports updates from your selected sources.
+On first launch, choose the apps to import. Change that selection in **Settings → Sources** or **Manage sources** next to the source filter, then click **Import selected sources** / **Import updates**. **Refresh sessions** imports updates from your selected sources.
 
-**Auto-import sessions** is on by default in **Settings → Interface**. It checks previously selected sources on startup, when returning to the app, and every minute while the app is visible. Checks pause while hidden or a dialog is open, share a 30-second cooldown with recent imports, and never overlap an active import. Unchanged libraries do not rebuild the graph; background updates preserve your camera, playback, and selection. Automatic imports do not select new sources for you.
+**Auto-import sessions** is on by default in **Settings → Sources**. It checks previously selected sources on startup, when returning to the app, and every minute while the app is visible. Checks pause while hidden or a dialog is open, share a 30-second cooldown with recent imports, and never overlap an active import. Unchanged libraries do not rebuild the graph; background updates preserve your camera, playback, and selection. Automatic imports do not select new sources for you.
 
 The auto-import choice is saved in the local SQLite library, so it survives desktop restarts and is shared by browser and desktop instances using that library. Turning it off stops future automatic checks; an import already running can finish. Manual Refresh remains available. There is no background service after the app closes. OpenCode's local service must still be running to import its new history.
+
+Time presets and custom date ranges, source/project/directory filters, the archived and child-session toggles, 2D/3D mode, and the other Settings preferences are also saved in the library. They are restored before the first graph is shown, including when the desktop app starts on a different local port. Existing browser appearance preferences migrate to the library on first use.
 
 Onboarding closes automatically after a successful import and library refresh. Import failures remain visible with retry controls.
 

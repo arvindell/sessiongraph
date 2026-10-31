@@ -6,6 +6,8 @@ import { createSessionSearch } from './search/ui';
 import { createSessionLauncher } from './launcher';
 import { createImports } from './imports';
 import { AutoImportScheduler, AUTO_IMPORT_INTERVAL } from './auto-import';
+import { LibrarySettingsSaver, type LibrarySettingsPatch } from './library-settings';
+import { normalizeViewState, type ViewState } from './view-state';
 import { sourceName, sourceIcon } from './sources';
 import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from './preferences';
 import { createSettings } from './settings';
@@ -67,8 +69,8 @@ let lastPlayTime = 0;
 const PLAYBACK_DURATION = 30_000;
 let preferences: Preferences = { ...DEFAULT_PREFERENCES }, preferencesSaved = true;
 let autoImport: AutoImportScheduler | undefined;
-let autoImportPending = 0, autoImportRevision = 0, savedAutoImport = true;
-let autoImportSave = Promise.resolve();
+let settingsSaver: LibrarySettingsSaver | undefined;
+let settingsHydrated = false, viewFingerprint = '';
 try { preferences = loadPreferences(localStorage); } catch { preferencesSaved = false; }
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -134,7 +136,7 @@ function openEvents(item?: string) {
   const session = data?.sessions.find((s) => s.id === selectedID);
   if (session) { eventHover.clear(); stopPlayback(); setPanel('inspector', true); eventExplorer.open(session, item, item ? selectedTimeline?.revision : undefined); }
 }
-const settings = createSettings({ change: changePreferences, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, resetPanels: () => {
+const settings = createSettings({ change: changePreferences, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, getSources: () => imports.sources(), importSources: (ids) => imports.select(ids), resetPanels: () => {
   document.querySelectorAll<HTMLElement>('.floating-panel').forEach((panel) => { panel.removeAttribute('style'); delete panel.dataset.positioned; });
 } });
 const audio = new InteractionAudio(preferences, settings.audioStatus);
@@ -146,46 +148,40 @@ function applyPreferences() {
   $('#motion').setAttribute('aria-pressed', String(motionEnabled(preferences, reducedMotion.matches)));
   for (const view of ['2d', '3d']) { const button = $(`#view-${view}`); button.classList.toggle('active', preferences.view === view); button.setAttribute('aria-pressed', String(preferences.view === view)); }
   const mute = $('#mute-audio'); mute.setAttribute('aria-pressed', String(preferences.muted)); mute.setAttribute('aria-label', preferences.muted ? 'Unmute sound' : 'Mute sound'); mute.title = preferences.muted ? 'Unmute sound' : 'Mute sound'; mute.innerHTML = icon(preferences.muted ? 'volume-x' : 'volume-2');
-  settings.render(preferences, preferencesSaved, autoImportPending > 0); refreshIcons();
+  settings.render(preferences, preferencesSaved || settingsHydrated, settingsSaver?.state || 'saved'); refreshIcons();
 }
 function changePreferences(patch: Partial<Preferences>) {
   const changedImport = patch.autoImport !== undefined && patch.autoImport !== preferences.autoImport;
   preferences = normalizePreferences({ ...preferences, ...patch });
   try { preferencesSaved = savePreferences(localStorage, preferences); } catch { preferencesSaved = false; }
   applyPreferences();
-  if (changedImport) saveAutoImport(preferences.autoImport);
+  saveLibrarySettings({ preferences: { ...preferences }, ...(changedImport ? { autoImport: preferences.autoImport } : {}) });
 }
-function saveAutoImport(value: boolean) {
-  autoImportPending++; autoImportRevision++; applyPreferences();
-  autoImportSave = autoImportSave.then(async () => {
-    try {
-      const response = await fetch('/api/sessiongraph/settings', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'settings' }, body: JSON.stringify({ autoImport: value }), signal: AbortSignal.timeout(15_000) });
-      if (!response.ok) throw new Error('Could not save auto-import.');
-      savedAutoImport = value;
-    } catch {
-      if (autoImportPending === 1) { preferences.autoImport = savedAutoImport; try { savePreferences(localStorage, preferences); } catch {} }
-      showToast('Could not save auto-import. Your previous setting is kept.');
-    } finally {
-      autoImportPending--; applyPreferences();
-      if (!autoImportPending) void autoImport?.check();
-    }
-  });
-}
+function saveLibrarySettings(patch: LibrarySettingsPatch) { settingsSaver?.save(patch); }
+function currentView(): ViewState { return { sourceID, projectID, directory, days, fromDate, toDate, includeChildren, includeArchived }; }
 $('#open-settings').addEventListener('click', settings.open);
 $('#mute-audio').addEventListener('click', () => changePreferences({ muted: !preferences.muted }));
 const onSystemMotion = () => applyPreferences(); reducedMotion.addEventListener('change', onSystemMotion);
 const onPreferencesStorage = (event: StorageEvent) => { if (event.key === PREFERENCES_KEY) { try { preferences = { ...loadPreferences(localStorage), autoImport: preferences.autoImport }; applyPreferences(); } catch {} } };
 window.addEventListener('storage', onPreferencesStorage);
 applyPreferences();
+settingsSaver = new LibrarySettingsSaver(async (patch) => {
+  const response = await fetch('/api/sessiongraph/settings', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'settings' }, body: JSON.stringify(patch), signal: AbortSignal.timeout(15_000), keepalive: true });
+  if (!response.ok) throw new Error('Could not save library settings.');
+}, (state) => {
+  settings.render(preferences, preferencesSaved || settingsHydrated, state);
+  if (state === 'error') showToast('Changes applied, but could not save to the local library. Retrying when you return.');
+  if (state === 'saved') void autoImport?.check();
+});
 const launcher = createSessionLauncher(modalVisibility);
 const imports = createImports((background) => load(background), modalVisibility);
 autoImport = new AutoImportScheduler({
-  eligible: () => preferences.autoImport && !autoImportPending && document.visibilityState === 'visible' && Boolean(data && !data.onboarding && data.sources?.some((source) => source.selected)),
+  eligible: () => preferences.autoImport && !settingsSaver?.pending && document.visibilityState === 'visible' && Boolean(data && !data.onboarding && data.sources?.some((source) => source.selected)),
   busy: () => imports.busy || Boolean(document.querySelector('dialog[open]')),
   refresh: () => imports.refresh(true),
 });
 const autoImportEvents = new AbortController();
-const checkAutoImport = () => { void autoImport?.check(); };
+const checkAutoImport = () => { if (document.visibilityState === 'visible') { if (settingsSaver?.state === 'error') void settingsSaver.flush(); void autoImport?.check(); } };
 window.addEventListener('focus', checkAutoImport, { signal: autoImportEvents.signal });
 document.addEventListener('visibilitychange', checkAutoImport, { signal: autoImportEvents.signal });
 const autoImportTimer = window.setInterval(checkAutoImport, AUTO_IMPORT_INTERVAL);
@@ -193,6 +189,7 @@ $('#manage-sources').addEventListener('click', () => void imports.open());
 document.addEventListener('sessiongraph-import-status', (event) => {
   const status = (event as CustomEvent<import('./types').ImportStatus>).detail;
   autoImport?.activity();
+  settings.importStatus(status);
   $('#refresh').classList.toggle('spinning', status.running);
   $('.connection').title = status.running ? `Importing ${sourceName(status.source)} · ${status.imported} sessions saved` : status.failed ? 'Import unavailable · open Manage sources for details' : 'Local library · SQLite';
 }, { signal: autoImportEvents.signal });
@@ -282,11 +279,23 @@ async function load(background = false) {
   refresh.disabled = true;
   refresh.classList.add('spinning');
   try {
-    const preferenceRevision = autoImportRevision;
+    const preferenceRevision = settingsSaver?.revision;
     const next = await fetchJSON<SessionGraphData>('/api/sessiongraph');
     const previous = data, previousSelected = selectedID ? sessionsByID.get(selectedID) : undefined;
     data = next;
-    if (!autoImportPending && preferenceRevision === autoImportRevision) { savedAutoImport = next.autoImport !== false; preferences.autoImport = savedAutoImport; applyPreferences(); }
+    if (!settingsSaver?.pending && preferenceRevision === settingsSaver?.revision) {
+      preferences = { ...normalizePreferences(next.preferences || preferences), autoImport: next.autoImport !== false };
+      try { preferencesSaved = savePreferences(localStorage, preferences); } catch { preferencesSaved = false; }
+      if (!settingsHydrated) {
+        const view = normalizeViewState(next.viewState);
+        ({ sourceID, projectID, directory, days, fromDate, toDate, includeChildren, includeArchived } = view);
+        $<HTMLInputElement>('#children').checked = includeChildren; $<HTMLInputElement>('#archived').checked = includeArchived;
+        viewFingerprint = JSON.stringify(view);
+        if (!next.preferences) saveLibrarySettings({ preferences: { ...preferences } });
+      }
+      applyPreferences();
+    }
+    settingsHydrated = true;
     // Status and source timestamps can change without changing the visible graph.
     if (background && previous && JSON.stringify(previous.sessions) === JSON.stringify(next.sessions) && JSON.stringify(previous.projects) === JSON.stringify(next.projects)) return;
     timelineClient.clear();
@@ -375,6 +384,8 @@ function updateFilters(fit = false, preserve = false) {
   else if (selectedID && selectedDetail) scene?.setFiles(selectedDetail.files);
   if (selectedID && selectedTimeline) scene?.setEvents(selectedTimeline.items);
   refreshIcons();
+  const view = currentView(), fingerprint = JSON.stringify(view);
+  if (settingsHydrated && fingerprint !== viewFingerprint) { viewFingerprint = fingerprint; saveLibrarySettings({ viewState: view }); }
 }
 
 function renderGraphMessage() {
@@ -684,4 +695,4 @@ document.addEventListener('keydown', (event) => {
 
 void load().then(() => { if (data?.importing) imports.resume(); else checkAutoImport(); });
 if (import.meta.env.DEV) Object.assign(window, { sessionGraphDiagnostics: () => scene?.diagnostics(), sessionGraphAudioDiagnostics: () => audio.diagnostics(), sessionGraphSearchDiagnostics: sessionSearch.diagnostics });
-if (import.meta.hot) import.meta.hot.dispose(() => { autoImport?.dispose(); autoImportEvents.abort(); window.clearInterval(autoImportTimer); detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); desktopUpdater.dispose(); dateRange.dispose(); disposeSelects(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });
+if (import.meta.hot) import.meta.hot.dispose(() => { settingsSaver?.dispose(); autoImport?.dispose(); autoImportEvents.abort(); window.clearInterval(autoImportTimer); detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); desktopUpdater.dispose(); dateRange.dispose(); disposeSelects(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });

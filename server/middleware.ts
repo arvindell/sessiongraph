@@ -5,6 +5,8 @@ import { Importer } from './importer';
 import { getLaunchConnection, prepareLaunch, launchTerminal } from './launch';
 import { isHarness } from '../src/launch-links';
 import { EventReadError } from './event-store';
+import { normalizePreferences } from '../src/preferences';
+import { normalizeViewState } from '../src/view-state';
 
 const generation = Symbol('sessiongraph-backend');
 const runtime = globalThis as typeof globalThis & { sessionGraphRuntime?: { store: SessionGraphStore; importer: Importer; generation?: symbol } };
@@ -39,9 +41,17 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
     const { store, importer } = library();
     if (url.pathname === '/api/sessiongraph/settings' && req.method === 'POST') {
       const value = await body(req);
-      if (!value || typeof value.autoImport !== 'boolean') return json(400, { error: 'Choose a valid auto-import setting.' });
-      store.setting('autoImport', value.autoImport);
-      return json(200, { autoImport: store.autoImportEnabled() });
+      if (!value || typeof value !== 'object' || Array.isArray(value) || !['autoImport', 'preferences', 'viewState'].some((key) => value[key] !== undefined)) return json(400, { error: 'Choose valid settings.' });
+      if (value.autoImport !== undefined && typeof value.autoImport !== 'boolean') return json(400, { error: 'Choose a valid auto-import setting.' });
+      for (const key of ['preferences', 'viewState']) if (value[key] !== undefined && (!value[key] || typeof value[key] !== 'object' || Array.isArray(value[key]))) return json(400, { error: 'Choose valid view preferences.' });
+      store.db.exec('BEGIN IMMEDIATE');
+      try {
+        if (value.autoImport !== undefined) store.setting('autoImport', value.autoImport);
+        if (value.preferences !== undefined) store.setting('preferences', normalizePreferences(value.preferences));
+        if (value.viewState !== undefined) store.setting('viewState', normalizeViewState(value.viewState));
+        store.db.exec('COMMIT');
+      } catch (error) { store.db.exec('ROLLBACK'); throw error; }
+      return json(200, { saved: true, autoImport: store.autoImportEnabled() });
     }
     if (url.pathname === '/api/sessiongraph/sources' && req.method === 'GET') return json(200, { sources: await importer.sources(), onboarding: store.setting('selected') === undefined });
     if (url.pathname === '/api/sessiongraph/import') {

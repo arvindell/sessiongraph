@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { SessionGraphStore } from '../server/store';
 
 test('auto-import settings API validates writes and automatic requests cannot choose sources', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'sessiongraph-import-api-'));
@@ -29,6 +30,15 @@ test('auto-import settings API validates writes and automatic requests cannot ch
     assert.equal((await (await post('import', { automatic: true })).json()).running, false);
     assert.deepEqual(store.selected(), []);
     assert.equal(store.autoImportEnabled(), false);
+    assert.equal((await post('settings', { preferences: { view: '2d', muted: true, panelOpacity: 75 }, viewState: { days: 30, includeChildren: false, includeArchived: false, sourceID: 'codex', projectID: 'project', directory: '/work/project', fromDate: '2026-10-01', toDate: '2026-10-20' } })).status, 200);
+    for (const value of [{ preferences: [] }, { viewState: null }, { autoImport: true, viewState: false }]) assert.equal((await post('settings', value)).status, 400);
+    const reopened = new SessionGraphStore(store.path);
+    try {
+      const saved = reopened.library([], false);
+      assert.equal(saved.autoImport, false);
+      assert.equal(saved.preferences?.view, '2d'); assert.equal(saved.preferences?.muted, true); assert.equal(saved.preferences?.panelOpacity, 75);
+      assert.deepEqual(saved.viewState, { days: 30, includeChildren: false, includeArchived: false, sourceID: 'codex', projectID: 'project', directory: '/work/project', fromDate: '2026-10-01', toDate: '2026-10-20' });
+    } finally { reopened.close(); }
   } finally {
     server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); store.close();
     if (previous === undefined) delete process.env.SESSIONGRAPH_DATA_DIR; else process.env.SESSIONGRAPH_DATA_DIR = previous;

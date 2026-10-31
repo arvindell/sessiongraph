@@ -371,6 +371,11 @@ html[data-motion='false'] *, html[data-motion='false'] *::before, html[data-moti
 .settings-content { min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: 26px 30px; }
 .settings-content h3 { font-size: 18px; font-weight: 450; margin: 0 0 7px; letter-spacing: -.4px; }
 .settings-description { margin: 0 0 20px; font-size: 12px; }
+.settings-sources-list { margin-top: 20px; color: var(--muted); font-size: 12px; }
+.settings-sources-list .import-source { padding: 13px 10px; gap: 10px; }
+.settings-sources-list .import-source strong { font-size: 12px; }
+.settings-sources-list .import-source small { overflow-wrap: anywhere; }
+.settings-import-progress { color: var(--muted); font-size: 11px; line-height: 1.6; margin-top: 16px; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 16px 0; border-bottom: 1px solid var(--line); }
 .setting-row > span:first-child { flex: 1; min-width: 0; }
 .setting-row strong { display: block; font-size: 12px; font-weight: 470; color: #d1e3d9; }

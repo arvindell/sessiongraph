@@ -9,6 +9,8 @@ import type { Candidate, ImportedMessage } from './adapters/types';
 import { databasePath } from './config';
 import { activitySQL, isUserMessage, messageTime } from './activity';
 import { EVENT_SCHEMA, writeEvents, readEvents, readEventMarkers } from './event-store';
+import { normalizePreferences, type Preferences } from '../src/preferences';
+import { normalizeViewState } from '../src/view-state';
 
 /** SessionGraph owns this database. No adapter opens or modifies a harness database. */
 export class SessionGraphStore {
@@ -130,6 +132,8 @@ export class SessionGraphStore {
   }
   library(sources: SourceStatus[], importing: boolean): SessionGraphData {
     return { sourceID: this.setting('libraryID'), onboarding: this.setting('selected') === undefined, autoImport: this.autoImportEnabled(), sources, importing,
+      preferences: this.setting<Preferences>('preferences') ? { ...normalizePreferences(this.setting('preferences')), autoImport: this.autoImportEnabled() } : undefined,
+      viewState: normalizeViewState(this.setting('viewState')),
       sessions: this.db.prepare('SELECT metadata FROM sessions').all().map((r) => JSON.parse(String(r.metadata))),
       projects: this.db.prepare('SELECT data FROM projects').all().map((r) => JSON.parse(String(r.data))), loadedAt: Date.now(), warnings: [],
     };
