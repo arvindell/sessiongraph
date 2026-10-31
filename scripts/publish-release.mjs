@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import pkg from '../package.json' with { type: 'json' };
-import { getPublicVersion, verifyPublicVersion } from './npm-registry.mjs';
+import { getPublicVersion, verifyPublicVersion, waitForPublicVersion } from './npm-registry.mjs';
 
 const directory = process.argv[2] || 'release/assets';
 const files = (await readdir(directory)).filter((name) => name.endsWith('.tgz'));
@@ -29,5 +29,6 @@ for (const { path, manifest } of packages) {
     continue;
   }
   execFileSync('npm', ['publish', path, '--access=public', '--ignore-scripts', '--registry=https://registry.npmjs.org/'], { stdio: 'inherit' });
-  verifyPublicVersion(await getPublicVersion(manifest.name, version), manifest.name, version, commit);
+  console.log(`Waiting for public registry verification: ${spec}`);
+  await waitForPublicVersion(manifest.name, version, commit);
 }
