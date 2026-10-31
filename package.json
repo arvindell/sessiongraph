@@ -11,7 +11,7 @@
     "type": "git",
     "url": "git+https://github.com/arvindell/sessiongraph.git"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "bin": {
     "sessiongraph": "bin/sessiongraph.mjs"
   },
@@ -20,6 +20,7 @@
     "dist/",
     "dist-server/",
     "docs/*.md",
+    "LICENSE",
     "PRIVACY.md",
     "README.md"
   ],

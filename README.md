@@ -71,3 +71,7 @@ portless sessiongraph pnpm dev
 
 `pnpm desktop:dev` runs the native app. `pnpm test` runs the tests.
 See the [guide](docs/guide.md) for source coverage, shortcuts, storage, and building locally.
+
+### License
+
+[MIT](LICENSE) © 2026 Alex Vilchis.

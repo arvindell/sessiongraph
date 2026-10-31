@@ -2,6 +2,7 @@
 name = "sessiongraph"
 version = "0.1.0"
 description = "Explore & visualize all your LLM sessions"
+license = "MIT"
 edition = "2021"
 
 [build-dependencies]
