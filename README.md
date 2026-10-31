@@ -9,8 +9,6 @@
 
 [![SessionGraph in action: playback, search, messages, and settings using synthetic sessions](docs/sessiongraph-demo.gif)](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4)
 
-*Real app, entirely synthetic sessions. [Watch the video](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4) · [Full-resolution screenshot](docs/sessiongraph.png)*
-
 Explore **OpenCode, Claude Code, Codex, and Cursor** in one local-first app.
 Search conversations, explore clickable messages and tool calls, inspect changed files, and continue in another harness.
 Hover to preview messages, click to focus, and tune the glowing map, trails, and click sounds in Settings.
