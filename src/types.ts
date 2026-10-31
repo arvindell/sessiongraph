@@ -30,6 +30,7 @@ export interface Project {
 }
 
 export interface SessionGraphData {
+  autoImport?: boolean;
   onboarding?: boolean;
   sources?: SourceStatus[];
   importing?: boolean;

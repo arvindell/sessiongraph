@@ -7,6 +7,11 @@ test('preferences recover corrupt storage, reject invalid values, clamp renderin
   assert.deepEqual(loadPreferences({ getItem: () => JSON.stringify({ version: 99, values: { muted: true } }) }), DEFAULT_PREFERENCES);
   const old = loadPreferences({ getItem: () => JSON.stringify({ version: 1, values: { ambience: true, ambienceVolume: 100, clickVolume: 20 } }) });
   assert.equal('ambience' in old, false); assert.equal('ambienceVolume' in old, false); assert.equal(old.clickVolume, 20);
+  assert.equal(old.autoImport, true);
+  assert.equal(normalizePreferences({ autoImport: 'false' }).autoImport, true);
+  let autoImportSaved = '';
+  savePreferences({ setItem: (_key, value) => { autoImportSaved = value; } }, { ...old, autoImport: false });
+  assert.equal(loadPreferences({ getItem: () => autoImportSaved }).autoImport, false);
   const values = normalizePreferences({ quality: 'ultra', muted: 'yes', bloom: Infinity, nodeScale: 5000, playbackSpeed: -1, motion: 'system', stars: false });
   assert.equal(values.quality, 'balanced'); assert.equal(values.muted, false); assert.equal(values.bloom, 32);
   assert.equal(values.nodeScale, 180); assert.equal(values.playbackSpeed, .25); assert.equal(values.stars, false);

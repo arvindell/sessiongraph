@@ -44,6 +44,7 @@ test('failed install retries installation; failed restart never installs a secon
   const { controller, calls } = fixture({ async install() { if (++installs === 1) throw Error('Permission denied'); } }, async () => { if (++restarts === 1) throw Error('Restart failed'); });
   await controller.check(); await controller.activate(); await controller.activate();
   assert.equal(controller.state.retry, 'install');
+  assert.equal(controller.state.error, 'Permission denied');
   await controller.activate(); assert.equal(controller.state.retry, 'restart');
   await controller.activate(); assert.equal(installs, 2); assert.equal(restarts, 2); assert.equal(calls.download, 1);
   controller.dispose();

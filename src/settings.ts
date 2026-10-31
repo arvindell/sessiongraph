@@ -11,32 +11,33 @@ const select = (key: keyof Preferences, label: string, hint: string, options: [s
 export function createSettings(callbacks: { change: (patch: Partial<Preferences>) => void; visibility: () => void; previewSound: () => void; resetPanels: () => void }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'settings-dialog'; dialog.setAttribute('aria-labelledby', 'settings-title');
-  dialog.innerHTML = `<header class="settings-heading"><div><span class="settings-eyebrow">YOUR CORNER OF THE COSMOS</span><h2 id="settings-title">Make yourself at home.</h2><p>Tune the atmosphere. Find your focus.</p></div><button class="icon-button settings-close" aria-label="Close settings">×</button></header>
+  dialog.innerHTML = `<header class="settings-heading"><div><h2 id="settings-title">Settings</h2><p>Import, appearance, and playback preferences.</p></div><button class="icon-button settings-close" aria-label="Close settings">×</button></header>
     <div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="Settings categories">${tabs.map(([id, name, glyph], i) => `<button role="tab" id="settings-tab-${id}" aria-controls="settings-${id}" aria-selected="${!i}" tabindex="${i ? -1 : 0}" data-tab="${id}">${createElement([glyph[0], { ...glyph[1], 'aria-hidden': 'true', 'stroke-width': 1.5 }, glyph[2]]).outerHTML}${name}</button>`).join('')}</nav>
     <div class="settings-content">
-      <section id="settings-interface" role="tabpanel" aria-labelledby="settings-tab-interface"><h3>Less friction. More focus.</h3><p class="settings-description">A workspace that feels right, every time you return.</p>
+      <section id="settings-interface" role="tabpanel" aria-labelledby="settings-tab-interface"><h3>Interface</h3><p class="settings-description">Manage imports and the session view.</p>
+        ${toggle('autoImport', 'Auto-import sessions', 'Check selected sources on startup, on return, and every minute while visible. Saved with your library.')}
         ${select('view', 'Default view', 'Switch between depth and a flat timeline.', [['3d', '3D galaxy'], ['2d', '2D timeline']])}
         ${select('motion', 'Motion', 'Camera transitions, reveals, and ambient movement.', [['system', 'Follow system'], ['on', 'On'], ['off', 'Off']])}
-        ${select('density', 'Session list', 'Make a little more room for your history.', [['comfortable', 'Comfortable'], ['compact', 'Compact']])}
-        ${range('panelOpacity', 'Panel opacity', 'Let more of the map show through.', 55, 100)}
-        <div class="settings-note"><span>Moved things around?</span><button class="secondary-button settings-reset-panels">Reset panel positions</button></div>
+        ${select('density', 'Session list', 'Adjust spacing between sessions.', [['comfortable', 'Comfortable'], ['compact', 'Compact']])}
+        ${range('panelOpacity', 'Panel opacity', 'Adjust panel background transparency.', 55, 100)}
+        <div class="settings-note"><span>Restore the default panel layout.</span><button class="secondary-button settings-reset-panels">Reset panel positions</button></div>
       </section>
-      <section id="settings-audio" role="tabpanel" aria-labelledby="settings-tab-audio" hidden><h3>A little feedback.</h3><p class="settings-description">Soft interaction tones, synthesized locally when you use a control.</p>
+      <section id="settings-audio" role="tabpanel" aria-labelledby="settings-tab-audio" hidden><h3>Sound</h3><p class="settings-description">Interaction sounds are synthesized locally.</p>
         ${toggle('muted', 'Mute all sound', 'Silence everything. Your volume levels are kept.')}
         ${toggle('clickSounds', 'Interaction sounds', 'A soft tick for controls; a chime for sessions.')}
-        ${range('clickVolume', 'Interaction volume', 'Keep feedback as subtle as you like.', 0, 100)}
+        ${range('clickVolume', 'Interaction volume', 'Adjust interaction sound volume.', 0, 100)}
         <div class="settings-note"><span class="settings-audio-status" role="status">Sound starts after your first interaction.</span><button class="secondary-button settings-preview" data-sound="none">Preview chime</button></div>
         <p class="settings-footnote">Audio pauses while this tab is hidden. The speaker button on the map is a quick mute.</p>
       </section>
-      <section id="settings-graphics" role="tabpanel" aria-labelledby="settings-tab-graphics" hidden><h3>Set the scene.</h3><p class="settings-description">Balance a luminous map with a lighter footprint.</p>
+      <section id="settings-graphics" role="tabpanel" aria-labelledby="settings-tab-graphics" hidden><h3>Graphics</h3><p class="settings-description">Adjust rendering quality and map appearance.</p>
         ${select('quality', 'Render quality', 'Performance uses 1× resolution and skips post-process effects.', [['performance', 'Performance'], ['balanced', 'Balanced'], ['high', 'High fidelity']])}
         ${range('bloom', 'Glow strength', 'Soft light around bright nodes; disabled in Performance.', 0, 75)}
         ${range('nodeScale', 'Node size', 'Scale the lights without changing their positions.', 60, 180)}
         ${toggle('stars', 'Starfield', 'A faint field of stars behind the timeline.')}
         ${toggle('labels', 'Map labels', 'Directory names and the selected session title.')}
-        ${toggle('focusDimming', 'Focus dimming', 'Quiet surrounding nodes when a session is selected.')}
+        ${toggle('focusDimming', 'Focus dimming', 'Dim surrounding nodes when a session is selected.')}
       </section>
-      <section id="settings-trails" role="tabpanel" aria-labelledby="settings-tab-trails" hidden><h3>Follow the thread.</h3><p class="settings-description">Trails always start at creation and meet the node at the latest recorded message.</p>
+      <section id="settings-trails" role="tabpanel" aria-labelledby="settings-tab-trails" hidden><h3>Trails &amp; playback</h3><p class="settings-description">Trails start at creation and end at the latest recorded message.</p>
         ${select('trails', 'Session trails', 'Choose how much history to draw on the map.', [['all', 'All sessions'], ['selected', 'Selected session'], ['off', 'Hidden']])}
         ${range('trailOpacity', 'Trail brightness', 'Fade lifetime trails into the background.', 0, 100)}
         ${toggle('trailFlow', 'Flowing trails', 'A decorative pulse along each lifetime; respects Motion.')}
@@ -46,7 +47,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
         ${range('playbackSpeed', 'Playback speed', '1× plays the full timeline in 30 seconds.', .25, 3, '×', .25)}
         <p class="settings-footnote">Flow is decorative. Message dots reflect saved timestamps; visual settings never alter your history.</p>
       </section>
-      <section id="settings-privacy" role="tabpanel" aria-labelledby="settings-tab-privacy" hidden><h3>Your history stays here.</h3><p class="settings-description">No account. No cloud sync. No telemetry.</p>
+      <section id="settings-privacy" role="tabpanel" aria-labelledby="settings-tab-privacy" hidden><h3>Privacy</h3><p class="settings-description">Local storage and network access.</p>
         <div class="setting-row"><span><strong>Processed on this computer</strong><small>Importing, indexing, search, and visualization run locally. Imports read your selected sources without changing them or starting an AI agent.</small></span></div>
         <div class="setting-row"><span><strong>Update checks use the internet</strong><small>Desktop update checks and downloads contact GitHub without session content. npm installation contacts its registry. These services receive ordinary connection metadata, including your public IP address.</small></span></div>
         <div class="setting-row"><span><strong>Continuing a session is your choice</strong><small>Explicitly launching another harness lets it read the selected context. It may contact its model provider under its own privacy settings.</small></span></div>
@@ -88,7 +89,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
   dialog.querySelector('.settings-reset-panels')!.addEventListener('click', callbacks.resetPanels, options);
   return {
     open() { if (dialog.open) return; focus = document.activeElement as HTMLElement; dialog.showModal(); callbacks.visibility(); dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus(); },
-    render(values: Preferences, saved: boolean) {
+    render(values: Preferences, saved: boolean, saving = false) {
       for (const control of dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-pref]')) {
         const key = control.dataset.pref as keyof Preferences;
         if (control.type === 'checkbox') (control as HTMLInputElement).checked = Boolean(values[key]);
@@ -97,7 +98,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
         if (output) output.value = `${values[key]}${output.dataset.unit}`;
         control.disabled = (key === 'bloom' && values.quality === 'performance') || (key === 'trailSpeed' && (!values.trailFlow || values.trails === 'off' || values.motion === 'off'));
       }
-      dialog.querySelector('.settings-save-status')!.textContent = saved ? 'Saved on this device · changes apply live.' : 'Applied for this visit; local storage is unavailable.';
+      dialog.querySelector('.settings-save-status')!.textContent = saving ? 'Saving auto-import preference…' : saved ? 'Saved on this device · changes apply live.' : 'Appearance applied for this visit; local storage is unavailable.';
       (dialog.querySelector('.settings-preview') as HTMLButtonElement).disabled = values.muted || !values.clickSounds || !values.clickVolume;
       refreshSelects(dialog);
     },

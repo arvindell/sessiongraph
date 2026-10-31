@@ -5,6 +5,7 @@ import { setupPanelDragging } from './panels';
 import { createSessionSearch } from './search/ui';
 import { createSessionLauncher } from './launcher';
 import { createImports } from './imports';
+import { AutoImportScheduler, AUTO_IMPORT_INTERVAL } from './auto-import';
 import { sourceName, sourceIcon } from './sources';
 import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from './preferences';
 import { createSettings } from './settings';
@@ -65,6 +66,9 @@ let playback = 1;
 let lastPlayTime = 0;
 const PLAYBACK_DURATION = 30_000;
 let preferences: Preferences = { ...DEFAULT_PREFERENCES }, preferencesSaved = true;
+let autoImport: AutoImportScheduler | undefined;
+let autoImportPending = 0, autoImportRevision = 0, savedAutoImport = true;
+let autoImportSave = Promise.resolve();
 try { preferences = loadPreferences(localStorage); } catch { preferencesSaved = false; }
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -112,6 +116,7 @@ $('#app').innerHTML = `
     <div class="graph-legend"><span><i class="legend-node"></i>Latest message</span><span><i class="legend-node message"></i>Message / event</span><span><i class="legend-line lane"></i>Session lifetime</span><span><i class="legend-line fork"></i>Fork</span><span><i class="legend-line child"></i>Child</span><span id="file-legend" hidden><i class="legend-file"></i>File</span></div>
     <p>Time runs left to right. A session's trail begins at creation and ends at its latest saved message. Select it to reveal clickable messages, tools, and events. Untimed items remain available in the event explorer. Directory colors group sessions; only fork and child links represent ancestry.</p><button class="secondary-button motion-button" id="motion" aria-pressed="true">${icon('sparkles')}Animate map</button></dialog>
   <div id="toast" class="toast" role="status" hidden></div>
+  <aside class="shortcut-hints" aria-label="Keyboard shortcuts"><span><kbd>/</kbd>Search</span><span><kbd>F</kbd>Fit view</span><span><kbd>H</kbd>Panels</span><span><kbd>Esc</kbd>Clear selection</span></aside>
 `;
 refreshIcons();
 const disposePanelDragging = setupPanelDragging();
@@ -141,27 +146,56 @@ function applyPreferences() {
   $('#motion').setAttribute('aria-pressed', String(motionEnabled(preferences, reducedMotion.matches)));
   for (const view of ['2d', '3d']) { const button = $(`#view-${view}`); button.classList.toggle('active', preferences.view === view); button.setAttribute('aria-pressed', String(preferences.view === view)); }
   const mute = $('#mute-audio'); mute.setAttribute('aria-pressed', String(preferences.muted)); mute.setAttribute('aria-label', preferences.muted ? 'Unmute sound' : 'Mute sound'); mute.title = preferences.muted ? 'Unmute sound' : 'Mute sound'; mute.innerHTML = icon(preferences.muted ? 'volume-x' : 'volume-2');
-  settings.render(preferences, preferencesSaved); refreshIcons();
+  settings.render(preferences, preferencesSaved, autoImportPending > 0); refreshIcons();
 }
 function changePreferences(patch: Partial<Preferences>) {
+  const changedImport = patch.autoImport !== undefined && patch.autoImport !== preferences.autoImport;
   preferences = normalizePreferences({ ...preferences, ...patch });
   try { preferencesSaved = savePreferences(localStorage, preferences); } catch { preferencesSaved = false; }
   applyPreferences();
+  if (changedImport) saveAutoImport(preferences.autoImport);
+}
+function saveAutoImport(value: boolean) {
+  autoImportPending++; autoImportRevision++; applyPreferences();
+  autoImportSave = autoImportSave.then(async () => {
+    try {
+      const response = await fetch('/api/sessiongraph/settings', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'settings' }, body: JSON.stringify({ autoImport: value }), signal: AbortSignal.timeout(15_000) });
+      if (!response.ok) throw new Error('Could not save auto-import.');
+      savedAutoImport = value;
+    } catch {
+      if (autoImportPending === 1) { preferences.autoImport = savedAutoImport; try { savePreferences(localStorage, preferences); } catch {} }
+      showToast('Could not save auto-import. Your previous setting is kept.');
+    } finally {
+      autoImportPending--; applyPreferences();
+      if (!autoImportPending) void autoImport?.check();
+    }
+  });
 }
 $('#open-settings').addEventListener('click', settings.open);
 $('#mute-audio').addEventListener('click', () => changePreferences({ muted: !preferences.muted }));
 const onSystemMotion = () => applyPreferences(); reducedMotion.addEventListener('change', onSystemMotion);
-const onPreferencesStorage = (event: StorageEvent) => { if (event.key === PREFERENCES_KEY) { try { preferences = loadPreferences(localStorage); applyPreferences(); } catch {} } };
+const onPreferencesStorage = (event: StorageEvent) => { if (event.key === PREFERENCES_KEY) { try { preferences = { ...loadPreferences(localStorage), autoImport: preferences.autoImport }; applyPreferences(); } catch {} } };
 window.addEventListener('storage', onPreferencesStorage);
 applyPreferences();
 const launcher = createSessionLauncher(modalVisibility);
-const imports = createImports(load, modalVisibility);
+const imports = createImports((background) => load(background), modalVisibility);
+autoImport = new AutoImportScheduler({
+  eligible: () => preferences.autoImport && !autoImportPending && document.visibilityState === 'visible' && Boolean(data && !data.onboarding && data.sources?.some((source) => source.selected)),
+  busy: () => imports.busy || Boolean(document.querySelector('dialog[open]')),
+  refresh: () => imports.refresh(true),
+});
+const autoImportEvents = new AbortController();
+const checkAutoImport = () => { void autoImport?.check(); };
+window.addEventListener('focus', checkAutoImport, { signal: autoImportEvents.signal });
+document.addEventListener('visibilitychange', checkAutoImport, { signal: autoImportEvents.signal });
+const autoImportTimer = window.setInterval(checkAutoImport, AUTO_IMPORT_INTERVAL);
 $('#manage-sources').addEventListener('click', () => void imports.open());
 document.addEventListener('sessiongraph-import-status', (event) => {
   const status = (event as CustomEvent<import('./types').ImportStatus>).detail;
+  autoImport?.activity();
   $('#refresh').classList.toggle('spinning', status.running);
-  $('.connection').title = status.running ? `Importing ${sourceName(status.source)} · ${status.imported} sessions saved` : 'Local library · SQLite';
-});
+  $('.connection').title = status.running ? `Importing ${sourceName(status.source)} · ${status.imported} sessions saved` : status.failed ? 'Import unavailable · open Manage sources for details' : 'Local library · SQLite';
+}, { signal: autoImportEvents.signal });
 const sessionSearch = createSessionSearch(selectSession, modalVisibility, (session) => void launcher.open(session));
 $('#search').addEventListener('click', sessionSearch.open);
 
@@ -243,12 +277,18 @@ async function fetchJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
   return result as T;
 }
 
-async function load() {
+async function load(background = false) {
   const refresh = $<HTMLButtonElement>('#refresh');
   refresh.disabled = true;
   refresh.classList.add('spinning');
   try {
-    data = await fetchJSON<SessionGraphData>('/api/sessiongraph');
+    const preferenceRevision = autoImportRevision;
+    const next = await fetchJSON<SessionGraphData>('/api/sessiongraph');
+    const previous = data, previousSelected = selectedID ? sessionsByID.get(selectedID) : undefined;
+    data = next;
+    if (!autoImportPending && preferenceRevision === autoImportRevision) { savedAutoImport = next.autoImport !== false; preferences.autoImport = savedAutoImport; applyPreferences(); }
+    // Status and source timestamps can change without changing the visible graph.
+    if (background && previous && JSON.stringify(previous.sessions) === JSON.stringify(next.sessions) && JSON.stringify(previous.projects) === JSON.stringify(next.projects)) return;
     timelineClient.clear();
     sessionsByID = new Map(data.sessions.map((session) => [session.id, session]));
     $<HTMLSelectElement>('#source').innerHTML = '<option value="">All sources</option>' + (data.sources || []).map((s) => `<option value="${escape(s.id)}">${escape(s.name)} · ${s.sessions.toLocaleString()}</option>`).join('');
@@ -263,22 +303,32 @@ async function load() {
     $<HTMLSelectElement>('#project').innerHTML = '<option value="">All projects</option>' + [...data.projects].filter((p) => projectCounts.has(p.id)).sort((a, b) => (projectCounts.get(b.id) || 0) - (projectCounts.get(a.id) || 0)).map((p) => `<option value="${escape(p.id)}">${escape(p.name)} · ${count(projectCounts.get(p.id) || 0)}</option>`).join('');
     $<HTMLSelectElement>('#project').value = projectID;
     updateDirectories();
-    if (selectedID) {
+    if (selectedID && !background) {
       const selected = data.sessions.find((s) => s.id === selectedID);
       if (selected && selected.created < Date.now() - days * 86400000) days = 0;
     }
-    updateFilters(true);
-    if (selectedID) selectSession(selectedID);
+    updateFilters(!background, background);
+    if (selectedID && !background) selectSession(selectedID);
+    else if (selectedID) {
+      const selected = sessionsByID.get(selectedID);
+      if (selected && JSON.stringify(previousSelected) !== JSON.stringify(selected)) {
+        const scroll = $('.detail-scroll')?.scrollTop || 0;
+        selectedDetail = undefined; selectedTimeline = undefined;
+        renderInspector(selected, false); $('.detail-scroll').scrollTop = scroll;
+        void loadFiles(selected.id); void loadTimeline(selected);
+      }
+    }
     else emptyInspector();
-    if (data.warnings.length) showToast(data.warnings.join(' '));
-    if (data.onboarding) void imports.open(true);
+    if (!background && data.warnings.length) showToast(data.warnings.join(' '));
+    if (!background && data.onboarding) void imports.open(true);
   } catch (error) {
+    if (background && data) { $('.connection').title = 'Library refresh unavailable · retry with Refresh sessions'; return; }
     $('#connection-label').textContent = 'Connection unavailable';
     $('.connection').title = 'Connection unavailable';
     $('.connection').classList.remove('connected');
     $('#graph-message').hidden = false;
     $('#graph-message').innerHTML = `${icon('terminal')}<h3>Local library unavailable</h3><p>${escape(error instanceof Error ? error.message : 'Unable to connect.')}</p><button class="primary-button" id="retry">Retry ${icon('arrow-right')}</button>`;
-    $('#retry').addEventListener('click', load);
+    $('#retry').addEventListener('click', () => { void load().then(checkAutoImport); });
     if (!data) { $('#session-list').innerHTML = '<p class="empty-list">Your sessions will appear here once connected.</p>'; $('#list-count').textContent = 'Offline'; }
     refreshIcons();
   } finally {
@@ -296,11 +346,11 @@ function updateDirectories() {
   $<HTMLSelectElement>('#directory').value = directory;
 }
 
-function updateFilters(fit = false) {
+function updateFilters(fit = false, preserve = false) {
   if (!data) return;
-  stopPlayback();
-  playback = 1;
-  listLimit = 60;
+  if (!preserve) { stopPlayback(); playback = 1; listLimit = 60; }
+  const scroll = $('#session-list').scrollTop;
+  const focused = document.activeElement?.closest<HTMLElement>('[data-session]')?.dataset.session;
   const now = Date.now();
   const min = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : days ? now - days * 86400000 : 0;
   const max = toDate ? new Date(`${toDate}T23:59:59.999`).getTime() : Infinity;
@@ -314,11 +364,12 @@ function updateFilters(fit = false) {
   sessionSearch.setScope(filtered.map((s) => s.id));
   graph = makeGraph(filtered, data.projects);
   nodeColors = new Map(graph.nodes.map((n) => [n.session.id, n.color]));
-  scene?.setCutoff(1);
+  scene?.setCutoff(playback);
   scene?.setGraph(graph, fit);
   renderGraphMessage();
   document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.classList.toggle('active', !fromDate && !toDate && Number(button.dataset.days) === days));
   renderList();
+  if (preserve) { $('#session-list').scrollTop = scroll; if (focused) sessionCards.get(focused)?.focus({ preventScroll: true }); }
   renderHistogram();
   if (selectedID && !filtered.some((s) => s.id === selectedID)) clearSelection();
   else if (selectedID && selectedDetail) scene?.setFiles(selectedDetail.files);
@@ -434,7 +485,7 @@ function relationHTML(session: Session): string {
   }).join('')}</section>` : '';
 }
 
-function renderInspector(session: Session) {
+function renderInspector(session: Session, reveal = true) {
   const project = data!.projects.find((p) => p.id === session.projectID);
   const kind = session.forkID ? 'Fork' : session.parentID ? 'Child session' : 'Session';
   const isWorktree = project?.worktrees.includes(session.directory);
@@ -450,7 +501,7 @@ function renderInspector(session: Session) {
     </div>
   `;
   $('#toggle-inspector').hidden = false;
-  setPanel('inspector', true);
+  if (reveal) setPanel('inspector', true);
   $('#close-inspector').addEventListener('click', () => { setPanel('inspector', false); $('#toggle-inspector').focus(); });
   $('#focus-session').addEventListener('click', () => { stopPlayback(); scene?.focus(session.id); });
   $('#open-session').addEventListener('click', () => void launcher.open(session));
@@ -631,6 +682,6 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-void load().then(() => { if (data?.importing) imports.resume(); });
+void load().then(() => { if (data?.importing) imports.resume(); else checkAutoImport(); });
 if (import.meta.env.DEV) Object.assign(window, { sessionGraphDiagnostics: () => scene?.diagnostics(), sessionGraphAudioDiagnostics: () => audio.diagnostics(), sessionGraphSearchDiagnostics: sessionSearch.diagnostics });
-if (import.meta.hot) import.meta.hot.dispose(() => { detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); desktopUpdater.dispose(); dateRange.dispose(); disposeSelects(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });
+if (import.meta.hot) import.meta.hot.dispose(() => { autoImport?.dispose(); autoImportEvents.abort(); window.clearInterval(autoImportTimer); detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); desktopUpdater.dispose(); dateRange.dispose(); disposeSelects(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });

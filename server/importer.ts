@@ -11,8 +11,10 @@ export class Importer {
   async sources(): Promise<SourceStatus[]> {
     return Promise.all(this.adapters.map(async (adapter) => ({ id: adapter.id, name: adapter.name, description: adapter.description, capabilities: adapter.capabilities, available: await adapter.detect().catch(() => false), selected: this.store.selected().includes(adapter.id), ...this.store.sourceInfo(adapter.id) })));
   }
-  start(ids?: string[]) {
+  start(ids?: string[], automatic = false) {
     if (this.job) return this.status;
+    // Recheck the saved choice for every automatic request, including other windows.
+    if (automatic && (!this.store.autoImportEnabled() || !this.store.selected().length)) return this.status;
     if (ids?.some((id) => !this.adapters.some((a) => a.id === id))) throw new Error('Unknown session source.');
     if (!this.store.acquireImport()) throw new Error('Another SessionGraph window is importing this library.');
     if (ids) {

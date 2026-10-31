@@ -5,6 +5,7 @@
 ## What happens locally
 
 - Imports read only the sources you select. Source histories are not modified, and importing does not start an agent, resume a conversation, or invoke a model.
+- Auto-import is enabled by default after source selection. It checks on startup, when returning to the app, and every minute while visible. Disable it in **Settings → Interface → Auto-import sessions**; this choice is saved in the local library and survives desktop restarts. Disabling it stops future automatic checks; an import already running can finish.
 - Parsing, indexing, search, and visualization run on your computer. Search does not use a remote embeddings or model service.
 - Imported conversations, metadata, timeline events, file-change evidence, and search checkpoints are saved in SessionGraph's local SQLite library.
 - Appearance preferences are saved in browser/WebView local storage. Fonts and application assets are bundled.

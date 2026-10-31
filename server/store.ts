@@ -72,6 +72,7 @@ export class SessionGraphStore {
     return row ? JSON.parse(String(row.value)) : undefined;
   }
   selected() { return this.setting<string[]>('selected') || []; }
+  autoImportEnabled() { return this.setting<boolean>('autoImport') !== false; }
   acquireImport() {
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -128,7 +129,7 @@ export class SessionGraphStore {
     return { sessions: Number(count.n), lastImport: row?.last_import ? Number(row.last_import) : undefined, error: row?.error ? String(row.error) : undefined };
   }
   library(sources: SourceStatus[], importing: boolean): SessionGraphData {
-    return { sourceID: this.setting('libraryID'), onboarding: this.setting('selected') === undefined, sources, importing,
+    return { sourceID: this.setting('libraryID'), onboarding: this.setting('selected') === undefined, autoImport: this.autoImportEnabled(), sources, importing,
       sessions: this.db.prepare('SELECT metadata FROM sessions').all().map((r) => JSON.parse(String(r.metadata))),
       projects: this.db.prepare('SELECT data FROM projects').all().map((r) => JSON.parse(String(r.data))), loadedAt: Date.now(), warnings: [],
     };

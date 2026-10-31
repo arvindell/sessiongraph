@@ -12,6 +12,7 @@ export interface UpdateState {
   version?: string;
   progress?: number;
   retry?: 'download' | 'install' | 'restart';
+  error?: string;
 }
 
 /** Stages verified downloads; installation and restart always require another click. */
@@ -66,7 +67,7 @@ export class UpdateController {
       retry = 'restart';
       this.set({ phase: 'restarting', version });
       await this.backend.restart();
-    } catch { this.set({ phase: 'error', version, retry }); }
+    } catch (error) { this.set({ phase: 'error', version, retry, error: String(error instanceof Error ? error.message : error).slice(0, 300) }); }
     finally { this.busy = false; if (this.disposed) await this.close(); }
   }
 

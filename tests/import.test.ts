@@ -46,6 +46,40 @@ test('SQLite imports deduplicate native identities and messages; changed history
   } finally { store.close(); await rm(directory, { recursive: true }); }
 });
 
+test('automatic imports honor persisted opt-out and source choices, discover new history and keep the library lock', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sessiongraph-auto-')), path = join(directory, 'sessiongraph.sqlite');
+  let store = new SessionGraphStore(path);
+  const other = new SessionGraphStore(path);
+  let revision = 'v1', discoveries = 0;
+  const adapter: SessionAdapter = { id: 'test', name: 'Test', description: '', capabilities: { history: true, files: false, forks: false, children: false }, async detect() { return true; },
+    async discover() { discoveries++; return { sessions: (revision === 'v1' ? ['first'] : ['first', 'new']).map((id) => ({ session: blankSession('test', id), revision, locator: {} })), projects: [], warnings: [] }; },
+    async read() { return { messages: [{ ...blankMessage('m', 1, 'user'), fragments: [{ kind: 'You', text: revision, time: 1 }] }] }; },
+  };
+  try {
+    let importer = new Importer(store, [adapter]);
+    assert.equal(store.autoImportEnabled(), true);
+    importer.start(undefined, true); await importer.settled(); assert.equal(discoveries, 0);
+    assert.deepEqual(store.selected(), []);
+    importer.start(['test']); await importer.settled(); assert.equal(store.library([], false).sessions.length, 1);
+    revision = 'v2';
+    store.setting('autoImport', false); store.close(); store = new SessionGraphStore(path); importer = new Importer(store, [adapter]);
+    assert.equal(store.library([], false).autoImport, false);
+    importer.start(undefined, true); await importer.settled(); assert.equal(discoveries, 1);
+    store.setting('autoImport', true);
+    importer.start(undefined, true);
+    assert.equal(importer.start(undefined, true), importer.status);
+    assert.throws(() => new Importer(other, [adapter]).start(undefined, true), /Another SessionGraph window/);
+    await importer.settled();
+    assert.equal(importer.status.imported, 2); assert.equal(store.content('test:first').fragments[0].text, 'v2');
+    importer.start(undefined, true); await importer.settled(); assert.equal(importer.status.unchanged, 2);
+    store.setting('autoImport', false);
+    importer.start(); await importer.settled(); assert.equal(importer.status.unchanged, 2, 'manual refresh still works');
+    store.setting('selected', []); store.setting('autoImport', true);
+    const before = discoveries; importer.start(undefined, true); await importer.settled(); assert.equal(discoveries, before);
+    assert.equal(store.library([], false).sessions.length, 2, 'deselecting retains saved history');
+  } finally { store.close(); other.close(); await rm(directory, { recursive: true }); }
+});
+
 test('SQLite index persists checkpoints, rejects stale versions, and clear prevents older tabs resurrecting it', () => {
   const store = new SessionGraphStore(':memory:');
   try {

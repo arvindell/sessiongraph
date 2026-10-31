@@ -64,6 +64,10 @@ pnpm start
 
 On first launch, choose the apps to import. Reopen **Manage sources** next to the source filter to change that selection. **Refresh sessions** imports updates from your selected sources.
 
+**Auto-import sessions** is on by default in **Settings → Interface**. It checks previously selected sources on startup, when returning to the app, and every minute while the app is visible. Checks pause while hidden or a dialog is open, share a 30-second cooldown with recent imports, and never overlap an active import. Unchanged libraries do not rebuild the graph; background updates preserve your camera, playback, and selection. Automatic imports do not select new sources for you.
+
+The auto-import choice is saved in the local SQLite library, so it survives desktop restarts and is shared by browser and desktop instances using that library. Turning it off stops future automatic checks; an import already running can finish. Manual Refresh remains available. There is no background service after the app closes. OpenCode's local service must still be running to import its new history.
+
 Onboarding closes automatically after a successful import and library refresh. Import failures remain visible with retry controls.
 
 - Source/native session IDs are the stable identity: importing the same session again updates its existing record. Duplicate source files and repeated message IDs do not create extra sessions/messages.
@@ -97,7 +101,7 @@ Source roots respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`. `SESSIONGRAPH_SERVICE
 
 **Your session content stays on this computer during import, search, and exploration.** No account. No cloud sync. No telemetry. See [Privacy and local data](../PRIVACY.md) for the full network disclosure and ways to verify the behavior.
 
-SessionGraph's own SQLite database stores source preferences, session metadata, normalized messages and timeline events, file evidence, import revisions, and bounded search checkpoints. New installations use:
+SessionGraph's own SQLite database stores source selection, the auto-import preference, session metadata, normalized messages and timeline events, file evidence, import revisions, and bounded search checkpoints. New installations use:
 
 - macOS: `~/Library/Application Support/SessionGraph/sessiongraph.sqlite`
 - Linux: `$XDG_DATA_HOME/sessiongraph/sessiongraph.sqlite` (default `~/.local/share/sessiongraph/sessiongraph.sqlite`)

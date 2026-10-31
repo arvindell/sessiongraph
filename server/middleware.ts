@@ -37,14 +37,22 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
   if (req.method !== 'GET' && typeof req.headers['x-sessiongraph-action'] !== 'string') return json(403, { error: 'Use the SessionGraph application.' });
   try {
     const { store, importer } = library();
+    if (url.pathname === '/api/sessiongraph/settings' && req.method === 'POST') {
+      const value = await body(req);
+      if (!value || typeof value.autoImport !== 'boolean') return json(400, { error: 'Choose a valid auto-import setting.' });
+      store.setting('autoImport', value.autoImport);
+      return json(200, { autoImport: store.autoImportEnabled() });
+    }
     if (url.pathname === '/api/sessiongraph/sources' && req.method === 'GET') return json(200, { sources: await importer.sources(), onboarding: store.setting('selected') === undefined });
     if (url.pathname === '/api/sessiongraph/import') {
       if (req.method === 'GET') return json(200, importer.status);
       if (req.method === 'POST') {
         const value = await body(req);
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return json(400, { error: 'Invalid import request.' });
         if (value.sources !== undefined && (!Array.isArray(value.sources) || value.sources.some((s: unknown) => typeof s !== 'string'))) return json(400, { error: 'Choose valid sources.' });
+        if (value.automatic !== undefined && (typeof value.automatic !== 'boolean' || value.sources !== undefined)) return json(400, { error: 'Automatic imports use saved sources.' });
         if (importer.status.running) return json(409, { error: 'An import is already running.' });
-        return json(202, importer.start(value.sources));
+        return json(202, importer.start(value.sources, value.automatic));
       }
     }
     if (url.pathname === '/api/sessiongraph/index') {
