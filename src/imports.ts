@@ -5,7 +5,7 @@ const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<':
 export function createImports(onChange: () => Promise<void>, onVisibility: () => void) {
   const dialog = document.createElement('dialog'); dialog.className = 'imports-dialog';
   dialog.setAttribute('aria-labelledby', 'imports-heading');
-  dialog.innerHTML = `<button class="icon-button dialog-close" aria-label="Close sources">×</button><span class="eyebrow">SessionGraph</span><h2 id="imports-heading">Search &amp; visualize all your LLM sessions</h2><p class="imports-intro">Choose the apps to import. Everything stays on this computer.</p><div class="import-sources"></div><div class="imports-progress" role="status"></div><details class="imports-notes" hidden><summary>Import details</summary><div></div></details><footer><span>Saved locally in SQLite</span><button class="primary-button import-start">Import sessions <span>↗</span></button></footer>`;
+  dialog.innerHTML = `<button class="icon-button dialog-close" aria-label="Close sources">×</button><span class="eyebrow">SessionGraph</span><h2 id="imports-heading">Explore &amp; visualize all your LLM sessions</h2><p class="imports-intro">Choose the apps to import. Everything stays on this computer.</p><div class="import-sources"></div><div class="imports-progress" role="status"></div><details class="imports-notes" hidden><summary>Import details</summary><div></div></details><footer><span>Saved locally in SQLite</span><button class="primary-button import-start">Import sessions <span>↗</span></button></footer>`;
   document.body.append(dialog);
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => dialog.querySelector<T>(s)!;
   let running = false, timer = 0, disposed = false, returnFocus: HTMLElement | null = null;
@@ -52,7 +52,7 @@ export function createImports(onChange: () => Promise<void>, onVisibility: () =>
   async function open(first = false) {
     onboarding = first; view++;
     returnFocus = document.activeElement as HTMLElement;
-    $('#imports-heading').textContent = first ? 'Search & visualize all your LLM sessions' : 'Your session sources.';
+    $('#imports-heading').textContent = first ? 'Explore & visualize all your LLM sessions' : 'Your session sources.';
     if (!dialog.open) dialog.showModal(); onVisibility();
     $('.import-sources').textContent = 'Finding local session sources…';
     try {

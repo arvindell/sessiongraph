@@ -1,6 +1,6 @@
 # SessionGraph guide
 
-**Search & visualize all your LLM sessions**
+**Explore & visualize all your LLM sessions**
 
 A local-first galaxy of your LLM sessions. Import **OpenCode, Claude Code, Codex, and Cursor**, explore relationships and changed files, search conversations, and fly through their timeline.
 

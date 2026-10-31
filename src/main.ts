@@ -70,14 +70,14 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 $('#app').innerHTML = `
   <main class="map" aria-label="Session map">
-    <h1 class="sr-only">SessionGraph — Search &amp; visualize all your LLM sessions</h1>
+    <h1 class="sr-only">SessionGraph — Explore &amp; visualize all your LLM sessions</h1>
     <div id="scene"></div>
     <div class="canvas-vignette"></div>
     <div id="graph-message" class="graph-message"><div class="loading-orbit"><span></span><span></span><span></span></div><h3>Loading sessions…</h3></div>
     <div id="tooltip" class="node-tooltip" hidden></div>
   </main>
   <header class="app-header glass">
-    <a class="brand" href="/" aria-label="SessionGraph home" title="Search &amp; visualize all your LLM sessions"><img src="/favicon.svg" alt=""/><span>SessionGraph<span class="brand-dot">.</span></span></a>
+    <a class="brand" href="/" aria-label="SessionGraph home" title="Explore &amp; visualize all your LLM sessions"><img src="/favicon.svg" alt=""/><span>SessionGraph<span class="brand-dot">.</span></span></a>
     <span class="connection" role="status" title="Connecting"><span class="status-dot"></span><span id="connection-label" class="sr-only">Connecting</span></span>
     <span class="toolbar-divider"></span>
     <button class="toolbar-button" id="toggle-explorer" aria-label="Toggle sessions" aria-controls="explorer" aria-expanded="true" title="Sessions">${icon('search')}<span>Sessions</span></button>

@@ -6,7 +6,7 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "description": "Search & visualize all your LLM sessions",
+  "description": "Explore & visualize all your LLM sessions",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/arvindell/sessiongraph.git"

@@ -12,7 +12,7 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const args = new Set(process.argv.slice(2));
 if (args.has('--version')) { console.log(`SessionGraph ${pkg.version}`); process.exit(0); }
 if (args.has('--help')) {
-  console.log(`SessionGraph — Search & visualize all your LLM sessions\n\n  npx ${pkg.name}            Open the desktop app\n  npx ${pkg.name} --browser  Open the local browser app\n\nChoose session sources on first launch. All imports and indexing stay local.`); process.exit(0);
+  console.log(`SessionGraph — Explore & visualize all your LLM sessions\n\n  npx ${pkg.name}            Open the desktop app\n  npx ${pkg.name} --browser  Open the local browser app\n\nChoose session sources on first launch. All imports and indexing stay local.`); process.exit(0);
 }
 if (Number(process.versions.node.split('.')[0]) < 24) { console.error('SessionGraph requires Node.js 24 or later for its launcher.'); process.exit(1); }
 function open(target) {

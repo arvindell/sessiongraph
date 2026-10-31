@@ -60,7 +60,7 @@ fn main() {
             #[cfg(target_os = "macos")]
             let window = window.title_bar_style(tauri::TitleBarStyle::Transparent);
             window
-                .title("SessionGraph — Search & visualize all your LLM sessions").inner_size(1440.0, 960.0).min_inner_size(380.0, 600.0)
+                .title("SessionGraph — Explore & visualize all your LLM sessions").inner_size(1440.0, 960.0).min_inner_size(380.0, 600.0)
                 .on_new_window(move |url, _| {
                     if ["http", "https"].contains(&url.scheme()) { let _ = external.opener().open_url(url.as_str(), None::<&str>); }
                     tauri::webview::NewWindowResponse::Deny

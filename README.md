@@ -1,5 +1,5 @@
 <h1 align="center">SessionGraph</h1>
-<p align="center">Search &amp; visualize all your LLM sessions</p>
+<p align="center">Explore &amp; visualize all your LLM sessions</p>
 <p align="center">
   <a href="https://github.com/arvindell/sessiongraph/releases/latest">Download</a> ·
   <a href="docs/guide.md">Documentation</a> ·
