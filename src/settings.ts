@@ -3,7 +3,7 @@ import { createElement, PanelsTopLeft, Database, Volume2, Sparkles, Orbit, LockK
 import { refreshSelects } from './controls';
 import type { SaveState } from './library-settings';
 import type { ImportStatus, SourceStatus } from './types';
-import { sourceIcon } from './sources';
+import { sourceIcon, sortSources } from './sources';
 
 type Section = 'interface' | 'sources' | 'audio' | 'graphics' | 'trails' | 'privacy';
 const tabs: [Section, string, IconNode][] = [['interface', 'Interface', PanelsTopLeft], ['sources', 'Sources', Database], ['audio', 'Sound', Volume2], ['graphics', 'Graphics', Sparkles], ['trails', 'Trails & playback', Orbit], ['privacy', 'Privacy', LockKeyhole]];
@@ -27,6 +27,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
       </section>
       <section id="settings-sources" role="tabpanel" aria-labelledby="settings-tab-sources" hidden><h3>Sources</h3><p class="settings-description">Choose the local apps to import. Importing is read-only.</p>
         ${toggle('autoImport', 'Auto-import sessions', 'Check selected sources on startup, on return, and every minute while visible.')}
+        <input type="search" class="source-search" placeholder="Find a source…" aria-label="Find a session source"/>
         <div class="settings-sources-list import-sources"></div>
         <div class="settings-import-progress" role="status"></div>
         <div class="settings-note"><span>Source changes apply when you import. Previously saved history is kept.</span><button class="secondary-button settings-import" disabled>Import selected sources</button></div>
@@ -65,6 +66,9 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
     </div></div><footer class="settings-footer"><span class="settings-save-status" role="status">Changes save automatically on this device.</span><button class="text-button settings-reset">Restore defaults</button><button class="primary-button settings-done">Done</button></footer>`;
   document.body.append(dialog);
   const events = new AbortController(), options = { signal: events.signal };
+  const sourceSearch = dialog.querySelector<HTMLInputElement>('.source-search')!;
+  const filterSources = () => dialog.querySelectorAll<HTMLElement>('.import-source').forEach(row => { row.hidden = !row.textContent!.toLowerCase().includes(sourceSearch.value.trim().toLowerCase()); });
+  sourceSearch.addEventListener('input', filterSources, options);
   let focus: HTMLElement | null = null;
   let sourceRequest = 0, sourcesLoading = false, sourcesRunning = false, active: Section = 'interface';
   const sourceControls = () => {
@@ -78,7 +82,8 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
     try {
       const sources = await callbacks.getSources();
       if (events.signal.aborted || request !== sourceRequest) return;
-      list.innerHTML = sources.map((source) => `<label class="import-source"><input class="settings-source" type="checkbox" value="${escape(source.id)}" ${source.selected ? 'checked' : ''}/><span class="source-symbol">${sourceIcon(source.id)}</span><span><strong>${escape(source.name)}</strong><small>${escape(source.description)}</small><small class="source-imported">${source.sessions.toLocaleString()} saved${source.error ? ` · ${escape(source.error)}` : ''}</small></span><span class="source-detected ${source.available ? 'detected' : ''}">${source.available ? 'Detected' : 'Not found'}</span></label>`).join('');
+      list.innerHTML = sortSources(sources).map((source) => `<label class="import-source"><input class="settings-source" type="checkbox" value="${escape(source.id)}" ${source.selected ? 'checked' : ''}/><span class="source-symbol">${sourceIcon(source.id)}</span><span><strong>${escape(source.name)}</strong><small>${escape(source.description)}</small><small class="source-imported">${source.sessions.toLocaleString()} saved${source.error ? ` · ${escape(source.error)}` : ''}</small></span><span class="source-detected ${source.available ? 'detected' : ''}">${source.available ? 'Detected' : 'Not found'}</span></label>`).join('');
+      filterSources();
     } catch (error) {
       if (events.signal.aborted || request !== sourceRequest) return;
       list.textContent = error instanceof Error ? error.message : 'Could not detect sources.';

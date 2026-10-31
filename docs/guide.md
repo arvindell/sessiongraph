@@ -2,7 +2,7 @@
 
 **Explore & visualize all your LLM sessions**
 
-A local-first galaxy of your LLM sessions. Import **OpenCode, Claude Code, Codex, and Cursor**, explore relationships and changed files, search conversations, and fly through their timeline.
+A local-first galaxy of your LLM sessions. Import **OpenCode, Claude Code, Codex, Cursor, Gemini CLI, Qwen Code, Pi, GitHub Copilot CLI, Cline, Roo Code, Kilo Code, and Continue**, explore relationships and changed files, search conversations, and fly through their timeline. Source-specific coverage is listed below.
 
 ## Open SessionGraph
 
@@ -21,7 +21,7 @@ Installers appear in `src-tauri/target/release/bundle/`. On macOS, open `macos/S
 
 ### npm launcher
 
-The launcher and platform packages are configured for public npm distribution. Registry publishing is still being finalized; use the [desktop downloads](../README.md#install) in the meantime. Once published:
+Install and open the public npm launcher with Node 24+:
 
 ```sh
 npx sessiongraph
@@ -40,11 +40,11 @@ To test installation before publishing:
 ```sh
 pnpm package:desktop
 # macOS Apple Silicon example:
-npx --package ./release/sessiongraph-0.1.0.tgz \
-    --package ./release/sessiongraph-app-darwin-arm64-0.1.0.tgz sessiongraph
+npx --package ./release/sessiongraph-1.0.0.tgz \
+    --package ./release/sessiongraph-app-darwin-arm64-1.0.0.tgz sessiongraph
 ```
 
-The launcher requires Node 24+. Platform packages are optional dependencies selected by OS/architecture. The browser build is bundled into the launcher package. `scripts/package-desktop.mjs` builds both tarballs. Pushes to `main` build platform installers, create a version tag and GitHub release, and publish public npm packages. See [Releases](releases.md) for the workflow and credentials. macOS builds are ad-hoc signed but not notarized.
+The launcher requires Node 24+. Platform packages are optional dependencies selected by OS/architecture. The browser build is bundled into the launcher package. `scripts/package-desktop.mjs` builds both tarballs. Pushes to `main` build platform installers, create a version tag and GitHub release, and publish public npm packages. See [Releases](releases.md) for the workflow. macOS builds are ad-hoc signed but not notarized.
 
 ### Browser development
 
@@ -87,8 +87,27 @@ Onboarding closes automatically after a successful import and library refresh. I
 | Claude Code | SDK `listSessions`, `getSessionMessages`, `getSubagentMessages`; local transcript metadata | All local projects, worktrees, and subagent transcripts. SDK-visible conversation chain can omit pre-compaction text. No inferred fork ancestry. File evidence requires a successful matching edit-tool result. |
 | Codex | Bounded streaming reads of active and archived local JSONL rollouts | Explicit recorded fork/parent fields; completed file-change events. Mirrored event text is not imported twice. Store-only/cloud-only history and ordinary ChatGPT desktop/web chats are not imported. No agent process is started. |
 | Cursor | IDE JSONL transcripts in `~/.cursor/projects/*/agent-transcripts/`, CLI `~/.cursor/chats/` and ACP `~/.cursor/acp-sessions/` stores | Explicit subagent directories; one representation per native ID, preferring the committed store conversation. No inferred forks or successful edits. Legacy Composer databases, older `.txt` transcripts, cloud-only and SDK-only history are excluded. |
+| Gemini CLI | `~/.gemini/tmp/*/chats/` JSON/JSONL; sandbox cache equivalent | Reconstructs append-only patches and rewinds. Explicit subagent directories form parent links. Workspace identity comes from `.project_root`; unknown directories stay unknown. |
+| Qwen Code | `~/.qwen/projects/*/chats/*.jsonl` | Recorded forks and parent sessions remain distinct. Tool results retain call IDs and recorded execution status. Daemon-only histories are excluded. |
+| Pi | `~/.pi/agent/sessions/**/*.jsonl` | Imports all recorded branches, reasoning, tools, and compaction entries. Entry parent IDs describe the in-file tree; parent-session file paths are not guessed into fork/child relationships. |
+| GitHub Copilot CLI | `~/.copilot/session-state/**/events.jsonl` | Final persisted messages replace streaming mirrors. Explicit spawning-parent IDs form child links. Only committed `fileEdits` records establish changed files, including recorded partial-success edits. Cloud-only sessions are excluded. |
+| Cline | Extension `tasks/*/api_conversation_history.json`; `~/.cline/data/sessions/*/*.messages.json` | Matching task metadata or `session.json` supplies workspace and lineage. Database-only metadata remains unknown. Extension snapshots can omit UI-only and pre-compaction messages. |
+| Roo Code | Extension `tasks/*/api_conversation_history.json` and `history_item.json` | Recorded task parents; partial API-conversation snapshots. XML tool requests alone do not establish successful edits. |
+| Kilo Code | Legacy extension task JSON | Legacy extension histories only. Current Kilo CLI and migrated database histories are excluded. Same snapshot limitations as Roo Code. |
+| Continue | `~/.continue/sessions/*.json` and session index | IDE/CLI conversation snapshots and recorded tool messages. No inferred relationships or edit evidence. Missing message times stay unknown; attachments and transient tool UI state are omitted. |
 
 Source roots respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`. `SESSIONGRAPH_SERVICE_FILE` selects a local OpenCode service registration. Adapters never read authentication files or execute source configuration, hooks, or agents. Source formats can evolve: unsupported history is disclosed rather than fabricated.
+
+### Additional source locations
+
+- Gemini respects `GEMINI_CLI_HOME` as a replacement home directory. `SESSIONGRAPH_GEMINI_HOME` selects a `.gemini`-style directory containing `tmp/`.
+- Qwen respects `QWEN_RUNTIME_DIR`, then `QWEN_HOME`. `SESSIONGRAPH_QWEN_HOME` overrides both and contains `projects/`.
+- Pi respects `PI_CODING_AGENT_DIR`; `SESSIONGRAPH_PI_SESSIONS_DIR` directly selects the sessions directory.
+- `SESSIONGRAPH_COPILOT_HOME` selects a `.copilot`-style directory containing `session-state/`.
+- Cline, Roo, and legacy Kilo discovery covers standard VS Code, Insiders, VSCodium, Cursor, Windsurf, and local VS Code Server extension storage. `SESSIONGRAPH_CLINE_HOME`, `SESSIONGRAPH_ROO_HOME`, and `SESSIONGRAPH_KILO_HOME` select storage directories containing `tasks/`. Cline's override can also contain `data/sessions/`; its normal CLI discovery respects `CLINE_DIR`, `CLINE_DATA_DIR`, and `CLINE_SESSION_DATA_DIR`.
+- Continue respects `CONTINUE_GLOBAL_DIR`; `SESSIONGRAPH_CONTINUE_HOME` overrides it and contains `sessions/`.
+
+These file adapters read stable snapshots bounded to 32 MB combined, 50,000 records/messages, 20,000 histories/directories, 100,000 directory entries, and six levels of nested directories. Symlink history files are skipped. Changing, unreadable, or oversized sources retain their saved imports. Missing message times remain unknown; session creation falls back to recorded metadata, the first recorded message, or file time. File snapshots are unavailable for these sources; successful matching edit results supply evidence where supported. Binary attachments and unsupported blocks are disclosed as omitted.
 
 ### Cursor details
 
@@ -130,7 +149,7 @@ Desktop update checks and downloads contact GitHub without session content; npm 
 - Click a session for changed-file satellites and source evidence. File details load in 120-message batches; the map displays at most 80 files. Evidence describes historical edits, not today's Git diff.
 - **Play** follows newly appearing clusters with a half-turn around the graph and a closing pullback (30 seconds at 1×). Dragging, zooming, scrubbing, fitting, or opening a dialog pauses playback. 2D pans without orbiting; reduced motion keeps the camera still.
 - The timeline's calendar offers a styled range picker with presets, month/year navigation, typed ISO dates, and keyboard navigation. Date boundaries are inclusive in your local timezone. Select menus share keyboard/typeahead behavior and styling across filters, settings, search, events, and the launcher.
-- **Open session** lets you choose OpenCode, Claude Code, Codex, or Cursor Agent and a working directory. See cross-harness continuation below.
+- **Open session** lets you choose one of eight CLI destinations and a working directory. See cross-harness continuation below.
 - Unknown model/cost/token fields stay unknown. Session selection is encoded in a local permalink.
 
 ### Sound and appearance
@@ -142,14 +161,15 @@ Open **Settings** using the gear button. Changes apply live and persist on this 
 - **Graphics:** performance/balanced/high rendering, glow, node size, stars, labels, and focus dimming.
 - **Trails & playback:** all/selected/hidden lifetime trails, brightness, decorative flow and speed, relationship links, event markers, and 0.25×–3× playback. Flow respects reduced motion and never changes event timestamps or trail endpoints.
 
-**Restore defaults** resets these preferences; they live in versioned browser/WebView local storage, separately from the session library.
+**Restore defaults** resets these preferences; they are saved in the local library, with an appearance cache in browser/WebView local storage.
 
 ## Continue in another harness
 
-Select a session, click **Open session**, and choose **Open in → OpenCode / Claude Code / Codex / Cursor Agent**. The original working folder is prefilled; choose an existing folder if it has moved.
+Select a session, click **Open session**, and choose **Open in → OpenCode / Claude Code / Codex / Cursor Agent / Gemini CLI / Qwen Code / Pi / GitHub Copilot CLI**. The original working folder is prefilled; choose an existing folder if it has moved.
 
 - The same harness resumes the native session (`opencode --session`, `claude --resume`, `codex resume`). OpenCode also offers its local browser route. Claude subagent histories use a fresh context handoff because they cannot be resumed independently.
 - Cursor CLI sessions from the default store can resume with [`cursor-agent --resume`](https://cursor.com/docs/cli/reference/parameters) in their verified original folder. Cursor IDE, ACP, subagent, custom-root, and relocated histories start a new Cursor Agent session with saved context. Install the Cursor Agent CLI to use this destination.
+- Gemini, Qwen, and Copilot use `--resume <native ID>`; Pi uses `--session <native ID>`. Eligible local histories resume in their original working directory. SessionGraph-specific custom-root overrides, relocated directories, and child sessions use saved-context handoffs. Gemini sandbox-cache histories also use handoffs. No source agent installation is needed just to read its saved files.
 - A different harness starts a **new session with saved context**. It reads a local Markdown handoff, recaps where the conversation left off, and asks what to do next. Preparing or copying the command does not start an agent. Saved context works even when the original source app is offline.
 - Handoffs preserve the initial user request and up to 200 recent messages in conversation order, bounded to roughly 166,000 text characters. Long messages/tool outputs are shortened. The chooser displays coverage and the context file path. Files, credentials, tool state, and native session identities are not migrated.
 - Context files live in `handoffs/` beside SessionGraph's database, with private filesystem permissions. Identical saved context reuses the same file. They stay on disk so a copied command can be used later; remove them when no longer needed.

@@ -17,7 +17,7 @@
 | --- | --- | --- |
 | Browse, search, and visualize saved history | Authenticated backend on `127.0.0.1` | None |
 | Import OpenCode history | OpenCode's authenticated loopback API; OpenCode must be running locally | None |
-| Import Claude Code, Codex, or Cursor history | Local history reads | None |
+| Import Claude Code, Codex, Cursor, Gemini CLI, Qwen Code, Pi, GitHub Copilot CLI, Cline, Roo Code, Kilo Code, or Continue history | Local history reads within the [documented source coverage](docs/guide.md#source-coverage) | None |
 | Check for or download desktop updates | GitHub Releases and its download infrastructure | None |
 | Install or update through npm | npm registry and its download infrastructure | None |
 | Open an external link | Your browser opens the destination you choose | The destination's normal browser/privacy behavior applies |

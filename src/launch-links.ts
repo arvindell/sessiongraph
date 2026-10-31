@@ -4,6 +4,10 @@ export const HARNESSES = [
   { id: 'claude-code', name: 'Claude Code', command: 'claude' },
   { id: 'codex', name: 'Codex', command: 'codex' },
   { id: 'cursor', name: 'Cursor Agent', command: 'cursor-agent' },
+  { id: 'gemini', name: 'Gemini CLI', command: 'gemini' },
+  { id: 'qwen-code', name: 'Qwen Code', command: 'qwen' },
+  { id: 'pi', name: 'Pi', command: 'pi' },
+  { id: 'copilot', name: 'GitHub Copilot CLI', command: 'copilot' },
 ] as const;
 export type HarnessID = typeof HARNESSES[number]['id'];
 export const isHarness = (value: unknown): value is HarnessID => HARNESSES.some((h) => h.id === value);
@@ -38,6 +42,8 @@ export function resumeArgs(value: string | Session): string[] {
     if (source === 'codex') return ['resume', id];
     if (source === 'claude-code') return ['--resume', id];
     if (source === 'cursor' && typeof value !== 'string' && value.nativeResume) return ['--resume', id];
+    if (['gemini', 'qwen-code', 'copilot'].includes(source) && typeof value !== 'string' && value.nativeResume) return ['--resume', id];
+    if (source === 'pi' && typeof value !== 'string' && value.nativeResume) return ['--session', id];
     throw new Error('This source does not provide a launcher.');
   }
   if (!validSessionID(id)) throw new Error('Invalid session ID.');

@@ -9,7 +9,7 @@
 
 [![SessionGraph in action: playback, search, messages, and settings using synthetic sessions](docs/sessiongraph-demo.gif)](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4)
 
-Explore **OpenCode, Claude Code, Codex, and Cursor** in one local-first app.
+Explore **12 coding agents** in one local-first app: OpenCode, Claude Code, Codex, Cursor, Gemini CLI, Qwen Code, Pi, GitHub Copilot CLI, Cline, Roo Code, Kilo Code, and Continue.
 Search conversations, explore clickable messages and tool calls, inspect changed files, and continue in another harness.
 Hover to preview messages, click to focus, and tune the glowing map, trails, and click sounds in Settings.
 Importing, searching, and visualization stay on your computer.
@@ -36,7 +36,7 @@ Download the latest desktop app — no Node.js required:
 
 Desktop updates appear as a small **Update** pill. Download and verify, then click **Restart** when you're ready.
 
-The npm launcher requires **Node.js 24+** (registry publishing is being finalized; use the downloads above for now):
+The npm launcher requires **Node.js 24+**:
 
 ```sh
 npx sessiongraph
@@ -55,6 +55,14 @@ npx sessiongraph --browser
 | <img src="public/sources/claude.svg" width="14" alt=""/> **Claude Code** | Local projects, worktrees, and subagents via SDK | Native resume / saved-context handoff |
 | <img src="public/sources/openai.svg" width="14" alt=""/> **Codex** | Active and archived local rollouts | Native resume / saved-context handoff |
 | <img src="public/sources/cursor.svg" width="14" alt=""/> **Cursor** | IDE transcripts, CLI and ACP stores | CLI resume where supported / saved-context handoff |
+| **Gemini CLI** | Local JSON and append-only JSONL chats | Native resume / saved-context handoff |
+| **Qwen Code** | Local project chat records | Native resume / saved-context handoff |
+| **Pi** | Local JSONL session trees | Native resume / saved-context handoff |
+| **GitHub Copilot CLI** | Local persisted session events | Native resume / saved-context handoff |
+| **Cline** | Extension tasks and CLI/SDK message snapshots | Saved-context handoff to a supported CLI |
+| **Roo Code** | Local extension task histories | Saved-context handoff to a supported CLI |
+| **Kilo Code** | Legacy extension task JSON; current CLI/migrated databases excluded | Saved-context handoff to a supported CLI |
+| **Continue** | Local IDE and CLI session JSON | Saved-context handoff to a supported CLI |
 
 Import is read-only. Saved sessions remain available when a harness is offline. [Coverage and limitations →](docs/guide.md#source-coverage)
 
