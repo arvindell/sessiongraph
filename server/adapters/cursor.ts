@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { blankSession, digest, identity, project } from './common';
 import { cursorMessage, cursorTime } from './cursor-message';
 import { cursorStoreMetadata, readCursorStore } from './cursor-store';
+import { discoverComposers, readComposer } from './cursor-composer';
 import { readJSONL } from './jsonl';
 import type { Candidate, SessionAdapter } from './types';
 
@@ -51,25 +52,32 @@ async function entries(path: string, warnings: string[]) {
 // Directory names are lossy. Only forward-match paths explicitly recorded by
 // Cursor; never turn "my-project" into an invented "my/project" directory.
 async function workspacePaths(root: string, warnings: string[]) {
-  const paths = new Set<string>();
+  const stores = new Map<string, string>();
   const storage = join(root, 'User/workspaceStorage');
   for (const entry of await entries(storage, warnings)) if (entry.isDirectory()) {
+    const database = join(storage, entry.name, 'state.vscdb');
+    stores.set(database, '');
     try {
       const info = await json(join(storage, entry.name, 'workspace.json'));
       if (typeof info.folder === 'string' && info.folder.startsWith('file:')) {
-        const path = cwd(fileURLToPath(info.folder)); if (path) paths.add(path);
+        const path = cwd(fileURLToPath(info.folder)); if (path) stores.set(database, path);
       }
     } catch { warnings.push('A Cursor workspace mapping could not be read; its directory may be unknown.'); }
   }
-  return [...paths];
+  return stores;
 }
 
 export function createCursorAdapter(options: { home?: string; userData?: string } = {}): SessionAdapter {
   const root = () => options.home || process.env.SESSIONGRAPH_CURSOR_HOME || process.env.SESSION_ATLAS_CURSOR_HOME || join(homedir(), '.cursor');
+  const editor = () => options.userData || process.env.SESSIONGRAPH_CURSOR_USER_DATA_DIR || process.env.SESSION_ATLAS_CURSOR_USER_DATA_DIR || userData();
   return {
-    id: 'cursor', name: 'Cursor', description: 'Local IDE JSONL transcripts, subagents, and CLI / ACP stores · read-only',
+    id: 'cursor', name: 'Cursor', description: 'Local IDE transcripts, legacy Composer, subagents, and CLI / ACP stores · read-only',
     capabilities: { history: true, forks: false, children: true, files: false },
     async detect() {
+      if (await fileStats(join(editor(), 'User/globalStorage/state.vscdb'))) return true;
+      for (const entry of await entries(join(editor(), 'User/workspaceStorage'), [])) {
+        if (entry.isDirectory() && await fileStats(join(editor(), 'User/workspaceStorage', entry.name, 'state.vscdb'))) return true;
+      }
       for (const name of ['projects', 'chats', 'acp-sessions']) {
         try { if ((await lstat(join(root(), name))).isDirectory()) return true; } catch { /* Not installed here. */ }
       }
@@ -77,7 +85,25 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
     },
     async discover() {
       const warnings: string[] = [], found = new Map<string, Candidate>(), blocked = new Set<string>();
-      const paths = await workspacePaths(options.userData || process.env.SESSIONGRAPH_CURSOR_USER_DATA_DIR || process.env.SESSION_ATLAS_CURSOR_USER_DATA_DIR || userData(), warnings);
+      const workspaceStores = await workspacePaths(editor(), warnings);
+      const paths = [...new Set([...workspaceStores.values()].filter(Boolean))];
+      const legacyStores = new Map([[join(editor(), 'User/globalStorage/state.vscdb'), ''], ...workspaceStores]);
+      for (const [path, workspace] of legacyStores) {
+        try {
+          if (!await fileStats(path)) continue;
+          const result = discoverComposers(path, workspace);
+          warnings.push(...result.warnings);
+          for (const candidate of result.sessions) {
+            const previous = found.get(candidate.session.id);
+            const selected = !previous || candidate.session.updated > previous.session.updated ? candidate : previous;
+            selected.session.directory ||= candidate.session.directory || previous?.session.directory || '';
+            selected.session.projectID = project('cursor', selected.session.directory).id;
+            selected.revision = digest([selected.revision, selected.session.directory]);
+            found.set(candidate.session.id, selected);
+          }
+        } catch { warnings.push('A legacy Cursor database could not be read consistently; saved imports are retained.'); }
+      }
+      const composers = new Map(found);
       const match = (key: string, encode: (value: string) => string) => {
         const matches = paths.filter((path) => encode(path) === key); return matches.length === 1 ? matches[0] : '';
       };
@@ -124,10 +150,20 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
           session.nativeResume = kind === 'cli' && Boolean(session.directory) && hashCwd(session.directory) === workspaceHash && root() === join(homedir(), '.cursor');
           locator.snapshot = before;
           if (await snapshot(locator) !== before) throw new Error('Cursor session changed during discovery.');
-          const candidate = { session, locator, revision: digest([2, kind, path, before, session.directory, session.parentID]) };
           const previous = found.get(session.id);
           // Choose a single representation, never append overlapping exports.
-          const rank = (c: Candidate) => c.locator.kind === 'transcript' ? 0 : 1;
+          const rank = (c: Candidate) => c.locator.kind === 'composer' ? 0 : c.locator.kind === 'transcript' ? 1 : 2;
+          // Modern exports can omit original creation metadata; preserve the
+          // native Composer start date when both representations describe one session.
+          const composer = composers.get(session.id);
+          if (composer) {
+            session.created = composer.session.created; delete locator.timeNote;
+            session.parentID ||= composer.session.parentID;
+            session.directory ||= composer.session.directory;
+            session.projectID = project('cursor', session.directory).id;
+            if (session.directory) delete locator.directoryNote;
+          }
+          const candidate = { session, locator, revision: digest([4, kind, path, before, session.created, session.directory, session.parentID]) };
           if (!previous || rank(candidate) > rank(previous) || (rank(candidate) === rank(previous) && session.updated > previous.session.updated)) found.set(session.id, candidate);
         } catch {
           unreadable++;
@@ -175,12 +211,16 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
       if (scanned >= LIMIT) warnings.push('Cursor discovery limited to 20,000 history files.');
       if (unreadable) warnings.push(`${unreadable} Cursor histories were unreadable or changed during discovery; saved imports are retained. Re-import to retry.`);
       if (legacy) warnings.push(`${legacy} older plain-text Cursor transcripts are not supported.`);
-      warnings.push('Cursor imports local IDE JSONL and CLI/ACP stores. Legacy Composer databases, plain-text exports, cloud-only and SDK-only history are not imported. Formats are not a stable public API.');
+      warnings.push('Cursor imports local IDE JSONL, legacy Composer databases, and CLI/ACP stores. Plain-text exports, cloud-only and SDK-only history are not imported. Formats are not a stable public API.');
       const sessions = [...found.values()].filter((c) => !blocked.has(c.session.id));
       return { sessions, projects: [...new Map(sessions.map((c) => { const p = project('cursor', c.session.directory); return [p.id, p]; })).values()], warnings: [...new Set(warnings)] };
     },
     async read(candidate, cursor) {
       const { locator } = candidate;
+      if (locator.kind === 'composer') {
+        if (cursor) throw new Error('Invalid Composer cursor.');
+        return readComposer(candidate);
+      }
       const verify = async () => { if (await snapshot(locator) !== locator.snapshot) throw new Error('Cursor session changed during import; re-import to capture the latest history.'); };
       await verify();
       const note = [locator.kind === 'transcript' ? 'Cursor IDE JSONL export; tool results and pre-compaction history may be absent.' : 'Cursor committed conversation root; abandoned branches and system prompts are excluded.',

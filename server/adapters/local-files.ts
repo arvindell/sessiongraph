@@ -4,13 +4,14 @@ import { join, relative } from 'node:path';
 import { blankSession, digest, identity, project } from './common';
 import type { Candidate, ImportedMessage, SessionAdapter } from './types';
 import type { Session } from '../../src/types';
+import { expandHistory } from './compressed';
 
 export type Raw = Record<string, any>;
 export const object = (value: unknown): Raw => value && typeof value === 'object' && !Array.isArray(value) ? value as Raw : {};
 export const text = (value: unknown): string => typeof value === 'string' ? value : '';
 export const time = (value: unknown): number => {
   const n = typeof value === 'number' ? value : typeof value === 'string' ? (/^\d{13}$/.test(value) ? Number(value) : Date.parse(value)) : 0;
-  return Number.isFinite(n) && n > 0 ? n : 0;
+  return Number.isFinite(n) && n > 0 && n <= 8.64e15 ? n : 0;
 };
 const MAX_BYTES = 32_000_000, MAX_RECORDS = 50_000, MAX_FILES = 20_000;
 export interface LocalHistory {
@@ -32,7 +33,7 @@ interface LocalSource {
   extras?: (path: string) => string[];
   /** Immutable creation metadata in a shared index must not invalidate every session. */
   revisionExtras?: boolean;
-  parse: (path: string, files: Map<string, string>) => LocalHistory;
+  parse: (path: string, files: Map<string, string>) => LocalHistory | undefined;
 }
 
 async function fileState(path: string) {
@@ -98,6 +99,7 @@ export function localFileAdapter(source: LocalSource): SessionAdapter {
     if (before[0].signature === 'missing') throw new Error('History file is unavailable.');
     if (before.reduce((n, s) => n + s.size, 0) > MAX_BYTES) throw new Error('Combined history exceeds the 32 MB snapshot limit.');
     const files = new Map<string, string>();
+    let expanded = 0;
     for (const s of before.filter(s => s.signature !== 'missing')) {
       const handle = await open(s.path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
       try {
@@ -105,11 +107,16 @@ export function localFileAdapter(source: LocalSource): SessionAdapter {
         let bytes = 0;
         while (bytes < buffer.length) { const part = await handle.read(buffer, bytes, buffer.length - bytes, bytes); if (!part.bytesRead) break; bytes += part.bytesRead; }
         if (bytes !== s.size) throw new Error('History changed while reading; import again.');
-        files.set(s.path, buffer.toString('utf8', 0, bytes));
+        const data = expandHistory(buffer.subarray(0, bytes), MAX_BYTES);
+        expanded += data.length;
+        if (expanded > MAX_BYTES) throw new Error('Expanded history exceeds the 32 MB snapshot limit.');
+        files.set(s.path, data.toString('utf8'));
       } finally { await handle.close(); }
     }
     if (digest(await states(path)) !== digest(before)) throw new Error('History changed while reading; import again.');
     const history = source.parse(path, files);
+    if (!history) return;
+    if (source.capabilities.history && !history.messages.length) throw new Error('No readable conversation.');
     if (!history.nativeID || history.nativeID.length > 512) throw new Error('History has no supported native session identity.');
     if (history.messages.length > MAX_RECORDS) throw new Error('History exceeds the 50,000-message limit.');
     cached = { path, revision: expected, history };
@@ -127,6 +134,7 @@ export function localFileAdapter(source: LocalSource): SessionAdapter {
           let candidate = metadata.get(path);
           if (!candidate || candidate.revision !== rev) {
             const history = await load(path, rev, before);
+            if (!history) continue;
             const session = { ...blankSession(source.id, history.nativeID), ...history.session };
             session.id = identity(source.id, history.nativeID); session.nativeID = history.nativeID; session.source = source.id;
             session.directory = text(session.directory); session.projectID = project(source.id, session.directory).id;
@@ -151,6 +159,7 @@ export function localFileAdapter(source: LocalSource): SessionAdapter {
       const offset = cursor === undefined ? 0 : Number(cursor);
       if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid history cursor.');
       const history = await load(candidate.locator.path, candidate.revision, await states(candidate.locator.path));
+      if (!history) throw new Error('History representation is no longer available.');
       const messages = history.messages.slice(offset, offset + 100);
       const untimed = history.messages.some(m => !time(m.time));
       return { messages, cursor: offset + messages.length < history.messages.length ? String(offset + messages.length) : undefined, partial: Boolean(history.partial || messages.some(m => m.partial)),

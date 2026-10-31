@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { createCursorAdapter } from '../server/adapters/cursor';
 import { cursorEnvelopeTime, cursorMessage } from '../server/adapters/cursor-message';
 import { cursorStoreMetadata, readCursorStore } from '../server/adapters/cursor-store';
+import { closeSqliteSnapshots } from '../server/adapters/sqlite-snapshot';
 import { Importer } from '../server/importer';
 import { SessionGraphStore } from '../server/store';
 import { blankSession } from '../server/adapters/common';
@@ -185,4 +186,34 @@ test('Cursor IDE/subagents use handoffs; only verified CLI sessions in their ori
     assert.equal((await prepareLaunch(store, cli, 'cursor', f.dir)).mode, 'handoff');
     assert.equal((await prepareLaunch(store, { ...session, nativeID: 'parent/agent/child', parentID: 'cursor:parent' }, 'cursor')).mode, 'handoff');
   } finally { store.close(); await rm(f.dir, { recursive: true }); }
+});
+
+test('Cursor retains Composer dates and workspace metadata through IDE and CLI precedence', async () => {
+  const f = await fixture(), created = Date.UTC(2024, 10, 11);
+  const legacyPath = join(f.userData, 'User/workspaceStorage/one/state.vscdb');
+  const legacy = new DatabaseSync(legacyPath);
+  try {
+    legacy.exec('CREATE TABLE ItemTable(key TEXT PRIMARY KEY, value TEXT)');
+    const insert = legacy.prepare('INSERT INTO ItemTable VALUES (?,?)');
+    insert.run('composerData:parent', JSON.stringify({ composerId: 'parent', createdAt: created, subagentComposerIds: ['native'], conversation: [{ bubbleId: 'p', type: 1, text: 'Parent' }] }));
+    insert.run('composerData:native', JSON.stringify({ composerId: 'native', createdAt: created, conversation: [{ bubbleId: 'u', type: 1, text: 'Original' }] }));
+    assert.equal(await f.adapter.detect(), true, 'workspace-only Composer databases are detectable');
+    const original = (await f.adapter.discover()).sessions.find(c => c.session.nativeID === 'native')!;
+    assert.equal(original.session.directory, f.directory);
+    await write(join(f.home, 'projects/unknown/agent-transcripts/native.jsonl'), lines(user('IDE copy')));
+    const cli = await database(join(f.home, 'chats/unknown/native/store.db'));
+    cli.commit(cli.blob(ref(1, cli.leaf({ role: 'user', content: 'Canonical store' })))); cli.db.close();
+    const discovery = await f.adapter.discover(), native = discovery.sessions.find(c => c.session.nativeID === 'native')!;
+    assert.equal(discovery.sessions.length, 2);
+    assert.equal(native.locator.kind, 'cli');
+    assert.equal(native.session.created, created);
+    assert.equal(native.session.directory, f.directory);
+    assert.equal(native.session.parentID, 'cursor:parent');
+    assert.equal(native.locator.timeNote, undefined); assert.equal(native.locator.directoryNote, undefined);
+    assert.equal((await f.adapter.read(native)).messages[0].fragments[0].text, 'Canonical store');
+    const changed = join(f.dir, 'relocated');
+    await write(join(f.userData, 'User/workspaceStorage/one/workspace.json'), JSON.stringify({ folder: pathToFileURL(changed).href }));
+    const updated = (await f.adapter.discover()).sessions.find(c => c.session.nativeID === 'native')!;
+    assert.equal(updated.session.directory, changed); assert.notEqual(updated.revision, native.revision);
+  } finally { closeSqliteSnapshots(); legacy.close(); await rm(f.dir, { recursive: true }); }
 });

@@ -179,8 +179,8 @@ test('local history snapshots reject changed cursors, symlinks, oversized files 
   } finally { store.close(); }
 }));
 
-test('all twelve sources are registered and new CLI resumes fall back to handoffs for relocated or custom-root histories', async () => {
-  assert.equal(adapters.length, 12); assert.equal(new Set(adapters.map(a => a.id)).size, 12);
+test('original sources remain registered and CLI resumes fall back to handoffs for relocated or custom-root histories', async () => {
+  for (const id of ['opencode', 'claude-code', 'codex', 'cursor', 'gemini', 'qwen-code', 'pi', 'copilot', 'cline', 'roo-code', 'kilo-code', 'continue']) assert.ok(adapters.some(a => a.id === id));
   const root = await mkdtemp(join(tmpdir(), 'sessiongraph-new-launch-')), store = new SessionGraphStore(join(root, 'library.sqlite'));
   try {
     for (const source of ['gemini', 'qwen-code', 'pi', 'copilot'] as const) {

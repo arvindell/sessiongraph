@@ -11,7 +11,7 @@
 
 [Watch the 60 FPS demo →](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4)
 
-Explore **12 coding agents** in one local-first app: OpenCode, Claude Code, Codex, Cursor, Gemini CLI, Qwen Code, Pi, GitHub Copilot CLI, Cline, Roo Code, Kilo Code, and Continue.
+Explore local history from **OpenCode, Claude Code, Codex, Cursor, Gemini, Pi, OpenClaw, Hermes, Kiro, Mux, and many more** in one app. [Source-by-source coverage →](docs/import-coverage.md)
 Search conversations, explore user and assistant messages, inspect changed files, and continue in another harness.
 Hover to preview messages, click to focus, and click empty space to deselect. Tune the glowing map, trails, and click sounds in Settings.
 During playback, session orbs travel through time, leaving trails behind them. Message dots match their session's color.
@@ -57,17 +57,19 @@ npx sessiongraph --browser
 | <img src="public/sources/opencode.svg" width="14" alt=""/> **OpenCode** | Authenticated local API; run OpenCode when importing | Native resume / saved-context handoff |
 | <img src="public/sources/claude.svg" width="14" alt=""/> **Claude Code** | Local projects, worktrees, and subagents via SDK | Native resume / saved-context handoff |
 | <img src="public/sources/openai.svg" width="14" alt=""/> **Codex** | Active and archived local rollouts | Native resume / saved-context handoff |
-| <img src="public/sources/cursor.svg" width="14" alt=""/> **Cursor** | IDE transcripts, CLI and ACP stores | CLI resume where supported / saved-context handoff |
+| <img src="public/sources/cursor.svg" width="14" alt=""/> **Cursor** | IDE transcripts, legacy Composer, CLI and ACP stores | CLI resume where supported / saved-context handoff |
 | <img src="public/sources/gemini.svg" width="14" alt=""/> **Gemini CLI** | Local JSON and append-only JSONL chats | Native resume / saved-context handoff |
 | <img src="public/sources/qwen.svg" width="14" alt=""/> **Qwen Code** | Local project chat records | Native resume / saved-context handoff |
 | <img src="public/sources/pi.svg" width="14" alt=""/> **Pi** | Local JSONL session trees | Native resume / saved-context handoff |
 | <img src="public/sources/copilot.svg" width="14" alt=""/> **GitHub Copilot CLI** | Local persisted session events | Native resume / saved-context handoff |
 | <img src="public/sources/cline.svg" width="14" alt=""/> **Cline** | Extension tasks and CLI/SDK message snapshots | Saved-context handoff to a supported CLI |
 | <img src="public/sources/roo.svg" width="14" alt=""/> **Roo Code** | Local extension task histories | Saved-context handoff to a supported CLI |
-| <img src="public/sources/kilo.svg" width="14" alt=""/> **Kilo Code** | Legacy extension task JSON; current CLI/migrated databases excluded | Saved-context handoff to a supported CLI |
+| <img src="public/sources/kilo.svg" width="14" alt=""/> **Kilo Code / CLI** | Extension task JSON; separate Kilo CLI SQLite source | Saved-context handoff to a supported CLI |
 | <img src="public/sources/continue.svg" width="14" alt=""/> **Continue** | Local IDE and CLI session JSON | Saved-context handoff to a supported CLI |
 
 Import is read-only. Saved sessions remain available when a harness is offline. [Coverage and limitations →](docs/guide.md#source-coverage)
+
+Additional sources include OpenClaw, Prime Agent, Oh My Pi, Senpi, Kimchi, Gajae, Hermes, Amp, Droid, Codebuff/Freebuff, Kimi, Grok, Jcode, Cherry Studio, Command Code, ZCode, CodeBuddy, WorkBuddy, Proma, DeepSeek Harness, Aside, Vibe, Goose, Zed, Devin CLI/Desktop, Crush, Octofriend, MiMo Code/Desktop, Unsloth, and Kiro/Mux. Junie, Muse, Augment, and OpenCodeReview have partial event coverage. Fx and Antigravity expose metadata only. Usage-only integrations are labeled **Detection only**; they do not create conversations. See the [format matrix](docs/import-coverage.md) for paths and remaining gaps.
 
 Choose harnesses in **Settings → Sources** or **Manage sources** next to the source filter. **Auto-import is on by default**: SessionGraph checks for new and changed sessions on startup, when you return, and every minute while visible. Turn it off in **Settings → Sources → Auto-import sessions**. **Refresh sessions** also works manually.
 

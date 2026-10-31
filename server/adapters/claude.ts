@@ -6,6 +6,9 @@ import { addText, blankMessage, blankSession, identity, project, toolText } from
 import type { Candidate, ImportedMessage, SessionAdapter } from './types';
 import { blockEvents, eventFor, eventText } from '../events';
 import { claudeRevision as revision, claudeSessionID, claudeTranscript, claudeTranscriptInfo, claudeTranscriptStore } from './claude-transcripts';
+import { localFileAdapter } from './local-files';
+import { envelopeHistory } from './harness-formats';
+import { combineAdapters } from './sqlite-histories';
 
 const root = () => join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
 
@@ -39,7 +42,7 @@ export function claudeMessages(rows: SessionMessage[], candidate: Candidate, tim
   });
 }
 
-export const claudeAdapter: SessionAdapter = {
+const sdkClaudeAdapter: SessionAdapter = {
   id: 'claude-code', name: 'Claude Code', description: 'Local CLI and VS Code history · all projects and subagent transcripts',
   capabilities: { history: true, forks: false, children: true, files: true },
   async detect() { try { return (await stat(root())).isDirectory(); } catch { return false; } },
@@ -112,3 +115,14 @@ export const claudeAdapter: SessionAdapter = {
     return { messages, cursor: more ? String(offset + 120) : undefined, partial: transcript.partial, note: `SDK-visible conversation chain from the local CLI/VS Code transcript; pre-compaction text and unsupported message types may be absent. Fork ancestry is unavailable.${transcript.partial ? ' Some transcript records or subagent metadata were unreadable.' : ''}` };
   },
 };
+
+// Older exported transcripts can live outside projects and use non-UUID IDs.
+// Project transcripts win when both forms contain the same native session.
+const exportedClaudeAdapter = localFileAdapter({
+  id: 'claude-code', name: 'Claude Code', description: 'Legacy local transcript exports',
+  capabilities: { history: true, forks: false, children: false, files: false },
+  roots: () => [join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'transcripts')],
+  match: p => p.endsWith('.jsonl'),
+  parse: (path, files) => envelopeHistory(path, files.get(path)!),
+});
+export const claudeAdapter = combineAdapters([sdkClaudeAdapter, exportedClaudeAdapter]);

@@ -22,7 +22,14 @@ export interface Candidate {
   revision: string;
   locator: Record<string, string>;
 }
-export interface Discovery { sessions: Candidate[]; projects: Project[]; warnings: string[] }
+export interface Discovery {
+  sessions: Candidate[];
+  projects: Project[];
+  warnings: string[];
+  /** An unreadable authoritative representation must not be replaced by a stale export. */
+  blocked?: string[];
+  unavailable?: boolean;
+}
 export interface HistoryPage { messages: ImportedMessage[]; cursor?: string; partial?: boolean; note?: string }
 export interface SessionAdapter {
   id: string;

@@ -16,7 +16,7 @@ function taskAdapter(id: string, name: string, extension: string, env: string) {
   const roots = () => process.env[env] ? [join(process.env[env]!, 'tasks'), ...(id === 'cline' ? [join(process.env[env]!, 'data', 'sessions')] : [])]
     : [...editorTaskRoots(extension), ...(id === 'cline' ? [process.env.CLINE_SESSION_DATA_DIR || join(process.env.CLINE_DATA_DIR || join(process.env.CLINE_DIR || join(homedir(), '.cline'), 'data'), 'sessions')] : [])];
   return localFileAdapter({
-    id, name, description: id === 'kilo-code' ? 'Legacy VS Code extension task histories · current Kilo stores excluded' : id === 'cline' ? 'Local extension tasks and CLI/SDK message snapshots' : 'Local VS Code extension task histories',
+    id, name, description: id === 'kilo-code' ? 'VS Code extension task histories · choose Kilo CLI separately' : id === 'cline' ? 'Local extension tasks and CLI/SDK message snapshots' : 'Local VS Code extension task histories',
     capabilities: { history: true, forks: id === 'cline', children: true, files: true }, roots,
     match: path => /^[^/]+\/api_conversation_history\.json$/.test(path) || (id === 'cline' && /^[^/]+\/[^/]+\.messages\.json$/.test(path)),
     extras: path => ['history_item.json', 'task_metadata.json', 'session.json'].map(file => join(dirname(path), file)),
@@ -44,7 +44,7 @@ function taskAdapter(id: string, name: string, extension: string, env: string) {
         parent: text(history.parentTaskId || info.parent_session_id) || undefined,
         fork: text(info.metadata?.fork?.forkedFromSessionId) || undefined,
         session: { directory: text(history.workspace || info.cwd || info.workspace_root || task.workspace), created: time(info.started_at), title: text(history.task || info.metadata?.title), model: text(lastModel?.modelInfo?.id || lastModel?.model || info.model) || 'Unknown model', provider: text(lastModel?.modelInfo?.provider || info.provider) },
-        note: sdk ? 'Cline CLI/SDK message snapshots. Metadata is used when a matching session.json exists; database-only workspace, title, and lineage fields remain unknown. Binary attachments are omitted.' : `${name} API-conversation snapshots; UI-only messages, older compacted content, and binary attachments can be absent. XML tool requests alone are not successful edit evidence.${id === 'kilo-code' ? ' Current Kilo CLI and migrated database histories are not imported.' : ''}` };
+        note: sdk ? 'Cline CLI/SDK message snapshots. Metadata is used when a matching session.json exists; database-only workspace, title, and lineage fields remain unknown. Binary attachments are omitted.' : `${name} API-conversation snapshots; UI-only messages, older compacted content, and binary attachments can be absent. XML tool requests alone are not successful edit evidence.${id === 'kilo-code' ? ' Select the separate Kilo CLI source for its SQLite history.' : ''}` };
     },
   });
 }

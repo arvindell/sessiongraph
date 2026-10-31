@@ -7,7 +7,7 @@ import type { Candidate, SessionAdapter } from './types';
 import { blockEvents, eventFor, eventText } from '../events';
 
 const root = () => process.env.CODEX_HOME || join(homedir(), '.codex');
-const revision = async (path: string) => { const s = await stat(path); return digest([7, s.mtimeMs, s.size]); };
+const revision = async (path: string) => { const s = await stat(path); return digest([8, s.mtimeMs, s.size]); };
 function changedPaths(value: unknown): string[] {
   if (!value || typeof value !== 'object') return [];
   const changes = Array.isArray(value) ? value : Object.entries(value).map(([path, change]) => ({ ...(change && typeof change === 'object' ? change : {}), path }));
@@ -96,10 +96,12 @@ export const codexAdapter: SessionAdapter = {
   async discover() {
     const found = new Map<string, Candidate>(), warnings: string[] = [];
     const names = await sessionNames();
-    const paths = [...await transcriptFiles(join(root(), 'sessions')), ...await transcriptFiles(join(root(), 'archived_sessions'))];
+    const match = (name: string) => /\.jsonl(?:\.[\w.-]+)?$/.test(name);
+    const paths = [...await transcriptFiles(join(root(), 'sessions'), 20_000, match), ...await transcriptFiles(join(root(), 'archived_sessions'), 20_000, match)];
     if (paths.length >= 20_000) warnings.push('Codex transcript listing may be partial (20,000 files per history folder).');
     let unsupported = 0;
     for (const path of paths) {
+      try {
       const first = await readJSONL(path, 0, 2_000_000, 100);
       const meta = first.rows.find((r) => r.value.type === 'session_meta')?.value.payload;
       if (!meta?.id || typeof meta.id !== 'string') { unsupported++; continue; }
@@ -119,10 +121,12 @@ export const codexAdapter: SessionAdapter = {
       }
       if (session.title === 'Untitled session') session.title = 'Codex session';
       const old = found.get(session.id);
-      if (!old || session.updated > old.session.updated) found.set(session.id, candidate);
+      const rank = (c: Candidate) => (c.session.archived ? 0 : 2) + Number(c.locator.path.endsWith('.jsonl'));
+      if (!old || rank(candidate) > rank(old) || rank(candidate) === rank(old) && session.updated > old.session.updated) found.set(session.id, candidate);
+      } catch { unsupported++; }
     }
-    if (unsupported) warnings.push(`${unsupported} Codex files have no supported rollout metadata.`);
-    warnings.push('Codex imports local JSONL rollouts. Cloud-only and store-only history are not imported.');
+    if (unsupported) warnings.push(`${unsupported} Codex files were unreadable, oversized, or had no supported rollout metadata; saved history is retained.`);
+    warnings.push('Codex imports local JSONL rollouts and bounded zstd/gzip archive copies. Cloud-only and store-only history are not imported.');
     const sessions = [...found.values()];
     return { sessions, projects: [...new Map(sessions.map((c) => { const p = project('codex', c.session.directory); return [p.id, p]; })).values()], warnings };
   },

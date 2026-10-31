@@ -39,6 +39,15 @@ async function read(candidate: Candidate) {
   return messages;
 }
 
+test('Claude legacy transcripts work without a projects directory and defer to native project history', async () => fixture(async root => {
+  const id = randomUUID(); await mkdir(join(root, 'transcripts'));
+  await writeFile(join(root, 'transcripts', 'export.jsonl'), conversation(id).map(r => JSON.stringify(r)).join('\n'));
+  assert.equal(await claudeAdapter.detect(), true);
+  const found = await claudeAdapter.discover(); assert.equal(found.sessions.length, 1); assert.equal((await read(found.sessions[0])).length, 2);
+  await put(root, `project/${id}.jsonl`, conversation(id, 4));
+  const authoritative = await claudeAdapter.discover(); assert.equal(authoritative.sessions.length, 1); assert.equal((await read(authoritative.sessions[0])).length, 4);
+}));
+
 test('Claude imports VS Code IDE-prefixed prompts and Windows paths with recorded message times', async () => fixture(async root => {
   const id = randomUUID(), file = await put(root, `C--Users-Example-User-Code-app/${id}.jsonl`, conversation(id));
   const before = await readFile(file), store = new SessionGraphStore(':memory:');
