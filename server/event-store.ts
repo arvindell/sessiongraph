@@ -52,7 +52,9 @@ function coverage(db: DatabaseSync, session: Session) {
 export function readEventMarkers(db: DatabaseSync, session: Session): TimelineMarkers {
   const end = Math.max(session.created, session.activity?.lastMessageAt || session.created);
   const totals = db.prepare(`SELECT count(*) AS total, count(*) FILTER (WHERE time IS NULL) AS untimed, count(*) FILTER (WHERE time<? OR time>?) AS outside FROM timeline_items WHERE session_id=? AND (${filters.messages})`).get(session.created, end, session.id)!;
-  const rows = db.prepare(`SELECT ${summaryColumns} FROM timeline_items WHERE session_id=? AND (${filters.messages}) AND time>=? AND time<=? ORDER BY time DESC,ordinal DESC LIMIT 2000`).all(session.id, session.created, end);
+  // Lazy per-session read, bounded by the saved timeline's import limit. Fetch
+  // lightweight summaries, not message bodies, so every timed message gets a dot.
+  const rows = db.prepare(`SELECT ${summaryColumns} FROM timeline_items WHERE session_id=? AND (${filters.messages}) AND time>=? AND time<=? ORDER BY time DESC,ordinal DESC`).all(session.id, session.created, end);
   return { sessionID: session.id, ...coverage(db, session), items: rows.reverse().map(eventSummary), total: Number(totals.total), untimed: Number(totals.untimed), outsideLifetime: Number(totals.outside), limited: Number(totals.total) - Number(totals.untimed) - Number(totals.outside) > rows.length };
 }
 export function readEvents(db: DatabaseSync, session: Session, options: { cursor?: string; item?: string; filter?: string; revision?: string } = {}): TimelinePage {

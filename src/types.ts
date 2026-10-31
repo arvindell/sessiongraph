@@ -50,6 +50,7 @@ export interface FileChange {
 }
 
 export interface SessionDetail {
+  revision?: string;
   note?: string;
   id: string;
   files: FileChange[];

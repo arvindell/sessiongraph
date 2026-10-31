@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeMessages, editedPaths, sessionFromResponse, type RawMessage, type RawSession } from '../server/opencode';
-import { headPosition, makeGraph, progressX, timeX, trailPosition } from '../src/layout';
+import { directoryLabel, headPosition, laneKey, makeGraph, orbPosition, progressX, timeX, trailPosition } from '../src/layout';
 import type { Session } from '../src/types';
+import { spiralPosition, spiralTangent } from '../src/spiral';
 
 function session(id: string, created: number, extra: Partial<Session> = {}): Session {
   return { id, created, updated: created, title: id, projectID: 'project', directory: '/repo', model: 'test', provider: 'test', agent: 'build', cost: 0, tokens: 100, archived: false, ...extra };
@@ -40,6 +41,80 @@ test('equal timestamps and malformed relationship cycles keep finite positions',
   assert.ok(graph.nodes.every((n) => n.position.every(Number.isFinite)));
   assert.equal(graph.nodes[0].position[0], graph.nodes[1].position[0]);
   assert.equal(makeGraph([], []).nodes.length, 0);
+});
+
+test('full directories share streams across harness projects while distinct paths and worktrees stay separate', () => {
+  const sessions = [
+    session('cursor:a', 1, { source: 'cursor', projectID: 'cursor:project' }),
+    session('opencode:a', 2, { source: 'opencode', projectID: 'opencode:project' }),
+    session('claude:a', 3, { source: 'claude-code', projectID: 'claude:project', directory: '/repo/' }),
+    session('other', 4, { directory: '/elsewhere/repo' }),
+    session('tree', 5, { directory: '/worktree' }),
+  ];
+  const projects = [{ id: 'opencode:project', name: 'repo', directory: '/main', worktrees: ['/repo'] }];
+  const graph = makeGraph(sessions, projects);
+  assert.equal(graph.lanes.length, 3); assert.equal(graph.nodes.length, 5);
+  const shared = graph.lanes.find(lane => lane.nodes.length === 3)!;
+  assert.equal(shared.kind, 'worktree', 'Worktree metadata can come from any source in the shared lane');
+  assert.deepEqual(shared.nodes.map(n => n.session.id), ['cursor:a', 'opencode:a', 'claude:a']);
+  assert.equal(graph.edges.length, 0);
+  assert.deepEqual(makeGraph([...sessions].reverse(), projects), graph);
+  assert.notEqual(laneKey(session('upper', 1, { directory: '/Repo' })), laneKey(sessions[0]));
+  assert.equal(laneKey(session('win', 1, { directory: 'C:\\Code\\repo\\' })), laneKey(session('slash', 2, { directory: 'C:/Code/repo' })));
+  assert.equal(directoryLabel('C:\\Code\\repo\\'), 'repo');
+});
+
+test('missing directories fall back to harness-scoped project IDs without guessing a known directory', () => {
+  const graph = makeGraph([
+    session('a', 1, { source: 'cursor', projectID: 'same', directory: '' }),
+    session('b', 2, { source: 'cursor', projectID: 'same', directory: '' }),
+    session('c', 3, { source: 'opencode', projectID: 'same', directory: '' }),
+    session('d', 4, { source: 'cursor', projectID: 'different', directory: '' }),
+    session('e', 5, { source: 'cursor', projectID: 'same', directory: '/repo' }),
+  ], [{ id: 'same', name: 'Native project', directory: '', worktrees: [] }]);
+  assert.equal(graph.lanes.length, 4);
+  const fallback = graph.lanes.find(l => l.nodes.length === 2)!;
+  assert.equal(fallback.label, 'Native project');
+  assert.deepEqual(fallback.nodes.map(n => n.session.id), ['a', 'b']);
+});
+
+test('adding a harness to an existing directory preserves its lane, colors and positions on refresh', () => {
+  const a = session('a', 1, { source: 'opencode', projectID: 'old' });
+  const initial = makeGraph([a, session('elsewhere', 2, { directory: '/other' })], []);
+  const refreshed = makeGraph([{ ...a, projectID: 'new' }, session('elsewhere', 2, { directory: '/other' }), ...Array.from({ length: 20 }, (_, i) => session(`cursor:${i}`, 3 + i, { source: 'cursor', projectID: 'cursor:repo' }))], [], initial);
+  assert.equal(refreshed.lanes.length, 2);
+  for (const node of initial.nodes) {
+    const next = refreshed.nodes.find(n => n.session.id === node.session.id)!;
+    assert.deepEqual(next.position, node.position); assert.deepEqual(next.startPosition, node.startPosition); assert.equal(next.color, node.color);
+  }
+});
+
+test('drawn orb clears endpoint dots at every playback time and scale without changing saved coordinates', () => {
+  const hour = 3_600_000;
+  const graph = makeGraph([session('long', hour, { activity: { firstMessageAt: hour, lastMessageAt: 10 * hour, userMessages: 2, untimedUserMessages: 0 } })], []);
+  const node = graph.nodes[0], original = structuredClone(node);
+  for (const time of [0, hour, 5 * hour, 10 * hour, 12 * hour]) for (const scale of [.6, 1, 1.8]) {
+    const frontier = timeX(time, graph), radius = node.radius * scale, gap = .2;
+    const center = orbPosition(node, frontier, radius, gap);
+    assert.ok(Math.abs(center[0] - radius - headPosition(node, frontier)[0] - gap) < 1e-9);
+    assert.deepEqual(center.slice(1), node.position.slice(1));
+  }
+  assert.deepEqual(node, original);
+});
+
+test('spiral dots retain exact time and fixed positions as sessions grow, including tiny lifetimes', () => {
+  const hour = 3_600_000;
+  const active = session('spiral', hour, { activity: { firstMessageAt: hour, lastMessageAt: 4 * hour, userMessages: 5, untimedUserMessages: 0 } });
+  const initial = makeGraph([active], []), node = initial.nodes[0];
+  const next = makeGraph([{ ...active, activity: { ...active.activity!, lastMessageAt: 8 * hour } }], [], initial).nodes[0];
+  for (const time of [hour, hour + 1, 1.5 * hour, 2 * hour, 4 * hour]) {
+    const x = timeX(time, initial), point = spiralPosition(node, x);
+    assert.equal(point[0], x); assert.deepEqual(spiralPosition(next, x), point);
+    assert.ok(point.every(Number.isFinite) && spiralTangent(node, x).every(Number.isFinite));
+    assert.ok(Math.hypot(point[1] - node.position[1], point[2] - node.position[2]) < .21, 'The twist stays subtle');
+  }
+  assert.deepEqual(spiralPosition(node, node.startPosition[0]), node.startPosition);
+  assert.notDeepEqual(spiralPosition(node, timeX(2 * hour, initial)).slice(1), node.position.slice(1));
 });
 
 test('refresh preserves existing coordinates and directory colors as history and directory counts grow', () => {

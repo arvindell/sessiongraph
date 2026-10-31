@@ -173,10 +173,10 @@ export class SessionGraphStore {
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
   events(id: string, options: Parameters<typeof readEvents>[2] = {}) {
-    return this.eventSnapshot(id, (session) => readEvents(this.db, session, options));
+    return this.readSnapshot(id, (session) => readEvents(this.db, session, options));
   }
-  eventMarkers(id: string) { return this.eventSnapshot(id, (session) => readEventMarkers(this.db, session)); }
-  private eventSnapshot<T>(id: string, read: (session: Session) => T): T {
+  eventMarkers(id: string) { return this.readSnapshot(id, (session) => readEventMarkers(this.db, session)); }
+  private readSnapshot<T>(id: string, read: (session: Session) => T): T {
     this.db.exec('BEGIN');
     try {
       const session = this.getSession(id);
@@ -199,17 +199,19 @@ export class SessionGraphStore {
     return { id, fragments, messages: page.messages.length, nextCursor: page.next, truncated };
   }
   detail(id: string, cursor?: string): SessionDetail {
-    const page = this.messagePage(id, Number(cursor || 0), 120), session = this.getSession(id)!;
-    const files = new Map<string, SessionDetail['files'][number]>(), tools = new Map<string, number>();
-    for (const message of page.messages) {
-      for (const file of message.files) {
-        const previous = files.get(file.path);
-        files.set(file.path, { ...file, source: previous?.source === 'snapshot' ? 'snapshot' : file.source, steps: (previous?.steps || 0) + file.steps });
+    return this.readSnapshot(id, (session) => {
+      const page = this.messagePage(id, Number(cursor || 0), 120);
+      const files = new Map<string, SessionDetail['files'][number]>(), tools = new Map<string, number>();
+      for (const message of page.messages) {
+        for (const file of message.files) {
+          const previous = files.get(file.path);
+          files.set(file.path, { ...file, source: previous?.source === 'snapshot' ? 'snapshot' : file.source, steps: (previous?.steps || 0) + file.steps });
+        }
+        message.tools.forEach((tool) => tools.set(tool, (tools.get(tool) || 0) + 1));
       }
-      message.tools.forEach((tool) => tools.set(tool, (tools.get(tool) || 0) + 1));
-    }
-    return { id, files: [...files.values()].sort((a, b) => b.steps - a.steps), tools: [...tools].map(([name, count]) => ({ name, count })), locations: [], messagesScanned: page.messages.length,
-      snapshotSteps: page.messages.reduce((n, m) => n + (m.snapshots || 0), 0), nextCursor: page.next, partial: Boolean(page.next) || session.coverage?.history !== 'complete', loadedAt: Date.now(), note: session.coverage?.note || (session.coverage?.history === 'pending' ? 'Waiting for import.' : undefined) };
+      return { id, revision: session.revision, files: [...files.values()].sort((a, b) => b.steps - a.steps), tools: [...tools].map(([name, count]) => ({ name, count })), locations: [], messagesScanned: page.messages.length,
+        snapshotSteps: page.messages.reduce((n, m) => n + (m.snapshots || 0), 0), nextCursor: page.next, partial: Boolean(page.next) || session.coverage?.history !== 'complete', loadedAt: Date.now(), note: session.coverage?.note || (session.coverage?.history === 'pending' ? 'Waiting for import.' : undefined) };
+    });
   }
   checkpoints(after = '') {
     const rows = this.db.prepare('SELECT id,data FROM search_cache WHERE id>? ORDER BY id LIMIT 51').all(after);

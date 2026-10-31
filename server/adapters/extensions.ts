@@ -3,6 +3,7 @@ import { basename, dirname, join } from 'node:path';
 import { eventFor, eventText } from '../events';
 import { json, localFileAdapter, object, text, time } from './local-files';
 import { conversationMessage, successfulEdits } from './local-messages';
+import { sumRecordedTokens } from '../../src/playback-tokens';
 
 function editorTaskRoots(extension: string) {
   const home = homedir();
@@ -72,7 +73,7 @@ export const continueAdapter = localFileAdapter({
     });
     const usage = object(value.usage);
     return { nativeID: value.sessionId, messages,
-      session: { directory: text(value.workspaceDirectory), title: text(value.title), created: time(meta.dateCreated), model: text(value.chatModelTitle) || 'Unknown model', cost: typeof usage.totalCost === 'number' ? usage.totalCost : null, tokens: typeof usage.promptTokens === 'number' && typeof usage.completionTokens === 'number' ? usage.promptTokens + usage.completionTokens : null },
+      session: { directory: text(value.workspaceDirectory), title: text(value.title), created: time(meta.dateCreated), model: text(value.chatModelTitle) || 'Unknown model', cost: typeof usage.totalCost === 'number' ? usage.totalCost : null, tokens: sumRecordedTokens([usage.promptTokens, usage.completionTokens]) },
       note: 'Local Continue conversation snapshots. Missing message times remain unknown. Context attachments and transient tool UI state are not imported; tool outputs are retained when recorded as messages.' };
   },
 });

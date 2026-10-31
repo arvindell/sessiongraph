@@ -105,13 +105,14 @@ test('Codex and Cursor keep tool results, lifecycle events, unknown times and na
   assert.equal(cursor.events![0].callID, 't'); assert.equal(cursor.events![0].kind, 'tool_result'); assert.equal(cursor.events![0].timeSource, 'unknown');
 });
 
-test('marker limits disclose unplotted messages and never place unknown or outside-lifetime timestamps', () => {
+test('all saved message markers load beyond 2,000 while unknown or outside-lifetime times stay unplotted', () => {
   const store = new SessionGraphStore(':memory:');
   try {
     store.upsert(candidate);
     store.replace(candidate, [message('early', 50), message('untimed', 0), ...Array.from({ length: 2010 }, (_, i) => message(`m${i}`, 100 + i))], false);
     const markers = store.eventMarkers(candidate.session.id);
-    assert.equal(markers.items.length, 2000); assert.equal(markers.total, 2012); assert.equal(markers.limited, true); assert.equal(markers.outsideLifetime, 1); assert.equal(markers.untimed, 1);
+    assert.equal(markers.items.length, 2010); assert.equal(markers.total, 2012); assert.equal(markers.limited, false); assert.equal(markers.outsideLifetime, 1); assert.equal(markers.untimed, 1);
+    assert.equal(markers.items[0].time, 100); assert.equal(markers.items.at(-1)!.time, 2109);
     assert.equal(store.events(candidate.session.id, { filter: 'untimed' }).selected!.messageID, 'untimed');
   } finally { store.close(); }
 });

@@ -73,9 +73,9 @@ export function createSessionLauncher(onVisibility: () => void) {
     $('.launch-mode').textContent = value.mode === 'resume' ? 'Resume original session' : 'New session · saved context';
     $('.launch-hint').textContent = value.mode === 'resume'
       ? `Continue this conversation in ${name}.`
-      : `${name} will read the saved conversation, recap where you left off, and ask what to do next.${value.context?.partial ? ' Some history is missing or shortened.' : ''}`;
+      : `Start in ${name} with the saved conversation.`;
     $('.launch-context').hidden = !value.context;
-    $('.launch-coverage').textContent = value.context?.note || '';
+    $('.launch-coverage').textContent = value.context ? `${value.context.messages.toLocaleString()} / ${value.context.totalMessages.toLocaleString()} messages${value.context.partial ? ' · Partial history' : ''}` : '';
     $('.launch-context-path').textContent = value.context?.path || '';
     $('.launch-availability').textContent = !value.targetAvailable
       ? `${name} CLI was not found. Install it, then run the copied command.`

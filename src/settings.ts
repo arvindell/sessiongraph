@@ -53,7 +53,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
         ${range('trailSpeed', 'Flow speed', 'How quickly the light travels along the trails.', 10, 100)}
         ${toggle('relationships', 'Relationship links', 'Show recorded fork and child connections.')}
         ${toggle('messageDots', 'Message dots', 'User and assistant messages, colored to match the selected session.')}
-        ${range('playbackSpeed', 'Playback speed', '1× plays the full timeline in 30 seconds.', .25, 3, '×', .25)}
+        ${range('playbackSpeed', 'Playback speed', '1× plays the full timeline in 15 seconds.', .25, 3, '×', .25)}
         <p class="settings-footnote">Flow is decorative. Message dots reflect saved timestamps; visual settings never alter your history.</p>
       </section>
       <section id="settings-privacy" role="tabpanel" aria-labelledby="settings-tab-privacy" hidden><h3>Privacy</h3><p class="settings-description">Local storage and network access.</p>

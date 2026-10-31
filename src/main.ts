@@ -1,4 +1,4 @@
-import { createIcons, Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX } from 'lucide';
+import { createIcons, Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2 } from 'lucide';
 import type { TimelineScene } from './scene';
 import { directoryLabel, makeGraph, sessionEnd } from './layout';
 import { setupPanelDragging } from './panels';
@@ -8,6 +8,8 @@ import { createImports } from './imports';
 import { AutoImportScheduler, AUTO_IMPORT_INTERVAL } from './auto-import';
 import { LibrarySettingsSaver, type LibrarySettingsPatch } from './library-settings';
 import { normalizeViewState, type ViewState } from './view-state';
+import { playbackTokens } from './playback-tokens';
+import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, playbackDate, playbackSessions, timelineBuckets } from './playback';
 import { sourceName, sourceIcon } from './sources';
 import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from './preferences';
 import { createSettings } from './settings';
@@ -22,7 +24,7 @@ import type { TimelineMarkers } from './timeline';
 import type { SessionGraphData, Graph, Session, SessionDetail } from './types';
 import './style.css';
 
-const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX };
+const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2 };
 const refreshIcons = () => { createIcons({ icons, attrs: { 'stroke-width': 1.5 } }); refreshSelects(); };
 const icon = (name: string, cls = '') => `<i data-lucide="${name}" class="${cls}" aria-hidden="true"></i>`;
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
@@ -66,7 +68,11 @@ let playFrame = 0;
 let playing = false;
 let playback = 1;
 let lastPlayTime = 0;
-const PLAYBACK_DURATION = 30_000;
+let playbackOutroTime = 0;
+let tokenPlayback = playbackTokens([]), tokenDisplay = '';
+let sessionPlayback = playbackSessions([]);
+let playbackPanels: { explorer: boolean; inspector: boolean } | undefined;
+let playbackShare: ReturnType<typeof import('./share').createPlaybackShare> | undefined;
 let preferences: Preferences = { ...DEFAULT_PREFERENCES }, preferencesSaved = true;
 let autoImport: AutoImportScheduler | undefined;
 let settingsSaver: LibrarySettingsSaver | undefined;
@@ -113,6 +119,9 @@ $('#app').innerHTML = `
   <section class="timeline-panel floating-panel glass" id="timeline" aria-label="Timeline controls">
     <div class="timeline-top"><button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="0" class="active">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button></div>
     <div class="timeline-track"><button id="play" class="play-button" aria-label="Play timeline">${icon('play')}</button><div class="histogram-wrap"><div id="histogram" class="histogram"></div><input id="scrubber" type="range" min="0" max="1000" value="1000" aria-label="Timeline playback position"/><div class="timeline-cursor" id="timeline-cursor"></div></div><div class="playback-date" id="playback-date">—</div></div>
+    <div class="playback-period" id="playback-period" aria-label="Approximate playback date">—</div>
+    <div class="playback-summary" id="playback-summary" hidden><span><strong id="playback-sessions">0</strong><span>Sessions</span></span><span><strong id="playback-tokens">0</strong><span>Burnt tokens</span></span><small id="playback-token-coverage"></small></div>
+    <div class="playback-share"><button id="share-playback" class="primary-button" disabled>${icon('share-2')}Share SessionGraph</button></div>
   </section>
   <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div>
     <div class="graph-legend"><span><i class="legend-node"></i>Session orb</span><span><i class="legend-node message"></i>Message</span><span><i class="legend-line lane"></i>Session lifetime</span><span><i class="legend-line fork"></i>Fork</span><span><i class="legend-line child"></i>Child</span><span id="file-legend" hidden><i class="legend-file"></i>File</span></div>
@@ -130,7 +139,8 @@ const timelineClient = new TimelineClient();
 const eventHover = createEventHover($('#tooltip'), $('#scene'), timelineClient);
 const eventExplorer = createEventExplorer($('#inspector'), timelineClient, { select: (item) => {
   eventHover.clear(); scene?.selectEvent(item?.id || null);
-  if (item) { stopPlayback(); playback = 1; updateScrubber(); scene?.focusEvent(item); }
+  // A message request started before playback may finish while its panel is hidden.
+  if (item && !playing) { playback = 1; updateScrubber(); scene?.focusEvent(item); }
 } });
 function openEvents(item?: string) {
   const session = data?.sessions.find((s) => s.id === selectedID);
@@ -198,9 +208,9 @@ $('#search').addEventListener('click', sessionSearch.open);
 
 type PanelID = 'explorer' | 'timeline' | 'inspector';
 function setPanel(id: PanelID, visible: boolean) {
+  if (playing && (id === 'timeline' ? !visible : visible)) stopPlayback();
   const panel = $(`#${id}`);
   panel.hidden = !visible;
-  if (id === 'timeline' && !visible && playing) stopPlayback();
   $(`#toggle-${id}`).setAttribute('aria-expanded', String(visible));
   if (visible && innerWidth < 760 && id !== 'timeline') {
     const other = id === 'explorer' ? 'inspector' : 'explorer';
@@ -391,6 +401,7 @@ function updateFilters(fit = false, preserve = false) {
 }
 
 function renderGraphMessage() {
+  $<HTMLButtonElement>('#share-playback').disabled = !filtered.length || !scene;
   const message = $('#graph-message');
   message.hidden = Boolean(filtered.length && scene);
   if (!filtered.length) message.innerHTML = `${icon('search')}<h3>No matching sessions</h3><button class="text-button" id="clear-filters">Reset filters ${icon('rotate-ccw')}</button>`;
@@ -433,9 +444,8 @@ function updateListSelection(previous: string | null) {
 }
 
 function renderHistogram() {
-  const buckets = new Array<number>(70).fill(0);
-  const duration = Math.max(1, graph.end - graph.start);
-  for (const session of filtered) buckets[Math.min(69, Math.floor((sessionEnd(session) - graph.start) / duration * 70))]++;
+  tokenPlayback = playbackTokens(filtered); sessionPlayback = playbackSessions(filtered); tokenDisplay = '';
+  const buckets = timelineBuckets(filtered.map(sessionEnd), graph.start, graph.end);
   const peak = Math.max(...buckets, 1);
   $('#histogram').innerHTML = buckets.map((n) => `<span style="height:${Math.max(4, n / peak * 100)}%;opacity:${n ? 0.8 : 0.15}" title="${n} session endpoints"></span>`).join('');
   $('#date-label').textContent = graph.start ? `${date(graph.start)} — ${date(graph.end, true)}` : 'No sessions';
@@ -449,12 +459,33 @@ function updateScrubber() {
   $<HTMLInputElement>('#scrubber').value = String(Math.round(playback * 1000));
   $('#timeline-cursor').style.left = `${playback * 100}%`;
   $('#histogram').style.setProperty('--progress', `${playback * 100}%`);
-  $('#playback-date').textContent = graph.start ? date(graph.start + (graph.end - graph.start) * playback) : '—';
+  const time = graph.start + (graph.end - graph.start) * playback;
+  $('#playback-date').textContent = graph.start ? date(time) : '—';
+  const period = graph.nodes.length ? playbackDate(time, graph.end - graph.start) : '—';
+  if ($('#playback-period').textContent !== period) $('#playback-period').textContent = period;
+  const usage = tokenPlayback.at(time, playback >= 1);
+  const sessions = sessionPlayback(time, playback >= 1);
+  const display = `${usage.tokens}:${usage.sessions}:${sessions}`;
+  if (display !== tokenDisplay) {
+    tokenDisplay = display;
+    $('#playback-summary').hidden = filtered.length === 0;
+    $('#playback-sessions').textContent = count(sessions);
+    $('#playback-tokens').textContent = tokenPlayback.recorded ? compact(usage.tokens) : '—';
+    $('#playback-token-coverage').textContent = tokenPlayback.recorded ? `${count(usage.sessions)} / ${count(tokenPlayback.recorded)} with recorded usage` : 'Usage unavailable';
+    $('#playback-summary').title = `${count(sessions)} sessions started. ${tokenPlayback.recorded ? `${count(usage.tokens)} burnt tokens` : 'Token usage unavailable'}. Token totals are added at the latest saved message, including cache where reported. ${count(tokenPlayback.missing)} sessions have no supported recorded count.${tokenPlayback.untimed ? ` ${count(tokenPlayback.untimed)} totals have no message timestamp and are included only at the end.` : ''}`;
+  }
   scene?.setCutoff(playback);
 }
 
 function stopPlayback() {
   playing = false;
+  playbackOutroTime = 0;
+  $('#app').classList.remove('playback-mode');
+  if (playbackPanels) {
+    const previous = playbackPanels; playbackPanels = undefined;
+    setPanel('explorer', previous.explorer);
+    setPanel('inspector', previous.inspector && Boolean(selectedID));
+  }
   scene?.setPlaying(false);
   cancelAnimationFrame(playFrame);
   $('#play').innerHTML = icon('play');
@@ -464,11 +495,15 @@ function stopPlayback() {
 
 function animatePlayback(time: number) {
   if (!playing) return;
-  const delta = Math.min(time - lastPlayTime, 100);
+  const delta = Math.max(0, time - lastPlayTime);
   lastPlayTime = time;
-  if (!document.hidden) playback = Math.min(1, playback + delta * preferences.playbackSpeed / PLAYBACK_DURATION);
+  if (!document.hidden) {
+    if (playback < 1) playback = Math.min(1, playback + delta * preferences.playbackSpeed / PLAYBACK_DURATION);
+    else playbackOutroTime += delta;
+  }
   updateScrubber();
-  if (playback >= 1) stopPlayback();
+  scene?.setPlaybackOutro(playback >= 1 ? Math.min(1, playbackOutroTime / PLAYBACK_ORBIT_DURATION) : null);
+  if (playback >= 1 && playbackOutroTime >= PLAYBACK_ORBIT_DURATION + PLAYBACK_END_HOLD) stopPlayback();
   else playFrame = requestAnimationFrame(animatePlayback);
 }
 
@@ -523,20 +558,15 @@ function renderInspector(session: Session, reveal = true) {
 }
 
 function renderTimeline(session: Session, timeline?: TimelineMarkers) {
-  const endpointMessages = timeline?.items.filter((item) => item.kind === 'message' && item.time === session.activity?.lastMessageAt).length || 0;
   const notes = timeline ? [
-    `${count(timeline.items.length - endpointMessages)} of ${count(timeline.total)} saved messages plotted. Click a dot to read.`,
-    endpointMessages ? 'The session sphere represents the latest message; read it in the explorer.' : '',
-    timeline.untimed ? `${count(timeline.untimed)} have no recorded timestamp; browse them in the explorer.` : '',
-    timeline.outsideLifetime ? `${count(timeline.outsideLifetime)} fall outside this lifetime; available in the explorer.` : '',
-    timeline.limited ? 'Map shows the latest 2,000 timed messages. The explorer pages through the full conversation.' : '',
-    timeline.partial ? 'Partial history.' : '',
-    'Nearby messages can overlap; use Previous / Next in the explorer.',
-  ].filter(Boolean) : ['Loading message markers…'];
+    `${count(timeline.total)} messages · ${count(timeline.items.length)} on map`,
+    timeline.limited ? 'Map limit reached' : '',
+    timeline.partial ? 'Partial history' : '',
+  ].filter(Boolean) : ['Loading messages…'];
   $('#message-detail').innerHTML = `<div class="section-label">Session timeline</div><dl class="metadata">
     <div><dt>Trail starts</dt><dd>${timestamp(session.created)}</dd></div>
     <div><dt>Node · last message</dt><dd>${session.activity?.lastMessageAt ? timestamp(session.activity.lastMessageAt) : 'Unknown · at session start'}</dd></div>
-    </dl><div class="event-key"><span style="--event-color:${nodeColors.get(session.id) || '#b0e9d6'}"><i></i>User & assistant messages · hover to preview</span></div><p class="coverage-note">${notes.map(escape).join('<br>')}</p><button class="secondary-button explore-events">Explore messages ${icon('arrow-right')}</button>${timeline?.note ? `<details class="more-details history-coverage"><summary>History coverage ${icon('chevron-down')}</summary><p class="coverage-note">${escape(timeline.note)}</p></details>` : ''}`;
+    </dl><div class="event-key"><span style="--event-color:#ffffff"><i></i>User & assistant messages</span></div><p class="coverage-note">${notes.map(escape).join(' · ')}</p><button class="secondary-button explore-events">Explore messages ${icon('arrow-right')}</button>`;
   $('.explore-events').addEventListener('click', () => openEvents()); refreshIcons();
 }
 
@@ -572,30 +602,43 @@ function renderDetail(detail: SessionDetail) {
   $('#file-detail').innerHTML = `
     <section class="detail-section"><div class="section-label">Changed files<span>${count(files.length)}${detail.partial ? '+' : ''}</span></div>
     ${files.length ? `<ul class="file-list">${files.map((file) => `<li title="${escape(file.path)} · ${file.source}">${icon('file-code-2')}<div><strong>${escape(directoryLabel(file.path))}</strong>${file.path.includes('/') ? `<span>${escape(file.path.slice(0, file.path.lastIndexOf('/')))}</span>` : ''}</div><small>${file.steps}×</small></li>`).join('')}</ul>` : `<div class="no-files"><p>No file changes found.</p></div>`}
-     <p class="coverage-note">${count(detail.messagesScanned)} messages · ${detail.partial ? 'Partial history' : 'Imported history'}${!detail.snapshotSteps ? '<br>No snapshots; recorded tool/file-change evidence only.' : ''}${files.length > 80 ? '<br>80 files shown on the map.' : ''}</p>
-    ${detail.note ? `<p class="coverage-note">${escape(detail.note)}</p>` : ''}
-    ${detail.nextCursor ? `<button id="load-earlier" class="load-more">Load earlier messages ${icon('arrow-right')}</button>` : ''}</section>
+     <p class="coverage-note">${count(detail.messagesScanned)} messages${detail.partial ? ' · Partial history' : ''}${!detail.snapshotSteps ? ' · Snapshots unavailable' : ''}${files.length > 80 ? ' · 80 files on map' : ''}</p>
+     ${detail.nextCursor ? '<p class="coverage-note" id="history-loading" role="status">Loading full history…</p>' : ''}</section>
     ${detail.locations.length ? `<details class="more-details detail-section"><summary>Directory moves ${icon('chevron-down')}</summary>${detail.locations.map((l) => `<div class="location-entry"><span>${timestamp(l.time)}</span><code>${escape(l.directory)}</code></div>`).join('')}</details>` : ''}
     ${detail.tools.length ? `<details class="more-details detail-section"><summary>Tools used <span>${count(detail.tools.reduce((sum, t) => sum + t.count, 0))}</span>${icon('chevron-down')}</summary><div class="tools-list">${detail.tools.slice(0, 12).map((tool) => `<div><span>${escape(tool.name)}</span><strong>${tool.count}</strong></div>`).join('')}</div></details>` : ''}
   `;
-  $('#load-earlier')?.addEventListener('click', () => loadFiles(detail.id, detail.nextCursor || undefined));
   scene?.setFiles(files);
   refreshIcons();
 }
 
-async function loadFiles(id: string, cursor?: string) {
+async function loadFiles(id: string) {
   const request = ++detailRequest;
   detailController?.abort(); const controller = new AbortController(); detailController = controller;
-  const earlier = $<HTMLButtonElement>('#load-earlier');
-  if (earlier) { earlier.disabled = true; earlier.textContent = 'Scanning earlier messages…'; }
+  let cursor: string | undefined, accumulated: SessionDetail | undefined;
+  const seen = new Set<string>();
   try {
-    const result = await fetchJSON<SessionDetail>(`/api/sessiongraph/session/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, controller.signal);
-    if (controller.signal.aborted || request !== detailRequest || selectedID !== id) return;
-    selectedDetail = cursor && selectedDetail ? mergeDetail(selectedDetail, result) : result;
-    renderDetail(selectedDetail);
+    do {
+      const result = await fetchJSON<SessionDetail>(`/api/sessiongraph/session/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, controller.signal);
+      if (controller.signal.aborted || request !== detailRequest || selectedID !== id) return;
+      if (accumulated && result.revision !== accumulated.revision) throw new Error('History changed. Retry to load the latest version.');
+      accumulated = accumulated ? mergeDetail(accumulated, result) : result;
+      selectedDetail = accumulated;
+      // Show the first page promptly, then update only the progress label until
+      // the full scan completes rather than rebuilding the file scene per page.
+      if (!cursor || !result.nextCursor) renderDetail(accumulated);
+      else if ($('#history-loading')) $('#history-loading').textContent = `Loading full history… ${count(accumulated.messagesScanned)} messages`;
+      cursor = result.nextCursor || undefined;
+      if (cursor && seen.has(cursor)) throw new Error('History could not be loaded. Please retry.');
+      if (cursor) seen.add(cursor);
+    } while (cursor);
   } catch (error) {
     if (controller.signal.aborted || request !== detailRequest || selectedID !== id) return;
-    if (selectedDetail) { renderDetail(selectedDetail); showToast('Could not load earlier history. Try again.'); }
+    if (selectedDetail) {
+      renderDetail(selectedDetail);
+      const status = $('#history-loading');
+      if (status) status.innerHTML = 'History loading interrupted. <button class="text-button" id="retry-detail">Retry</button>';
+      $('#retry-detail')?.addEventListener('click', () => void loadFiles(id));
+    }
     else {
       $('#file-detail').innerHTML = `<section class="detail-section"><div class="section-label">Changed files</div><p class="coverage-note">${escape(error instanceof Error ? error.message : 'Details unavailable.')}</p><button class="load-more" id="retry-detail">Retry file details</button></section>`;
       $('#retry-detail').addEventListener('click', () => loadFiles(id));
@@ -646,7 +689,12 @@ $('#play').addEventListener('click', () => {
   if (playing) return stopPlayback();
   if (playback >= 1) playback = 0;
   updateScrubber();
+  playbackPanels = { explorer: !$('#explorer').hidden, inspector: !$('#inspector').hidden };
+  setPanel('explorer', false); setPanel('inspector', false); setPanel('timeline', true);
+  eventHover.clear(); tooltipSession = undefined;
+  $('#app').classList.add('playback-mode');
   playing = true;
+  playbackOutroTime = 0;
   scene?.setPlaying(true);
   lastPlayTime = performance.now();
   $('#play').innerHTML = icon('pause');
@@ -654,6 +702,16 @@ $('#play').addEventListener('click', () => {
   refreshIcons();
   playFrame = requestAnimationFrame(animatePlayback);
 });
+document.addEventListener('visibilitychange', () => { lastPlayTime = performance.now(); }, { signal: autoImportEvents.signal });
+$('#share-playback').addEventListener('click', async () => {
+  const button = $<HTMLButtonElement>('#share-playback'); button.disabled = true;
+  try {
+    if (!playbackShare) { const { createPlaybackShare } = await import('./share'); playbackShare = createPlaybackShare(modalVisibility); }
+    if (graph.nodes.length) playbackShare.open(graph, preferences);
+  } catch { showToast('Could not open GIF sharing. Please try again.'); }
+  finally { button.disabled = !filtered.length || !scene; }
+});
+if (import.meta.hot) import.meta.hot.dispose(() => playbackShare?.dispose());
 for (const flat of [false, true]) $(`#view-${flat ? '2d' : '3d'}`).addEventListener('click', () => changePreferences({ view: flat ? '2d' : '3d' }));
 $('#motion').addEventListener('click', () => changePreferences({ motion: motionEnabled(preferences, reducedMotion.matches) ? 'off' : 'on' }));
 $('#help').addEventListener('click', () => { $<HTMLDialogElement>('#help-dialog').showModal(); modalVisibility(); });
@@ -662,6 +720,7 @@ $('#close-help').addEventListener('click', () => $<HTMLDialogElement>('#help-dia
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented) return;
   if (document.querySelector('dialog[open]')) return;
+  if (playing && event.key === 'Escape') { event.preventDefault(); stopPlayback(); return; }
   if (eventExplorer.handleKey(event)) return;
   if (event.key === 'Escape') {
     if (selectedID) clearSelection();
@@ -687,6 +746,7 @@ document.addEventListener('keydown', (event) => {
   }
   if (event.key.toLowerCase() === 'f') updateFilters(true);
   if (event.key.toLowerCase() === 'h') {
+    stopPlayback();
     const visible = (['explorer', 'timeline', 'inspector'] as const).filter((id) => !$(`#${id}`).hidden);
     if (visible.length) { hiddenPanels = visible; visible.forEach((id) => setPanel(id, false)); }
     else { (hiddenPanels.length ? hiddenPanels : ['explorer', 'timeline'] as PanelID[]).forEach((id) => { if (id !== 'inspector' || selectedID) setPanel(id, true); }); }

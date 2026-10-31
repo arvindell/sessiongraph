@@ -17,7 +17,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'${ipc}; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'`);
+  res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'${ipc}; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'`);
   if (url.pathname === '/__sessiongraph' && equals(url.searchParams.get('token') || '')) {
     res.setHeader('Set-Cookie', `sessiongraph=${token}; HttpOnly; SameSite=Strict; Path=/`);
     res.setHeader('Cache-Control', 'no-store'); res.writeHead(303, { Location: '/' }); res.end(); return;

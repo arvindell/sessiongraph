@@ -3,6 +3,7 @@ import { basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { SessionGraphData, FileChange, Project, Session, SessionDetail } from '../src/types';
 import { serviceFile } from './config';
+import { sumRecordedTokens } from '../src/playback-tokens';
 
 export interface RawSession {
   id: string;
@@ -102,7 +103,7 @@ async function loadSessionGraph(): Promise<SessionGraphData> {
         agent: raw.agent || 'build',
         cost: raw.cost || 0,
         // Input + output + cache tokens; reasoning is generally part of output.
-        tokens: (t?.input || 0) + (t?.output || 0) + (t?.cache?.read || 0) + (t?.cache?.write || 0),
+        tokens: sumRecordedTokens([t?.input, t?.output, t?.cache?.read, t?.cache?.write]),
         outcome: raw.outcome,
       });
     }

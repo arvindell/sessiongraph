@@ -5,7 +5,12 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
-import { connectionPositions, hash, headPosition, progressX, timeX, trailPosition } from './layout';
+import { connectionPositions, hash, headPosition, orbPosition, progressX, timeX } from './layout';
+import { cometTrails } from './comet-trails';
+import { ForkLinks } from './fork-links';
+import { orbArrivals } from './orb-arrivals';
+import { overviewTurn } from './playback';
+import { spiralPosition, spiralTangent } from './spiral';
 import { createNodeMaterial, nodeColor, nodeEmphasisShader } from './node-appearance';
 import { DEFAULT_PREFERENCES, motionEnabled, type Preferences } from './preferences';
 import type { FileChange, Graph, GraphNode } from './types';
@@ -13,7 +18,7 @@ import { isConversationMessage, type TimelineItem, type TimelineSummary } from '
 import { ScreenGrid } from './screen-grid';
 import { eventIcon } from './event-icons';
 
-type Label = { element: HTMLDivElement; point: THREE.Vector3; priority?: boolean; visible?: boolean; transform?: string };
+type Label = { element: HTMLDivElement; point: THREE.Vector3; priority?: boolean; visible?: boolean; transform?: string; x?: number; y?: number };
 
 function clearGroup(group: THREE.Group) {
   group.traverse((object) => {
@@ -79,11 +84,20 @@ export class TimelineScene {
   private playbackSphere = new THREE.Spherical();
   private playbackFocus = new THREE.Vector3();
   private playbackOffset = new THREE.Vector3();
+  private playbackOutro: number | null = null;
+  private playbackOrbit?: { theta: number; phi: number; radius: number; focus: THREE.Vector3 };
   private glowMaterial?: THREE.ShaderMaterial;
   private glowPositions?: THREE.BufferAttribute;
   private time = 0;
   private previousFrame = performance.now();
   private nodeReveal = new Float32Array();
+  private nodeBorn = new Float64Array();
+  private arrivals?: ReturnType<typeof orbArrivals>;
+  private comets?: ReturnType<typeof cometTrails>;
+  private selectedComets?: ReturnType<typeof cometTrails>;
+  private links?: ForkLinks;
+  private selectedLinks?: ForkLinks;
+  private headDirection = new THREE.Vector3();
   private revealAttribute?: THREE.BufferAttribute;
   private revealsActive = false;
   private graphBorn = 0;
@@ -102,6 +116,7 @@ export class TimelineScene {
   private lineUniforms = { uCutoff: { value: 160 }, uReveal: { value: 1 } };
   private preferences: Preferences = { ...DEFAULT_PREFERENCES };
   private trailUniforms = { uTrailTime: { value: 0 }, uTrailFlow: { value: 0 }, uTrailSpeed: { value: .5 }, uTrailOpacity: { value: 1 } };
+  private cometUniforms = { uHeadX: { value: 150 }, uPixelScale: { value: 1000 }, uNodeScale: { value: 1 } };
   private stars?: THREE.Points;
   private transform = new THREE.Object3D();
   private onSelect: (id: string | null) => void;
@@ -115,7 +130,7 @@ export class TimelineScene {
     onPlaybackInterrupt: () => void;
     onEvent: (id: string) => void;
     onEventHover: (item: TimelineSummary | null, count: number, x: number, y: number) => void;
-  }) {
+  }, private options: { manual?: boolean } = {}) {
     this.onSelect = callbacks.onSelect;
     this.onHover = callbacks.onHover;
     this.onEvent = callbacks.onEvent;
@@ -140,8 +155,6 @@ export class TimelineScene {
     this.controls.dampingFactor = 0.065;
     this.controls.rotateSpeed = 0.5;
     this.controls.zoomSpeed = 0.8;
-    this.controls.minDistance = 15;
-    this.controls.maxDistance = 1200;
     this.controls.addEventListener('start', () => {
       this.targetPosition = undefined; this.targetLook = undefined;
       this.focusedSession = null;
@@ -154,7 +167,7 @@ export class TimelineScene {
     // so apply it before the final output transform.
     const renderTarget = new THREE.WebGLRenderTarget(1, 1, {
       type: THREE.HalfFloatType,
-      samples: Math.min(4, this.renderer.capabilities.maxSamples),
+      samples: Math.min(2, this.renderer.capabilities.maxSamples),
     });
     this.composer = new EffectComposer(this.renderer, renderTarget);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -179,7 +192,7 @@ export class TimelineScene {
     this.renderer.domElement.addEventListener('pointerleave', this.pointerLeave);
     this.renderer.domElement.addEventListener('webglcontextlost', this.contextLost);
     this.resize();
-    this.animate();
+    if (!options.manual) this.animate();
   }
 
   private contextLost = (event: Event) => {
@@ -203,17 +216,17 @@ export class TimelineScene {
     if (motion !== this.motion) this.setMotion(motion);
     if ((values.view === '2d') !== this.flat) this.setFlat(values.view === '2d');
     if (values.quality !== previous.quality) {
-      const ratio = values.quality === 'performance' ? 1 : values.quality === 'high' ? Math.min(Math.max(devicePixelRatio, 2), 2.5) : Math.min(Math.max(devicePixelRatio, 1.5), 2);
-      const samples = values.quality === 'performance' ? 0 : Math.min(4, this.renderer.capabilities.maxSamples);
+      const samples = values.quality === 'performance' ? 0 : Math.min(values.quality === 'high' ? 4 : 2, this.renderer.capabilities.maxSamples);
       for (const target of [this.composer.renderTarget1, this.composer.renderTarget2]) { target.samples = samples; target.dispose(); }
       this.smaa.enabled = values.quality !== 'performance';
-      this.renderer.setPixelRatio(ratio); this.composer.setPixelRatio(ratio); this.resize();
+      this.resize();
     }
     this.bloom.strength = values.bloom / 100; this.bloom.enabled = values.quality !== 'performance' && values.bloom > 0;
     if (this.stars) this.stars.visible = values.stars;
     this.labelLayer.hidden = !values.labels;
     this.trailUniforms.uTrailOpacity.value = values.trailOpacity / 42;
     this.trailUniforms.uTrailSpeed.value = values.trailSpeed / 100;
+    this.cometUniforms.uNodeScale.value = values.nodeScale / 100;
     for (const group of [this.graphGroup, this.selectionGroup]) for (const object of group.children) {
       if (object.userData.kind === 'lifetime') object.visible = values.trails === 'all' || (values.trails === 'selected' && group === this.selectionGroup);
       if (object.userData.kind === 'relationship') object.visible = values.relationships;
@@ -224,7 +237,7 @@ export class TimelineScene {
   }
 
   setGraph(graph: Graph, fit = false, preserve = false) {
-    const reveals = preserve ? new Map(this.graph.nodes.map((node, index) => [node.session.id, this.nodeReveal[index]])) : undefined;
+    const births = preserve ? new Map(this.graph.nodes.map((node, index) => [node.session.id, this.nodeBorn[index]])) : undefined;
     this.pickingDirty = true;
     this.dirty = true;
     clearGroup(this.graphGroup);
@@ -247,8 +260,11 @@ export class TimelineScene {
     this.pickMesh = undefined;
     this.glowMaterial = undefined;
     this.glowPositions = undefined;
+    this.arrivals = undefined; this.links = undefined; this.selectedLinks = undefined;
+    this.comets = undefined; this.selectedComets = undefined;
     this.graphBorn = preserve ? this.time - 1 : this.time;
-    this.nodeReveal = Float32Array.from(graph.nodes, (node) => reveals?.get(node.session.id) ?? (this.motion ? 0 : 1));
+    this.nodeBorn = Float64Array.from(graph.nodes, node => births?.get(node.session.id) ?? NaN);
+    this.nodeReveal = new Float32Array(graph.nodes.length);
     this.revealsActive = this.motion && graph.nodes.length > 0;
     if (!graph.nodes.length) return;
     const geometry = new THREE.SphereGeometry(1, 32, 20);
@@ -288,39 +304,28 @@ export class TimelineScene {
     this.revealAttribute = new THREE.BufferAttribute(this.nodeReveal, 1).setUsage(THREE.DynamicDrawUsage);
     glowGeometry.setAttribute('reveal', this.revealAttribute);
     this.glowMaterial = new THREE.ShaderMaterial({
-      uniforms: { ...this.focusUniforms, uCutoff: { value: 151 }, uScale: { value: this.container.clientHeight * this.renderer.getPixelRatio() * 0.9 } },
+      uniforms: { ...this.focusUniforms, uCutoff: { value: 151 }, uScale: { value: this.container.clientHeight * this.renderer.getPixelRatio() * 0.9 }, uGlowSize: { value: 1 }, uGlowIntensity: { value: 1 } },
       vertexShader: `${nodeEmphasisShader}
-        attribute float size; attribute float reveal; varying vec3 vColor; varying float vVisible; uniform float uScale; uniform float uCutoff;
+        attribute float size; attribute float reveal; varying vec3 vColor; varying float vVisible; uniform float uScale; uniform float uCutoff; uniform float uGlowSize;
         void main() { vColor = color; vVisible = reveal; vNodeEmphasis = nodeEmphasis(); vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = clamp(size * (1.0 + sin(reveal * 3.14159) * .45) * uScale / -mv.z, 2.0, 100.0); gl_Position = projectionMatrix * mv; }`,
-      fragmentShader: `varying vec3 vColor; varying float vVisible; varying float vNodeEmphasis;
+        gl_PointSize = clamp(size * uGlowSize * uScale / max(.1,-mv.z), 2.0, 100.0); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `varying vec3 vColor; varying float vVisible; varying float vNodeEmphasis; uniform float uGlowIntensity;
         void main() { float d = length(gl_PointCoord - .5) * 2.0; if (d > 1.0) discard;
-        float a = pow(1.0 - d, 3.1) * .34 * vVisible * vNodeEmphasis; gl_FragColor = vec4(vColor * 1.15, a); }`,
+         float a = pow(max(0., 1.0 - d), 3.1) * .34 * uGlowIntensity * vVisible * vNodeEmphasis; gl_FragColor = vec4(vColor * 1.15, a); }`,
       vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
     const glows = new THREE.Points(glowGeometry, this.glowMaterial); glows.frustumCulled = false;
     this.graphGroup.add(glows);
+    this.arrivals = orbArrivals(graph.nodes, this.glowPositions.array as Float32Array, this.nodeReveal, { ...this.focusUniforms, ...this.cometUniforms, uPixelRatio: this.markerUniforms.uPixelRatio });
+    this.graphGroup.add(this.arrivals.mesh);
 
-    // A lifetime trail belongs to one session. Its endpoint shares the node's
-    // exact center, including after descendant placement and depth flattening.
-    const trailPositions: number[] = [], trailColors: number[] = [];
-    for (const node of graph.nodes) {
-      this.appendSegments([new THREE.Vector3(...node.startPosition), new THREE.Vector3(...node.position)], nodeColor(node), trailPositions, trailColors);
-    }
-    this.addLines(trailPositions, trailColors, 0.42, this.graphGroup, 'lifetime');
+    this.comets = this.addComets(graph.nodes, this.graphGroup);
     graph.lanes.forEach((lane, index) => {
       const firstX = Math.min(...lane.nodes.map((node) => node.startPosition[0]));
       if (index < 12) this.addLabel(lane.label, new THREE.Vector3(firstX - 4, lane.y + 8, lane.z), lane.color);
     });
 
-    const edgePositions: number[] = [], edgeColors: number[] = [];
-    for (const edge of graph.edges) {
-      const from = this.nodeByID.get(edge.from)!;
-      const to = this.nodeByID.get(edge.to)!;
-      const curve = this.edgeCurve(...connectionPositions(from, to));
-      this.appendSegments(curve.getPoints(22), new THREE.Color(edge.kind === 'fork' ? '#edbc8d' : '#bda6ef'), edgePositions, edgeColors);
-    }
-    this.addLines(edgePositions, edgeColors, 0.7, this.graphGroup, 'relationship');
+    this.links = this.addForks(graph.edges, this.graphGroup);
 
     // Time reference marks sit below the main trunk, with real linear spacing.
     const gridPositions: number[] = [], gridColors: number[] = [];
@@ -341,11 +346,46 @@ export class TimelineScene {
     }
   }
 
+  private addComets(nodes: GraphNode[], group: THREE.Group) {
+    const selected = group === this.selectionGroup;
+    const trails = cometTrails(nodes, {
+      ...this.trailUniforms, ...this.cometUniforms,
+      uGraphReveal: this.lineUniforms.uReveal,
+      uContextFocus: selected ? { value: 0 } : this.focusUniforms.uFocus,
+    }, this.nodeIndices, selected);
+    trails.group.visible = this.preferences.trails === 'all' || (selected && this.preferences.trails === 'selected');
+    trails.update(this.nodeReveal); group.add(trails.group); return trails;
+  }
+
+  private drawnRadius(node: GraphNode) {
+    const reveal = this.nodeReveal[this.nodeIndices.get(node.session.id)!] ?? 1;
+    return node.radius * this.preferences.nodeScale / 100 * reveal;
+  }
+
+  private orbCenter(node: GraphNode): [number, number, number] {
+    const frontier = progressX(this.cutoff, this.graph), x = headPosition(node, frontier)[0], point = spiralPosition(node, x);
+    const view = this.camera.matrixWorldInverse.elements;
+    const depth = -(view[2] * point[0] + view[6] * point[1] + view[10] * point[2] * (this.flat ? .001 : 1) + view[14]);
+    const pixelSize = Math.max(.001, depth) * 2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) / (this.height * this.camera.zoom);
+    // A screen-sized gap keeps even a selected 12px message dot outside the
+    // sphere at every zoom. Offset in the view plane along projected time.
+    const gap = this.selected === node.session.id && this.preferences.messageDots ? Math.max(.06, pixelSize * 8) : .02;
+    const tangent = spiralTangent(node, x); if (this.flat) tangent[2] *= .001;
+    const dx = view[0] * tangent[0] + view[4] * tangent[1] + view[8] * tangent[2];
+    const dy = view[1] * tangent[0] + view[5] * tangent[1] + view[9] * tangent[2];
+    const direction = this.headDirection.set(dx, dy, 0);
+    if (direction.lengthSq() < .0001) direction.set(1, 0, 0);
+    direction.normalize().applyQuaternion(this.camera.quaternion);
+    const center = orbPosition(node, frontier, this.drawnRadius(node), gap, direction.toArray());
+    center[1] += point[1] - node.position[1]; center[2] += point[2] - node.position[2];
+    return center;
+  }
+
   private buildPlaybackPath() {
     this.playbackPath = undefined;
     this.playbackRadii = [];
     if (!this.graph.nodes.length) return;
-    const points = this.graph.nodes.map((node) => new THREE.Vector3(...node.position));
+    const points = this.graph.nodes.flatMap((node) => [new THREE.Vector3(...node.position), new THREE.Vector3(...node.startPosition)]);
     const overview = new THREE.Box3().setFromPoints(points).getBoundingSphere(new THREE.Sphere());
     const centers: THREE.Vector3[] = [];
     const span = Math.max(1, progressX(1, this.graph) - progressX(0, this.graph));
@@ -358,18 +398,18 @@ export class TimelineScene {
       let total = 0;
       for (const node of this.graph.nodes) {
         if (node.startPosition[0] > frontier) continue;
-        const point = new THREE.Vector3(...headPosition(node, frontier));
+        const point = new THREE.Vector3(...spiralPosition(node, headPosition(node, frontier)[0]));
         const distance = (point.x - frontier) * 300 / span;
         const weight = Math.exp(-(((distance + 6) / 24) ** 2));
         center.addScaledVector(point, weight); total += weight;
         if (distance >= -38 && distance <= 12) bounds.expandByPoint(point);
       }
-      center.divideScalar(total);
+      if (total > 0) center.divideScalar(total); else center.copy(overview.center);
       const cluster = bounds.isEmpty() ? new THREE.Sphere(center, 0) : bounds.getBoundingSphere(new THREE.Sphere());
-      const radius = Math.max(65, cluster.radius + cluster.center.distanceTo(center));
+      const radius = Math.max(50, cluster.radius + cluster.center.distanceTo(center));
       // Pull back gently for the closing wide shot as the last nodes arrive.
       const outro = THREE.MathUtils.smoothstep(progress, .86, 1);
-      center.lerp(overview.center, outro * .65);
+      center.lerp(overview.center, outro);
       centers.push(center);
       this.playbackRadii.push(THREE.MathUtils.lerp(radius, overview.radius + 20, outro));
     }
@@ -379,26 +419,53 @@ export class TimelineScene {
   setPlaying(playing: boolean) {
     if (this.playing === playing) return;
     this.playing = playing;
-    if (!playing) { this.playbackPath = undefined; this.playbackRadii = []; }
+    this.playbackOutro = null; this.playbackOrbit = undefined;
+    if (!playing) { this.playbackPath = undefined; this.playbackRadii = []; this.camera.clearViewOffset(); }
     if (playing) { this.focusedSession = null; this.camera.clearViewOffset(); }
+    if (playing && this.cutoff === 0) { this.nodeBorn.fill(NaN); this.nodeReveal.fill(0); this.revealsActive = true; }
     if (playing && this.motion) {
       if (!this.playbackPath) this.buildPlaybackPath();
       this.targetPosition = undefined; this.targetLook = undefined;
       this.playbackSphere.setFromVector3(this.camera.position.clone().sub(this.controls.target));
+      this.framePlayback();
     }
     this.dirty = true;
   }
 
+  setPlaybackOutro(progress: number | null) {
+    const value = progress === null ? null : THREE.MathUtils.clamp(progress, 0, 1);
+    if (value === this.playbackOutro) return;
+    if (value !== null && this.playbackOutro === null) {
+      this.playbackSphere.setFromVector3(this.camera.position.clone().sub(this.controls.target));
+      this.playbackOrbit = { theta: this.playbackSphere.theta, phi: this.playbackSphere.phi, radius: this.playbackSphere.radius, focus: this.controls.target.clone() };
+    }
+    if (value === null) this.playbackOrbit = undefined;
+    this.playbackOutro = value; this.dirty = true;
+  }
+
   private animatePlaybackCamera(delta: number) {
     if (!this.playing || !this.motion || !this.playbackPath) return false;
+    const verticalFov = THREE.MathUtils.degToRad(this.camera.fov) / 2;
+    const framingFov = Math.min(verticalFov, Math.atan(Math.tan(verticalFov) * this.camera.aspect));
+    if (this.playbackOutro !== null && this.playbackOrbit && !this.flat) {
+      const orbit = this.playbackOrbit, progress = this.playbackOutro;
+      // Unwrapped angles guarantee one whole turn; shortest-angle damping would
+      // skip part of the orbit and keep drifting during the final hold.
+      this.playbackSphere.theta = orbit.theta + overviewTurn(progress) * Math.PI * 2;
+      this.playbackSphere.phi = orbit.phi;
+      this.playbackSphere.radius = orbit.radius;
+      this.controls.target.copy(orbit.focus);
+      this.playbackFocus.copy(this.controls.target);
+      this.camera.position.copy(this.controls.target).add(this.playbackOffset.setFromSpherical(this.playbackSphere));
+      return true;
+    }
     this.playbackPath.getPoint(this.cutoff, this.playbackFocus);
     if (this.flat) this.playbackFocus.z = 0;
     const sample = this.cutoff * (this.playbackRadii.length - 1);
     const first = Math.floor(sample), last = Math.min(first + 1, this.playbackRadii.length - 1);
     const radius = THREE.MathUtils.lerp(this.playbackRadii[first], this.playbackRadii[last], sample - first);
-    const verticalFov = THREE.MathUtils.degToRad(this.camera.fov) / 2;
-    const framingFov = Math.min(verticalFov, Math.atan(Math.tan(verticalFov) * this.camera.aspect));
-    const distance = THREE.MathUtils.clamp(radius / Math.sin(framingFov) * 1.08, 160, 1100);
+    // A tighter activity shot for both live playback and the export renderer.
+    const distance = THREE.MathUtils.clamp(radius / Math.sin(framingFov) * .84, 110, 1100);
     // Sweep a half-turn around the activity frontier, ending on the far side.
     const yaw = this.flat ? 0 : -.3 + this.cutoff * Math.PI;
     const elevation = this.flat ? 0 : .16 + Math.sin(this.cutoff * Math.PI) * .12;
@@ -411,32 +478,55 @@ export class TimelineScene {
     return true;
   }
 
-  private addLines(positions: number[], colors: number[], opacity: number, group = this.graphGroup, kind = 'grid') {
+  private addLines(positions: number[], colors: number[], opacity: number, group = this.graphGroup, kind = 'grid', times?: number[]) {
     if (!positions.length) return;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    const material = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, clippingPlanes: group !== this.filesGroup ? [this.clipPlane] : [] });
+    if (times) geometry.setAttribute('timelineTime', new THREE.Float32BufferAttribute(times, 1));
+    const material = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, clippingPlanes: kind === 'grid' ? [this.clipPlane] : [] });
     if (group !== this.filesGroup) material.onBeforeCompile = (shader) => {
       shader.uniforms.uTimelineCutoff = this.lineUniforms.uCutoff;
       shader.uniforms.uGraphReveal = this.lineUniforms.uReveal;
       shader.uniforms.uContextFocus = group === this.graphGroup ? this.focusUniforms.uFocus : { value: 0 };
-      Object.assign(shader.uniforms, this.trailUniforms);
-      shader.vertexShader = `varying float vTimelineX;\n${shader.vertexShader}`.replace('#include <begin_vertex>', '#include <begin_vertex>\nvTimelineX = position.x;');
-      shader.fragmentShader = `varying float vTimelineX; uniform float uTimelineCutoff; uniform float uGraphReveal; uniform float uContextFocus;\n${shader.fragmentShader}`.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= smoothstep(0.0, .6, uTimelineCutoff - vTimelineX) * uGraphReveal * mix(1.0, .16, uContextFocus);');
-      if (kind === 'lifetime') shader.fragmentShader = `uniform float uTrailTime; uniform float uTrailFlow; uniform float uTrailSpeed; uniform float uTrailOpacity;\n${shader.fragmentShader}`.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= uTrailOpacity * mix(1.0, .84 + .16 * pow(.5 + .5 * sin(vTimelineX * .28 - uTrailTime * uTrailSpeed * 2.2), 4.0), uTrailFlow);');
+      // A curved link is revealed at the recorded child start, not wherever its
+      // decorative control points happen to bend across the time axis.
+      shader.vertexShader = `${times ? 'attribute float timelineTime;' : ''} varying float vTimelineX;\n${shader.vertexShader}`.replace('#include <begin_vertex>', `#include <begin_vertex>\nvTimelineX = ${times ? 'timelineTime' : 'position.x'};`);
+      shader.fragmentShader = `varying float vTimelineX; uniform float uTimelineCutoff; uniform float uGraphReveal; uniform float uContextFocus;\n${shader.fragmentShader}`.replace('#include <color_fragment>', `#include <color_fragment>\ndiffuseColor.a *= ${times ? 'step(vTimelineX, uTimelineCutoff)' : 'smoothstep(0.0, .6, uTimelineCutoff - vTimelineX)'} * uGraphReveal * mix(1.0, .16, uContextFocus);`);
     };
     material.customProgramCacheKey = () => kind;
     const lines = new THREE.LineSegments(geometry, material); lines.userData.kind = kind;
-    lines.visible = kind === 'lifetime' ? this.preferences.trails === 'all' || (this.preferences.trails === 'selected' && group === this.selectionGroup) : kind !== 'relationship' || this.preferences.relationships;
+    lines.visible = kind !== 'relationship' || this.preferences.relationships;
     group.add(lines);
   }
 
   private edgeCurve(a: [number, number, number], b: [number, number, number]) {
     const from = new THREE.Vector3(...a), to = new THREE.Vector3(...b);
-    const midX = (a[0] + b[0]) / 2;
-    const height = Math.abs(a[1] - b[1]) < 8 ? 9 : 0;
-    return new THREE.CubicBezierCurve3(from, new THREE.Vector3(midX, a[1] + height, a[2]), new THREE.Vector3(midX, b[1] + height, b[2]), to);
+    const reach = Math.max(Math.abs(b[0] - a[0]) * .55, Math.min(14, from.distanceTo(to) * .45), 2);
+    return new THREE.CubicBezierCurve3(from, new THREE.Vector3(a[0] + reach, a[1], a[2]), new THREE.Vector3(b[0] - reach, b[1], b[2]), to);
+  }
+
+  private branchCurve(from: GraphNode, to: GraphNode, kind: Graph['edges'][number]['kind']) {
+    const [a, b] = connectionPositions(from, to);
+    const start = spiralPosition(from, a[0]), end = spiralPosition(to, b[0]);
+    if (kind === 'child') {
+      const origin = new THREE.Vector3(...start), target = new THREE.Vector3(...end);
+      // Collinear controls keep subagent links straight while sharing the same
+      // animated, glowing ribbon as forks and retaining exact attachment points.
+      return new THREE.CubicBezierCurve3(origin, origin.clone().lerp(target, 1 / 3), origin.clone().lerp(target, 2 / 3), target);
+    }
+    return this.edgeCurve(start, end);
+  }
+
+  private addForks(edges: Graph['edges'], group: THREE.Group) {
+    if (!edges.length) return;
+    const selected = group === this.selectionGroup;
+    const links = new ForkLinks(edges.map(edge => {
+      const from = this.nodeByID.get(edge.from)!, to = this.nodeByID.get(edge.to)!;
+      return { curve: this.branchCurve(from, to, edge.kind), child: this.nodeIndices.get(edge.to)!, color: new THREE.Color(selected ? '#f3dfbd' : edge.kind === 'fork' ? '#edbc8d' : '#bda6ef') };
+    }), { uPixelScale: this.cometUniforms.uPixelScale, uPixelRatio: this.markerUniforms.uPixelRatio, uContextFocus: selected ? { value: 0 } : this.focusUniforms.uFocus }, selected);
+    links.group.visible = this.preferences.relationships;
+    links.update(this.nodeReveal); group.add(links.group); return links;
   }
 
   private addLabel(text: string, point: THREE.Vector3, color: string, priority = false) {
@@ -456,6 +546,8 @@ export class TimelineScene {
     this.selected = id;
     this.focusUniforms.uSelected.value = id ? this.nodeIndices.get(id) ?? -1 : -1;
     clearGroup(this.selectionGroup);
+    this.selectedLinks = undefined;
+    this.selectedComets = undefined;
     clearGroup(this.filesGroup);
     this.eventMarkers = [];
     this.clearEventIcons();
@@ -464,20 +556,12 @@ export class TimelineScene {
     this.labels = this.labels.filter((label) => { if (label.priority) label.element.remove(); return !label.priority; });
     const node = id ? this.nodeByID.get(id) : undefined;
     if (!node) return;
-    const ring = new THREE.Mesh(new THREE.RingGeometry(node.radius * 2.1, node.radius * 2.35, 96), new THREE.MeshBasicMaterial({ color: '#e1fff4', side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthTest: false }));
-    ring.position.fromArray(node.position);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(node.radius * 1.45, node.radius * 1.55, 96), new THREE.MeshBasicMaterial({ color: '#e1fff4', side: THREE.DoubleSide, transparent: true, opacity: 0.65, depthTest: false }));
+    ring.position.fromArray(this.orbCenter(node));
     ring.name = 'selection-ring';
     this.selectionGroup.add(ring);
-    const positions: number[] = [], colors: number[] = [];
-    const trail: number[] = [], trailColors: number[] = [];
-    this.appendSegments([new THREE.Vector3(...node.startPosition), new THREE.Vector3(...node.position)], nodeColor(node).multiplyScalar(1.4), trail, trailColors);
-    this.addLines(trail, trailColors, 1, this.selectionGroup, 'lifetime');
-    for (const edge of this.graph.edges.filter((e) => e.from === id || e.to === id)) {
-      const from = this.nodeByID.get(edge.from)!;
-      const to = this.nodeByID.get(edge.to)!;
-      this.appendSegments(this.edgeCurve(...connectionPositions(from, to)).getPoints(30), new THREE.Color('#f3dfbd').multiplyScalar(1.8), positions, colors);
-    }
-    this.addLines(positions, colors, 1, this.selectionGroup, 'relationship');
+    this.selectedComets = this.addComets([node], this.selectionGroup);
+    this.selectedLinks = this.addForks(this.graph.edges.filter((e) => e.from === id || e.to === id), this.selectionGroup);
     this.addLabel(node.session.title.slice(0, 52), new THREE.Vector3(...node.position).add(new THREE.Vector3(0, 6, 0)), '#e6f3ef', true);
     this.setCutoff(this.cutoff);
   }
@@ -492,16 +576,14 @@ export class TimelineScene {
     const node = this.selected ? this.nodeByID.get(this.selected) : undefined;
     if (!node) return;
     const positions: number[] = [];
-    const shown = items.filter(isConversationMessage).slice(-2000);
-    // A paginated selection can be older than the marker overview's bound.
+    const shown = items.filter(isConversationMessage);
+    // A selected message may arrive before its marker snapshot finishes loading.
     if (this.focusedEvent && isConversationMessage(this.focusedEvent) && !shown.some((item) => item.id === this.focusedEvent!.id)) shown.push(this.focusedEvent);
     for (const item of shown) {
       if (item.time === null) continue;
-      // The session sphere already represents its latest message.
-      if (item.kind === 'message' && item.time === node.session.activity?.lastMessageAt) continue;
       const x = timeX(item.time, this.graph);
       if (!Number.isFinite(x) || x < node.startPosition[0] || x > node.position[0]) continue;
-      const position = new THREE.Vector3(...trailPosition(node, x));
+      const position = new THREE.Vector3(...spiralPosition(node, x));
       this.eventMarkers.push({ item, position }); positions.push(...position.toArray());
     }
     if (!positions.length) return;
@@ -511,25 +593,39 @@ export class TimelineScene {
     this.markerUniforms.uPixelRatio.value = this.renderer.getPixelRatio();
     this.markerUniforms.uHovered.value = -1;
     this.selectEvent(this.selectedEvent);
+    const uniforms = { uCutoff: this.lineUniforms.uCutoff, uTint: { value: new THREE.Color(node.color) }, ...this.markerUniforms };
+    const vertexShader = `uniform float uPixelRatio; uniform float uPointScale; uniform float uSelected; uniform float uHovered; attribute float markerIndex; varying float vTimeX; varying float vActive;
+      void main() { vTimeX = position.x; vActive = float(abs(markerIndex-uSelected)<.1 || abs(markerIndex-uHovered)<.1); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = mix(7.5,12.0,vActive) * uPixelRatio * uPointScale; }`;
     const material = new THREE.ShaderMaterial({
-      uniforms: { uCutoff: this.lineUniforms.uCutoff, uColor: { value: nodeColor(node) }, ...this.markerUniforms },
+      uniforms: { ...uniforms, uPointScale: { value: 1 } },
       transparent: true, depthWrite: false, depthTest: false,
-      vertexShader: `uniform float uPixelRatio; uniform float uSelected; uniform float uHovered; attribute float markerIndex; varying float vTimeX; varying float vActive;
-        void main() { vTimeX = position.x; vActive = float(abs(markerIndex-uSelected)<.1 || abs(markerIndex-uHovered)<.1); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = mix(6.5,10.0,vActive) * uPixelRatio; }`,
-      fragmentShader: `uniform float uCutoff; uniform vec3 uColor; varying float vTimeX; varying float vActive;
+      vertexShader,
+      fragmentShader: `uniform float uCutoff; uniform vec3 uTint; varying float vTimeX; varying float vActive;
         void main() { float d = length(gl_PointCoord - .5) * 2.0; if (d > 1.0 || vTimeX > uCutoff) discard;
-         gl_FragColor = vec4(mix(uColor * 1.3, vec3(1.4), vActive * .25), 1.0 - smoothstep(.5, 1.0, d)); }`,
+         gl_FragColor = vec4(mix(vec3(1.0), uTint, .08) * (1.5 + vActive * .3), 1.0 - smoothstep(.55, 1.0, d)); }`,
     });
     const group = new THREE.Group(); group.name = 'event-markers'; group.visible = this.preferences.messageDots;
+    // Draw all soft auras before the white cores so neighboring halos cannot
+    // wash out their centers. This also works with postprocessing bloom disabled.
+    const aura = new THREE.Points(geometry.clone(), new THREE.ShaderMaterial({
+      uniforms: { ...uniforms, uPointScale: { value: 3 } },
+      transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+      vertexShader,
+      fragmentShader: `uniform float uCutoff; uniform vec3 uTint; varying float vTimeX; varying float vActive;
+        void main() { float d = length(gl_PointCoord - .5) * 2.0; if (d > 1.0 || vTimeX > uCutoff) discard;
+          float alpha = exp(-d*d*5.0) * (1.0-smoothstep(.6,1.0,d)) * mix(.2,.32,vActive);
+          gl_FragColor = vec4(mix(vec3(1.0), uTint, .65), alpha); }`,
+    }));
+    aura.renderOrder = 9;
     const points = new THREE.Points(geometry, material); points.renderOrder = 10;
-    group.add(points); this.selectionGroup.add(group);
-    // Bound DOM work independently of the 2,000-dot GPU/picking budget.
+    group.add(aura, points); this.selectionGroup.add(group);
+    // Keep DOM icons bounded even when all saved message dots are loaded.
     const recent = this.eventMarkers.length - 1, chosen = new Set<number>();
     for (let i = recent; i >= Math.max(0, recent - 31); i--) chosen.add(i);
     for (let i = 0; i < 32 && recent > 31; i++) chosen.add(Math.floor(i * (recent - 32) / 31));
     for (const marker of [...chosen].sort((a, b) => b - a)) {
       const element = document.createElement('div'); element.className = 'event-marker-icon'; element.setAttribute('aria-hidden', 'true');
-      element.style.color = `#${nodeColor(node).getHexString()}`;
+      element.style.color = '#ffffff';
       element.append(eventIcon(this.eventMarkers[marker].item)); this.labelLayer.append(element);
       this.eventIcons.push({ element, marker, visible: false, transform: '' });
     }
@@ -549,7 +645,7 @@ export class TimelineScene {
     this.focusedEvent = { ...item, preview: 'preview' in item ? item.preview : (item.text || item.input || item.output || '').slice(0, 180) };
     if (!this.eventMarkers.some((marker) => marker.item.id === item.id)) this.setEvents(this.eventMarkers.map((marker) => marker.item));
     this.selectEvent(item.id);
-    this.focusPoint(new THREE.Vector3(...trailPosition(node, x)), 100);
+    this.focusPoint(new THREE.Vector3(...spiralPosition(node, x)), 8);
   }
 
   setFiles(files: FileChange[]) {
@@ -612,21 +708,34 @@ export class TimelineScene {
     if (!node) return;
     if (this.selected !== id) this.select(id);
     this.focusedSession = id;
-    const recent = this.eventMarkers.filter((marker) => marker.item.kind === 'message').slice(-12);
-    const length = node.position[0] - node.startPosition[0];
-    const span = Math.min(length, 60, Math.max(8, recent.length ? node.position[0] - recent[0].position.x : Math.min(40, length * .3)));
-    const target = new THREE.Vector3(...node.position); target.x -= span / 2;
-    const area = this.focusArea();
-    const distance = Math.max(85, (span + 18) * this.height / Math.max(160, area.width) / (2 * Math.tan(Math.PI / 8)));
-    this.focusPoint(target, Math.min(distance, 220));
+    const radius = node.radius * this.preferences.nodeScale / 100;
+    const distance = Math.max(8, radius * this.height / (2 * Math.tan(Math.PI / 8) * 24));
+    const x = headPosition(node, progressX(this.cutoff, this.graph))[0];
+    const target = new THREE.Vector3(...spiralPosition(node, x));
+    const normal = this.focusDirection();
+    const tangent = new THREE.Vector3(...spiralTangent(node, x)); if (this.flat) tangent.z = 0;
+    tangent.projectOnPlane(normal);
+    if (tangent.lengthSq() < .0001) tangent.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    tangent.normalize();
+    // Frame the drawn orb itself, accounting for its final screen-sized dot gap.
+    const gap = this.preferences.messageDots ? Math.max(.06, distance * 2 * Math.tan(Math.PI / 8) / this.height * 8) : .02;
+    target.addScaledVector(tangent, radius + gap);
+    this.focusPoint(target, distance);
   }
 
   private focusPoint(target: THREE.Vector3, distance: number) {
     if (this.flat) target.z = 0;
     this.frameFocus();
+    const direction = this.focusDirection();
     this.targetLook = target;
-    this.targetPosition = target.clone().add(new THREE.Vector3(0, this.flat ? 0 : 20, distance));
+    this.targetPosition = target.clone().addScaledVector(direction, distance);
     this.dirty = true;
+  }
+
+  private focusDirection() {
+    if (this.flat) return new THREE.Vector3(0, 0, 1);
+    const direction = this.camera.position.clone().sub(this.controls.target);
+    return direction.lengthSq() > .000001 ? direction.normalize() : this.camera.getWorldDirection(direction).negate();
   }
 
   private focusArea() {
@@ -649,7 +758,15 @@ export class TimelineScene {
   private frameFocus() {
     const width = this.container.clientWidth, height = this.container.clientHeight;
     const { x, y } = this.focusArea();
-    this.camera.setViewOffset(width, height, width / 2 - x, height / 2 - y, width, height);
+    const offsetX = width / 2 - x, offsetY = height / 2 - y, view = this.camera.view;
+    if (view?.enabled && view.fullWidth === width && view.fullHeight === height && view.offsetX === offsetX && view.offsetY === offsetY) return;
+    this.camera.setViewOffset(width, height, offsetX, offsetY, width, height);
+    this.dirty = true;
+  }
+
+  private framePlayback() {
+    // Keep the closer graph above the compact date/counters without changing zoom controls.
+    this.camera.setViewOffset(this.width, this.height, 0, Math.min(70, this.height * .08), this.width, this.height);
   }
 
   reset() {
@@ -693,10 +810,12 @@ export class TimelineScene {
     return {
       camera: this.camera.position.toArray(), target: this.controls.target.toArray(),
       cameraZoom: this.camera.zoom,
+      zoomRestricted: this.controls.minDistance > 0 || Number.isFinite(this.controls.maxDistance),
       cameraMoving: Boolean(this.targetPosition || this.targetLook),
       timeFrame: this.graph.timeFrame, timeRange: [this.graph.start, this.graph.end],
       cutoffX: this.clipPlane.constant,
       nodes: this.graph.nodes.length, edges: this.graph.edges.length,
+      lanes: this.graph.lanes.map(lane => ({ key: lane.key, label: lane.label, kind: lane.kind, color: lane.color, sessions: lane.nodes.length, sources: [...new Set(lane.nodes.map(node => node.session.source || 'opencode'))] })),
       xRange: [Math.min(...this.graph.nodes.map((n) => n.position[0])), Math.max(...this.graph.nodes.map((n) => n.position[0]))],
       yRange: [Math.min(...this.graph.nodes.map((n) => n.position[1])), Math.max(...this.graph.nodes.map((n) => n.position[1]))],
       calls: this.renderer.info.render.calls,
@@ -704,10 +823,14 @@ export class TimelineScene {
       msaaSamples: this.composer.renderTarget1.samples,
       smaa: this.smaa.enabled,
       pixelRatio: this.renderer.getPixelRatio(),
+      bloomSize: [this.bloom.renderTargetBright.width, this.bloom.renderTargetBright.height],
+      forkReveals: this.links?.samples() || [],
       cutoff: this.cutoff,
       selectedVisible: this.selectionGroup.visible,
       selectedNode: this.selected,
-      selectedPosition: this.selected && this.nodeByID.has(this.selected) ? headPosition(this.nodeByID.get(this.selected)!, progressX(this.cutoff, this.graph)) : undefined,
+      selectedPosition: this.selected && this.nodeByID.has(this.selected) ? this.orbCenter(this.nodeByID.get(this.selected)!) : undefined,
+      selectedEndpoint: this.selected && this.nodeByID.has(this.selected) ? (() => { const node = this.nodeByID.get(this.selected)!; return spiralPosition(node, headPosition(node, progressX(this.cutoff, this.graph))[0]); })() : undefined,
+      selectedRadius: this.selected && this.nodeByID.has(this.selected) ? this.drawnRadius(this.nodeByID.get(this.selected)!) : undefined,
       headSamples: this.graph.nodes.slice(0, 32).map((node, index) => {
         const matrix = new THREE.Matrix4(); this.nodeMesh?.getMatrixAt(index, matrix);
         return { id: node.session.id, start: node.startPosition[0], end: node.position[0], x: matrix.elements[12], glowX: this.glowPositions?.getX(index), reveal: this.nodeReveal[index] };
@@ -717,10 +840,10 @@ export class TimelineScene {
       eventMarkers: this.eventMarkers.length,
       eventIcons: this.eventIcons.filter((icon) => icon.visible).length,
       focusArea: this.focusArea(),
-      selectedScreen: this.selected && this.nodeByID.has(this.selected) ? (() => { const point = new THREE.Vector3(...headPosition(this.nodeByID.get(this.selected)!, progressX(this.cutoff, this.graph))); if (this.flat) point.z = 0; point.project(this.camera); return [(point.x + 1) / 2 * this.width, (1 - point.y) / 2 * this.height]; })() : undefined,
+      selectedScreen: this.selected && this.nodeByID.has(this.selected) ? (() => { const point = new THREE.Vector3(...this.orbCenter(this.nodeByID.get(this.selected)!)); if (this.flat) point.z *= .001; point.project(this.camera); return [(point.x + 1) / 2 * this.width, (1 - point.y) / 2 * this.height]; })() : undefined,
       selectedEvent: this.selectedEvent,
       selectedEventPosition: this.eventMarkers.find((marker) => marker.item.id === this.selectedEvent)?.position.toArray(),
-      markerSamples: this.eventMarkers.slice(0, 30).map(({ item, position }) => { const p = position.clone(); if (this.flat) p.z *= .001; p.project(this.camera); return { id: item.id, kind: item.kind, x: (p.x + 1) / 2 * this.container.clientWidth, y: (1 - p.y) / 2 * this.container.clientHeight }; }),
+      markerSamples: this.eventMarkers.slice(-30).map(({ item, position }) => { const p = position.clone(); if (this.flat) p.z *= .001; p.project(this.camera); return { id: item.id, kind: item.kind, time: item.time, position: position.toArray(), x: (p.x + 1) / 2 * this.container.clientWidth, y: (1 - p.y) / 2 * this.container.clientHeight }; }),
       sessionTrails: this.graph.nodes.filter((node) => node.position[0] > node.startPosition[0]).length,
       renderedFrames: this.renderer.info.render.frame,
       revealingNodes: this.revealsActive,
@@ -730,6 +853,8 @@ export class TimelineScene {
       motion: this.motion,
       suspended: this.suspended,
       playbackFollowing: this.playing && this.motion && Boolean(this.playbackPath),
+      playbackOutro: this.playbackOutro,
+      playbackOrbitAngle: this.playbackOrbit ? this.playbackSphere.theta - this.playbackOrbit.theta : 0,
       playbackFocus: this.playbackFocus.toArray(),
       flat: this.flat,
       preferences: { ...this.preferences },
@@ -741,6 +866,7 @@ export class TimelineScene {
     this.cutoff = THREE.MathUtils.clamp(ratio, 0, 1);
     if (!this.nodeMesh) return;
     const cutoffX = progressX(this.cutoff, this.graph) + 0.001;
+    this.cometUniforms.uHeadX.value = progressX(this.cutoff, this.graph);
     this.clipPlane.constant = cutoffX;
     this.lineUniforms.uCutoff.value = this.cutoff >= 1 ? cutoffX + 10 : cutoffX;
     this.revealsActive = true;
@@ -752,32 +878,38 @@ export class TimelineScene {
     this.selectionGroup.visible = !selected || selected.startPosition[0] <= cutoffX;
     this.filesGroup.visible = !selected || selected.position[0] <= cutoffX;
     const ring = this.selectionGroup.getObjectByName('selection-ring');
-    if (ring && selected) { ring.position.fromArray(headPosition(selected, progressX(this.cutoff, this.graph))); ring.visible = selected.startPosition[0] <= cutoffX; }
-    if (selected) for (const label of this.labels) if (label.priority) label.point.x = headPosition(selected, progressX(this.cutoff, this.graph))[0];
+    if (ring && selected) { ring.position.fromArray(this.orbCenter(selected)); ring.visible = selected.startPosition[0] <= cutoffX; }
     if (this.glowMaterial) this.glowMaterial.uniforms.uCutoff.value = cutoffX;
   }
 
   private animateNodes() {
     if (!this.nodeMesh || !this.revealsActive) return;
     this.pickingDirty = true;
-    const reveal = this.motion ? THREE.MathUtils.smoothstep(this.time - this.graphBorn, 0, .9) : 1;
+    let active = false;
     const frontier = progressX(this.cutoff, this.graph);
     for (let i = 0; i < this.graph.nodes.length; i++) {
       const node = this.graph.nodes[i];
-      const value = node.startPosition[0] <= frontier ? reveal : 0;
+      const visible = node.startPosition[0] <= frontier;
+      if (!visible) this.nodeBorn[i] = NaN;
+      else if (!Number.isFinite(this.nodeBorn[i])) this.nodeBorn[i] = this.time;
+      const value = visible ? this.motion ? THREE.MathUtils.smoothstep(this.time - this.nodeBorn[i], 0, .45) : 1 : 0;
+      if (visible && value < 1) active = true;
       this.nodeReveal[i] = value;
-      const position = headPosition(node, frontier);
+      const position = this.orbCenter(node);
       this.transform.position.fromArray(position);
-      this.glowPositions?.setX(i, position[0]);
+      this.glowPositions?.setXYZ(i, ...position);
       if (this.flat) this.transform.position.z *= .001;
-      this.transform.scale.setScalar(node.radius * this.preferences.nodeScale / 100 * value * (1 + Math.sin(value * Math.PI) * .12));
+      this.transform.scale.setScalar(this.drawnRadius(node));
       this.transform.updateMatrix();
       this.nodeMesh.setMatrixAt(i, this.transform.matrix);
     }
     this.nodeMesh.instanceMatrix.needsUpdate = true;
     if (this.revealAttribute) this.revealAttribute.needsUpdate = true;
     if (this.glowPositions) this.glowPositions.needsUpdate = true;
-    this.revealsActive = reveal < 1;
+    if (this.arrivals) { this.arrivals.mesh.visible = this.motion && active; this.arrivals.update(); }
+    this.links?.update(this.nodeReveal); this.selectedLinks?.update(this.nodeReveal);
+    this.comets?.update(this.nodeReveal); this.selectedComets?.update(this.nodeReveal);
+    this.revealsActive = active;
   }
 
   private animateFiles() {
@@ -805,10 +937,10 @@ export class TimelineScene {
     this.nodeGrid.clear(); this.markerGrid.clear();
     const point = new THREE.Vector3(), view = new THREE.Vector3();
     this.graph.nodes.forEach((node, index) => {
-      point.fromArray(headPosition(node, progressX(this.cutoff, this.graph))); if (this.flat) point.z *= .001;
+      point.fromArray(this.orbCenter(node)); if (this.flat) point.z *= .001;
       view.copy(point).applyMatrix4(this.camera.matrixWorldInverse); point.project(this.camera);
       if (point.z < -1 || point.z > 1) return;
-      const reveal = this.nodeReveal[index], radius = node.radius * this.preferences.nodeScale / 100 * reveal * (1 + Math.sin(reveal * Math.PI) * .12);
+      const radius = this.drawnRadius(node);
       // Conservative perspective bounds include off-axis spheres, not just their centers.
       const depth = -view.z, denominator = Math.max(.001, depth - radius);
       const rx = this.width / 2 * Math.abs(this.camera.projectionMatrix.elements[0]) * radius * (1 + Math.abs(view.x) / depth) / denominator;
@@ -900,12 +1032,23 @@ export class TimelineScene {
     const width = this.container.clientWidth, height = this.container.clientHeight;
     if (!width || !height) return;
     this.width = width; this.height = height;
+    const quality = this.preferences.quality;
+    const desired = this.options.manual ? 1 : quality === 'performance' ? 1 : quality === 'high' ? Math.min(Math.max(devicePixelRatio, 2), 2.5) : Math.min(Math.max(devicePixelRatio, 1.5), 2);
+    // Bound HDR/MSAA memory on large retina windows; preserve every rendering pass.
+    const budget = quality === 'high' ? 5_000_000 : 3_000_000;
+    const ratio = Math.min(desired, Math.sqrt(budget / (width * height)), this.renderer.capabilities.maxTextureSize / Math.max(width, height));
+    if (this.renderer.getPixelRatio() !== ratio) { this.renderer.setPixelRatio(ratio); this.composer.setPixelRatio(ratio); }
     this.camera.aspect = width / height;
-    if (this.camera.view?.enabled) this.frameFocus();
+    if (this.playing && this.motion) this.framePlayback();
+    else if (this.camera.view?.enabled) this.frameFocus();
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
     this.composer.setSize(width, height);
+    // Bloom is low frequency. Its blur pyramid does not need full retina resolution.
+    const bloomRatio = Math.min(ratio, quality === 'high' ? 1.5 : 1);
+    this.bloom.setSize(Math.max(32, width * bloomRatio), Math.max(32, height * bloomRatio));
     this.markerUniforms.uPixelRatio.value = this.renderer.getPixelRatio();
+    this.cometUniforms.uPixelScale.value = height * this.renderer.getPixelRatio() / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
     if (this.glowMaterial) this.glowMaterial.uniforms.uScale.value = height * this.renderer.getPixelRatio() * 0.9;
   }
 
@@ -915,6 +1058,10 @@ export class TimelineScene {
     const delta = this.suspended ? 0 : Math.min(.05, (now - this.previousFrame) / 1000);
     this.previousFrame = now;
     if (document.hidden || (this.suspended && !this.dirty)) return;
+    this.renderFrame(delta);
+  };
+
+  private renderFrame(delta: number) {
     this.time += delta;
     const followingPlayback = this.animatePlaybackCamera(delta);
     const animatingCamera = followingPlayback || Boolean(this.targetPosition);
@@ -925,21 +1072,29 @@ export class TimelineScene {
       if (this.camera.position.distanceTo(this.targetPosition) < 0.05) { this.targetPosition = undefined; this.targetLook = undefined; }
     }
     const changed = this.controls.update();
+    if (!this.playing && this.camera.view?.enabled && (this.focusedSession || this.focusedEvent)) this.frameFocus();
     // Project labels with the same camera matrix used for this frame's nodes,
     // including immediate 2D/reset jumps when reduced motion is enabled.
     this.camera.updateMatrixWorld();
     const selected = this.selected ? this.nodeByID.get(this.selected) : undefined;
-    const focusTarget = this.preferences.focusDimming && selected && selected.startPosition[0] <= this.clipPlane.constant ? 1 : 0;
+    const focusTarget = !this.playing && this.preferences.focusDimming && selected && selected.startPosition[0] <= this.clipPlane.constant ? 1 : 0;
     const focusing = Math.abs(this.focusUniforms.uFocus.value - focusTarget) > .001;
     this.focusUniforms.uFocus.value = focusing && this.motion && !this.suspended ? THREE.MathUtils.damp(this.focusUniforms.uFocus.value, focusTarget, 10, delta) : focusTarget;
-    const flow = this.motion && this.preferences.trailFlow && this.preferences.trails !== 'off';
+    const flow = this.motion && (this.playing || this.preferences.trailFlow) && this.preferences.trails !== 'off';
     this.trailUniforms.uTrailTime.value = this.time; this.trailUniforms.uTrailFlow.value = Number(flow);
     if (!this.dirty && !changed && !animatingCamera && !focusing && !this.revealsActive && !flow && !(this.motion && this.selected && this.selectionGroup.visible)) return;
+    if (changed || animatingCamera || this.dirty) this.revealsActive = true;
     this.animateNodes();
+    if (selected) {
+      const center = this.orbCenter(selected);
+      this.fileOrigin.fromArray(center); this.fileUniforms.uOrigin.value.copy(this.fileOrigin);
+      for (const label of this.labels) if (label.priority) label.point.set(center[0], center[1] + 6, center[2]);
+    }
     this.animateFiles();
     this.lineUniforms.uReveal.value = this.motion ? THREE.MathUtils.smoothstep(this.time - this.graphBorn, 0, .9) : 1;
     const ring = this.selectionGroup.getObjectByName('selection-ring');
     if (ring) {
+      if (selected) ring.position.fromArray(this.orbCenter(selected));
       ring.quaternion.copy(this.camera.quaternion);
       ring.scale.setScalar(this.preferences.nodeScale / 100 * (this.motion ? 1 + Math.sin(this.time * 2) * 0.07 : 1));
     }
@@ -949,14 +1104,16 @@ export class TimelineScene {
       const world = label.point.clone();
       if (this.flat) world.z = 0;
       const point = world.project(this.camera);
-      const labelWidth = label.priority ? Math.min(260, width - 24) : 155;
+      const labelWidth = label.priority ? Math.min(260, width - 24) : this.options.manual ? 235 : 155;
       const projectedX = (point.x * 0.5 + 0.5) * width;
       const x = label.priority ? THREE.MathUtils.clamp(projectedX - labelWidth / 2, 12, width - labelWidth - 12) : projectedX;
       const y = (-point.y * 0.5 + 0.5) * height - (label.priority ? 24 : 0);
       const overlaps = occupied.some((box) => x < box.x + box.width + 8 && x + labelWidth + 8 > box.x && Math.abs(y - box.y) < 26);
-      const visible = (width > 600 || label.priority) && !overlaps && x + labelWidth <= width - 12 && label.point.x <= this.clipPlane.constant && point.z < 1 && point.z > -1 && Math.abs(point.x) < 0.95 && Math.abs(point.y) < 0.9;
+      const inTime = label.priority && selected ? selected.startPosition[0] <= this.clipPlane.constant : label.point.x <= this.clipPlane.constant;
+      const visible = (width > 600 || label.priority) && !overlaps && x + labelWidth <= width - 12 && inTime && point.z < 1 && point.z > -1 && Math.abs(point.x) < 0.95 && Math.abs(point.y) < 0.9;
       if (label.visible !== visible) { label.element.classList.toggle('visible', visible); label.visible = visible; }
       if (visible) {
+        label.x = x; label.y = y;
         const transform = `translate(${x}px, ${y}px)`;
         if (label.transform !== transform) { label.element.style.transform = transform; label.transform = transform; }
         occupied.push({ x, y, width: labelWidth });
@@ -977,7 +1134,39 @@ export class TimelineScene {
     }
     this.composer.render();
     this.dirty = false;
-  };
+  }
+
+  /** A separate manual scene uses fixed simulation steps, never wall-clock recording. */
+  prepareCapture() {
+    this.setPlaying(false);
+    this.time = 0; this.graphBorn = 0;
+    // Wide HDR bloom and overlapping halos wash out dense libraries and become
+    // concentric bands in GIF's 256-color palette. Keep export glow small and local.
+    this.bloom.strength = Math.min(this.bloom.strength, .08);
+    this.bloom.radius = 0; this.bloom.threshold = 1.2;
+    this.trailUniforms.uTrailOpacity.value = Math.min(this.trailUniforms.uTrailOpacity.value, .5);
+    if (this.glowMaterial) {
+      this.glowMaterial.uniforms.uGlowSize.value = .7;
+      this.glowMaterial.uniforms.uGlowIntensity.value = .45;
+    }
+    this.reset();
+    if (this.targetPosition && this.targetLook) { this.camera.position.copy(this.targetPosition); this.controls.target.copy(this.targetLook); }
+    this.targetPosition = undefined; this.targetLook = undefined;
+    this.controls.enableDamping = false; this.controls.update();
+    this.setCutoff(0); this.setPlaying(true);
+  }
+
+  captureFrame(progress: number, delta: number, context: CanvasRenderingContext2D, outro: number | null = null) {
+    this.setCutoff(progress); this.setPlaybackOutro(outro); this.renderFrame(delta);
+    context.drawImage(this.renderer.domElement, 0, 0, this.width, this.height);
+    if (!this.preferences.labels) return;
+    context.save(); context.font = '11px "IBM Plex Mono", monospace'; context.textBaseline = 'top';
+    for (const label of this.labels) if (label.visible && !label.priority) {
+      context.fillStyle = label.element.style.getPropertyValue('--label-color'); context.globalAlpha = .8;
+      context.fillText(label.element.textContent || '', (label.x || 0) + 8, (label.y || 0) + 5);
+    }
+    context.restore();
+  }
 
   dispose() {
     cancelAnimationFrame(this.frame);
@@ -992,6 +1181,8 @@ export class TimelineScene {
     for (const pass of this.composer.passes) pass.dispose();
     this.composer.dispose();
     this.renderer.dispose();
+    this.renderer.domElement.removeEventListener('webglcontextlost', this.contextLost);
+    this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
     this.labelLayer.remove();
   }

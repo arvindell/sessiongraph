@@ -16,6 +16,8 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let resource = if cfg!(debug_assertions) {
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources")
@@ -52,7 +54,8 @@ fn main() {
                 .window("main").local(false).remote(format!("{}/*", origin.ascii_serialization()))
                 .permission("updater:allow-check").permission("updater:allow-download")
                 .permission("updater:allow-install").permission("core:resources:allow-close")
-                .permission("process:allow-restart"))?;
+                .permission("process:allow-restart")
+                .permission("dialog:allow-save").permission("fs:allow-write-file"))?;
             let handle = app.handle().clone();
             let external = app.handle().clone();
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))

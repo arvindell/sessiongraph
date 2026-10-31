@@ -13,8 +13,15 @@ export function hash(text: string): number {
 }
 
 export function directoryLabel(directory: string): string {
-  return directory.replace(/\/$/, '').split('/').at(-1) || '/';
+  return directoryPath(directory).split('/').at(-1) || '/';
 }
+
+// Preserve case and distinct worktrees. Only normalize Windows separators and
+// trailing separators; resolving symlinks or relative paths would guess identity.
+const directoryPath = (directory: string) => (/^(?:[a-z]:[\\/]|\\\\)/i.test(directory) ? directory.replace(/\\/g, '/') : directory).replace(/\/+$/, '') || (directory.startsWith('/') ? '/' : '');
+export const laneKey = (session: Session) => session.directory
+  ? JSON.stringify(['directory', directoryPath(session.directory)])
+  : JSON.stringify(['project', session.source || 'opencode', session.projectID || session.id]);
 
 // Metadata updates can be title changes or filesystem writes, not messages.
 // Unknown message times stay at creation until a timestamp is available.
@@ -27,6 +34,11 @@ export const progressX = (progress: number, graph: Pick<Graph, 'start' | 'end' |
 export const trailPosition = (node: GraphNode, x: number): [number, number, number] => [x, node.position[1], node.position[2]];
 /** A session is born at its start, travels with time, then rests at its last message. */
 export const headPosition = (node: GraphNode, frontier: number) => trailPosition(node, Math.max(node.startPosition[0], Math.min(frontier, node.position[0])));
+/** Offset only the drawn sphere; message times and lifetime endpoints stay exact. */
+export const orbPosition = (node: GraphNode, frontier: number, radius: number, gap = 0, direction: [number, number, number] = [1, 0, 0]): [number, number, number] => {
+  const point = headPosition(node, frontier);
+  return [point[0] + direction[0] * (radius + gap), point[1] + direction[1] * (radius + gap), point[2] + direction[2] * (radius + gap)];
+};
 export const connectionPositions = (from: GraphNode, to: GraphNode) => [
   trailPosition(from, Math.max(from.startPosition[0], Math.min(to.startPosition[0], from.position[0]))), to.startPosition,
 ] as const;
@@ -39,7 +51,7 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
   const timeFrame = previous?.nodes.length ? previous.timeFrame || { start: previous.start, end: previous.end } : { start, end };
   const groups = new Map<string, Session[]>();
   for (const session of ordered) {
-    const key = `${session.projectID}:${session.directory}`;
+    const key = laneKey(session);
     const group = groups.get(key) || [];
     group.push(session);
     groups.set(key, group);
@@ -51,6 +63,7 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
   sortedGroups.sort((a, b) => slots.get(a[0])! - slots.get(b[0])!);
   const lanes: Lane[] = [];
   const nodes: GraphNode[] = [];
+  const worktrees = new Set(projects.flatMap((project) => project.worktrees.map(directoryPath)));
   sortedGroups.forEach(([key, group]) => {
     const index = slots.get(key)!;
     // The initially busiest directory is the central trunk. Imports retain
@@ -63,8 +76,8 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
     const project = projects.find((p) => p.id === group[0].projectID);
     const directory = group[0].directory;
     const lane: Lane = {
-      key, slot: index, label: directoryLabel(directory), color,
-      kind: project?.worktrees.includes(directory) ? 'worktree' : 'directory',
+      key, slot: index, label: directory ? directoryLabel(directory) : project?.name || group[0].projectID || 'Unknown directory', color,
+      kind: directory && worktrees.has(directoryPath(directory)) ? 'worktree' : 'directory',
       y, z, nodes: [],
     };
     for (const session of group) {
@@ -74,12 +87,15 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
       const isBranch = Boolean(session.parentID || session.forkID);
       const spread = isBranch ? 12 : 6;
       const wave = Math.sin((startX + 150) / 65 + index * 0.7) * 3.5;
+      const tokens = typeof session.tokens === 'number' && Number.isFinite(session.tokens) ? Math.max(0, session.tokens) : 0;
       const node: GraphNode = {
         session,
         position: [x, y + wave + (seed - 0.5) * spread, z + (hash(session.id + 'z') - 0.5) * spread],
         startPosition: [startX, 0, 0],
         color,
-        radius: 0.35 + Math.min(0.65, Math.log10(1 + (session.tokens || 0)) * 0.08),
+        // A little more weight for recorded usage, with logarithmic growth and
+        // a firm cap so very large sessions don't overwhelm their neighbors.
+        radius: 0.35 + Math.min(0.9, Math.log10(1 + tokens) * 0.11),
       };
       nodes.push(node);
       lane.nodes.push(node);
@@ -97,7 +113,7 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
   // Newly discovered ancestors can add links without moving an existing branch.
   for (const old of previous?.nodes || []) {
     const node = byID.get(old.session.id);
-    if (node && node.session.projectID === old.session.projectID && node.session.directory === old.session.directory) {
+    if (node && laneKey(node.session) === laneKey(old.session)) {
       node.position[1] = old.position[1]; node.position[2] = old.position[2];
       placed.add(node.session.id);
     }
@@ -110,7 +126,7 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
     visited.add(id);
     const parentID = node.session.forkID || node.session.parentID;
     const parent = parentID ? byID.get(parentID) : undefined;
-    if (parent && parent.session.directory === node.session.directory) {
+    if (parent && laneKey(parent.session) === laneKey(node.session)) {
       place(parent, visited);
       const direction = hash(id + 'branch') > 0.5 ? 1 : -1;
       node.position[1] = parent.position[1] + direction * (9 + hash(id) * 15);

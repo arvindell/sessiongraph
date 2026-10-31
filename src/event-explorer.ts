@@ -17,7 +17,7 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
       <details class="event-browser"><summary>Browse messages <span class="event-count"></span></summary>
         <nav class="event-list" aria-label="Session messages"></nav><div class="event-pagination"><button class="secondary-button" data-page="previous">← Earlier page</button><button class="secondary-button" data-page="next">Later page →</button></div>
       </details>
-    </div><footer class="event-footer"><details><summary>History coverage</summary><p class="event-coverage"></p></details><button class="text-button event-reload">Reload</button></footer>`;
+    </div><footer class="event-footer"><span class="event-coverage"></span><button class="text-button event-reload">Reload</button></footer>`;
   container.append(panel);
   const $ = <T extends HTMLElement = HTMLElement>(selector: string) => panel.querySelector<T>(selector)!;
   const listeners = new AbortController();
@@ -37,14 +37,14 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
     $('.event-count').textContent = `${page.total.toLocaleString()} messages${page.partial ? ' · partial coverage' : ''}`;
     renderRows();
     for (const direction of ['previous', 'next'] as const) $<HTMLButtonElement>(`[data-page="${direction}"]`).disabled = !page[`${direction}Cursor`];
-    $('.event-coverage').textContent = page.note || (page.partial ? 'Saved history is incomplete or still awaiting import.' : 'Saved local history. Missing timestamps are never inferred.');
+    $('.event-coverage').textContent = page.partial ? 'Partial history' : 'Saved locally';
     const item = page.selected;
     $('.event-position').textContent = item ? `${page.offset + page.items.findIndex((message) => message.id === item.id) + 1} / ${page.total}` : 'No messages';
     for (const direction of ['previous', 'next'] as const) $<HTMLButtonElement>(`[data-step="${direction}"]`).disabled = !page[`${direction}Item`];
     if (!item) { $('.event-content').innerHTML = '<div class="event-empty"><h3>No messages yet.</h3><p>Refresh the source to import saved user and assistant messages.</p></div>'; callbacks.select(null); return; }
     callbacks.select(item);
-    $('.event-content').innerHTML = `<div class="event-detail-heading">${badge(item)}<h3>${escape(item.name)}</h3><p>${time(item.time)}</p>${item.time === null ? '<p>No timestamp · this message has no map position.</p>' : item.time < session!.created || item.time > Math.max(session!.created, session!.activity?.lastMessageAt || session!.created) ? '<p>Outside this session’s plotted lifetime.</p>' : ''}</div>
-      ${item.partial ? '<p class="event-warning">Some content is shortened, missing, or unsupported in this import.</p>' : ''}
+    $('.event-content').innerHTML = `<div class="event-detail-heading">${badge(item)}<h3>${escape(item.name)}</h3><p>${time(item.time)}</p></div>
+      ${item.partial ? '<p class="event-warning">Partial message</p>' : ''}
       ${item.text ? `<section class="event-payload"><pre>${escape(item.text)}</pre></section>` : '<p class="event-empty">No message text was recorded.</p>'}
       <details class="event-provenance"><summary>Source details</summary><dl><dt>Source</dt><dd>${escape(sourceName(session?.source))}</dd><dt>Message ID</dt><dd>${escape(item.messageID)}</dd><dt>Timestamp source</dt><dd>${escape(item.timeSource)}</dd></dl></details>`;
   }
