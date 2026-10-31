@@ -132,7 +132,6 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write
     env:
       RELEASE_VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -140,7 +139,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install OIDC-capable npm
+          registry-url: https://registry.npmjs.org
+      - name: Install pinned npm
         run: npm install --global npm@12.2.1
       - uses: actions/download-artifact@v4
         with:
@@ -148,4 +148,8 @@ jobs:
           path: release/assets
           merge-multiple: true
       - name: Publish public packages
-        run: node scripts/publish-release.mjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          test -n "$NODE_AUTH_TOKEN" || { echo 'Missing npm publishing credential.'; exit 1; }
+          node scripts/publish-release.mjs

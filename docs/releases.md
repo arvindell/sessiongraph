@@ -8,7 +8,7 @@ Every push to `main` runs `.github/workflows/release.yml`:
 4. Validate every signed updater format, then create `v<version>`, a GitHub release, native installers, `latest.json`, demo video, npm tarballs, and SHA-256 checksums.
 5. Publish all native packages, then `sessiongraph`, to npm with **public** access.
 
-The unscoped `sessiongraph` launcher and `sessiongraph-app-*` platform packages are configured for public publication using npm Trusted Publishing.
+The unscoped `sessiongraph` launcher and `sessiongraph-app-*` platform packages are configured for public publication.
 
 ## Desktop updates
 
