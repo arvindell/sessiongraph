@@ -130,6 +130,9 @@ jobs:
   npm:
     needs: [version, build, release]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
     env:
       RELEASE_VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -137,15 +140,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
+      - name: Install OIDC-capable npm
+        run: npm install --global npm@12.2.1
       - uses: actions/download-artifact@v4
         with:
           pattern: sessiongraph-*
           path: release/assets
           merge-multiple: true
       - name: Publish public packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          test -n "$NODE_AUTH_TOKEN" || { echo 'Configure the NPM_TOKEN repository secret.'; exit 1; }
-          node scripts/publish-release.mjs
+        run: node scripts/publish-release.mjs

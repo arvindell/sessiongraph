@@ -1,7 +1,8 @@
 import { readdir } from 'node:fs/promises';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import pkg from '../package.json' with { type: 'json' };
+import { getPublicVersion, verifyPublicVersion } from './npm-registry.mjs';
 
 const directory = process.argv[2] || 'release/assets';
 const files = (await readdir(directory)).filter((name) => name.endsWith('.tgz'));
@@ -19,24 +20,14 @@ const packages = files.map((file) => {
 if (expected.size) throw new Error(`Missing packages: ${[...expected].join(', ')}`);
 // Publish the launcher only after every matching native dependency is available.
 packages.sort((a, b) => Number(a.manifest.name === pkg.name) - Number(b.manifest.name === pkg.name));
-function npm(...args) {
-  return spawnSync('npm', [...args, '--registry=https://registry.npmjs.org/', '--json'], { encoding: 'utf8', maxBuffer: 4_000_000 });
-}
-function requirePublic(name) {
-  const status = npm('access', 'get', 'status', name);
-  if (status.status !== 0 || JSON.parse(status.stdout)[name] !== 'public') throw new Error(`Could not verify public npm visibility for ${name}.`);
-}
 for (const { path, manifest } of packages) {
   const spec = `${manifest.name}@${version}`;
-  const existing = npm('view', spec);
-  if (existing.status === 0) {
-    if (JSON.parse(existing.stdout).sessionGraphCommit !== commit) throw new Error(`${spec} already belongs to another commit.`);
-    requirePublic(manifest.name);
+  const existing = await getPublicVersion(manifest.name, version);
+  if (existing) {
+    verifyPublicVersion(existing, manifest.name, version, commit);
     console.log(`Already published: ${spec}`);
     continue;
   }
-  let error; try { error = JSON.parse(existing.stdout).error; } catch { /* Report registry failure below. */ }
-  if (error?.code !== 'E404') throw new Error(`Registry lookup failed for ${spec}: ${existing.stderr}`);
   execFileSync('npm', ['publish', path, '--access=public', '--ignore-scripts', '--registry=https://registry.npmjs.org/'], { stdio: 'inherit' });
-  requirePublic(manifest.name);
+  verifyPublicVersion(await getPublicVersion(manifest.name, version), manifest.name, version, commit);
 }

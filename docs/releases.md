@@ -8,13 +8,42 @@ Every push to `main` runs `.github/workflows/release.yml`:
 4. Validate every signed updater format, then create `v<version>`, a GitHub release, native installers, `latest.json`, demo video, npm tarballs, and SHA-256 checksums.
 5. Publish all native packages, then `sessiongraph`, to npm with **public** access.
 
-The repository and GitHub releases are public. The unscoped `sessiongraph` launcher and `sessiongraph-app-*` platform packages are configured for public npm publication. Initial publication is currently blocked by the token's missing bypass-2FA permission; native releases remain available independently.
+The repository and GitHub releases are public. The unscoped `sessiongraph` launcher and `sessiongraph-app-*` platform packages use npm Trusted Publishing from GitHub Actions. Native releases remain available independently of npm setup.
 
 ## Credentials
 
-Set the repository secret `NPM_TOKEN` to an npm granular write token that can create/publish `sessiongraph` and all five `sessiongraph-app-*` packages. For unattended publishing it needs npm's **bypass 2FA** permission. Rotate it before its expiry. The GitHub release uses the workflow's built-in `GITHUB_TOKEN`.
+### npm Trusted Publishing
 
-Build jobs do not receive the npm token. `publishConfig` and the publish command both require public access; the publisher verifies public visibility and rejects missing packages or mismatched commit/version metadata.
+The npm job uses GitHub OIDC (`id-token: write`) and npm 12.2.1. It does not use `NPM_TOKEN` or `NODE_AUTH_TOKEN`. The GitHub release uses the workflow's built-in `GITHUB_TOKEN`.
+
+For each of these six npm packages, open **Settings → Trusted Publisher → GitHub Actions**:
+
+- `sessiongraph`
+- `sessiongraph-app-darwin-arm64`
+- `sessiongraph-app-darwin-x64`
+- `sessiongraph-app-linux-arm64`
+- `sessiongraph-app-linux-x64`
+- `sessiongraph-app-win32-x64`
+
+Use **Organization or user:** `arvindell`; **Repository:** `sessiongraph`; **Workflow filename:** `release.yml`; leave **Environment name** blank. Enable direct **npm publish** access (stage-only permission is insufficient for this workflow). Complete the first trusted publish within npm's two-day setup window.
+
+The packages must exist before their trusted publisher can be configured. For the initial publication, sign in interactively with `npm login` and publish the verified release tarballs from a terminal; satisfy npm's interactive 2FA prompts. From the repository root:
+
+```sh
+npm login
+tag=$(gh release view --repo arvindell/sessiongraph --json tagName --jq .tagName)
+commit=$(gh api "repos/arvindell/sessiongraph/git/ref/tags/$tag" --jq .object.sha)
+mkdir -p "tmp/npm-$tag"
+gh release download "$tag" --repo arvindell/sessiongraph --pattern '*.tgz' --pattern SHA256SUMS --dir "tmp/npm-$tag"
+(cd "tmp/npm-$tag" && awk '/\.tgz$/ { print }' SHA256SUMS | shasum -a 256 -c -) &&
+RELEASE_VERSION="${tag#v}" GITHUB_SHA="$commit" node scripts/publish-release.mjs "tmp/npm-$tag"
+```
+
+After configuring all six trusted publishers, run the Release workflow on `main`. Once an OIDC publish succeeds, revoke the old npm CI token and remove the unused GitHub `NPM_TOKEN` secret. See [npm's Trusted Publishing documentation](https://docs.npmjs.com/trusted-publishers).
+
+`publishConfig` and the publish command both require public access. The publisher verifies visibility with unauthenticated registry reads and rejects missing packages or mismatched commit/version metadata; it does not need token-only `npm access` commands.
+
+### Desktop signing
 
 Set `TAURI_SIGNING_PRIVATE_KEY` to the Tauri updater private key matching the public key in `src-tauri/tauri.conf.json`. The current key has an empty password. Keep a private backup outside the repository; replacing the key without a migration prevents existing apps from updating. Only the native build and artifact-signing steps receive it.
 
