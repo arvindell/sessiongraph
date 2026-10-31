@@ -7,11 +7,14 @@
   <a href="docs/releases.md">Releases</a>
 </p>
 
-[![SessionGraph in action: playback, search, messages, and settings using synthetic sessions](docs/sessiongraph-demo.gif)](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4)
+[![SessionGraph in action: zoom, playback, messages, search, and twelve sources using synthetic sessions](docs/sessiongraph-demo.gif)](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4)
+
+[Watch the 60 FPS demo →](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4)
 
 Explore **12 coding agents** in one local-first app: OpenCode, Claude Code, Codex, Cursor, Gemini CLI, Qwen Code, Pi, GitHub Copilot CLI, Cline, Roo Code, Kilo Code, and Continue.
-Search conversations, explore clickable messages and tool calls, inspect changed files, and continue in another harness.
-Hover to preview messages, click to focus, and tune the glowing map, trails, and click sounds in Settings.
+Search conversations, explore user and assistant messages, inspect changed files, and continue in another harness.
+Hover to preview messages, click to focus, and click empty space to deselect. Tune the glowing map, trails, and click sounds in Settings.
+During playback, session orbs travel through time, leaving trails behind them. Message dots match their session's color.
 Importing, searching, and visualization stay on your computer.
 
 ### Your history stays local
@@ -55,20 +58,23 @@ npx sessiongraph --browser
 | <img src="public/sources/claude.svg" width="14" alt=""/> **Claude Code** | Local projects, worktrees, and subagents via SDK | Native resume / saved-context handoff |
 | <img src="public/sources/openai.svg" width="14" alt=""/> **Codex** | Active and archived local rollouts | Native resume / saved-context handoff |
 | <img src="public/sources/cursor.svg" width="14" alt=""/> **Cursor** | IDE transcripts, CLI and ACP stores | CLI resume where supported / saved-context handoff |
-| **Gemini CLI** | Local JSON and append-only JSONL chats | Native resume / saved-context handoff |
-| **Qwen Code** | Local project chat records | Native resume / saved-context handoff |
-| **Pi** | Local JSONL session trees | Native resume / saved-context handoff |
-| **GitHub Copilot CLI** | Local persisted session events | Native resume / saved-context handoff |
-| **Cline** | Extension tasks and CLI/SDK message snapshots | Saved-context handoff to a supported CLI |
-| **Roo Code** | Local extension task histories | Saved-context handoff to a supported CLI |
-| **Kilo Code** | Legacy extension task JSON; current CLI/migrated databases excluded | Saved-context handoff to a supported CLI |
-| **Continue** | Local IDE and CLI session JSON | Saved-context handoff to a supported CLI |
+| <img src="public/sources/gemini.svg" width="14" alt=""/> **Gemini CLI** | Local JSON and append-only JSONL chats | Native resume / saved-context handoff |
+| <img src="public/sources/qwen.svg" width="14" alt=""/> **Qwen Code** | Local project chat records | Native resume / saved-context handoff |
+| <img src="public/sources/pi.svg" width="14" alt=""/> **Pi** | Local JSONL session trees | Native resume / saved-context handoff |
+| <img src="public/sources/copilot.svg" width="14" alt=""/> **GitHub Copilot CLI** | Local persisted session events | Native resume / saved-context handoff |
+| <img src="public/sources/cline.svg" width="14" alt=""/> **Cline** | Extension tasks and CLI/SDK message snapshots | Saved-context handoff to a supported CLI |
+| <img src="public/sources/roo.svg" width="14" alt=""/> **Roo Code** | Local extension task histories | Saved-context handoff to a supported CLI |
+| <img src="public/sources/kilo.svg" width="14" alt=""/> **Kilo Code** | Legacy extension task JSON; current CLI/migrated databases excluded | Saved-context handoff to a supported CLI |
+| <img src="public/sources/continue.svg" width="14" alt=""/> **Continue** | Local IDE and CLI session JSON | Saved-context handoff to a supported CLI |
 
 Import is read-only. Saved sessions remain available when a harness is offline. [Coverage and limitations →](docs/guide.md#source-coverage)
 
 Choose harnesses in **Settings → Sources** or **Manage sources** next to the source filter. **Auto-import is on by default**: SessionGraph checks for new and changed sessions on startup, when you return, and every minute while visible. Turn it off in **Settings → Sources → Auto-import sessions**. **Refresh sessions** also works manually.
 
 Your time range, source/project/directory filters, archived and child-session toggles, and appearance preferences are saved with the local library and restored after restarting.
+The default range is **All time**, with archived sessions hidden. Enable them in **Settings → Interface → Show archived sessions**.
+
+Manual and automatic refresh preserve your map position, zoom, and selection. New history keeps existing layout positions stable; use **Fit view (F)** to reframe the whole map.
 
 ### Develop
 

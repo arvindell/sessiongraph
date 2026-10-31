@@ -13,7 +13,7 @@ export const nodeEmphasisShader = `
   float nodeEmphasis() {
     if (abs(nodeIndex - uSelected) < .5) return 1.12;
     if (abs(nodeIndex - uHovered) < .5) return 1.2;
-    return mix(1.0, .46, uFocus);
+    return mix(1.0, .12, uFocus);
   }
 `;
 

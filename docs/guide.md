@@ -62,9 +62,9 @@ pnpm start
 
 ## Import and update
 
-On first launch, choose the apps to import. Change that selection in **Settings → Sources** or **Manage sources** next to the source filter, then click **Import selected sources** / **Import updates**. **Refresh sessions** imports updates from your selected sources.
+On first launch, choose the apps to import. Change that selection in **Settings → Sources** or **Manage sources** next to the source filter, then click **Import selected sources** / **Import updates**. The compact options show each app's icon, detection status, and saved count; hover for source details. **Refresh sessions** imports updates from your selected sources.
 
-**Auto-import sessions** is on by default in **Settings → Sources**. It checks previously selected sources on startup, when returning to the app, and every minute while the app is visible. Checks pause while hidden or a dialog is open, share a 30-second cooldown with recent imports, and never overlap an active import. Unchanged libraries do not rebuild the graph; background updates preserve your camera, playback, and selection. Automatic imports do not select new sources for you.
+**Auto-import sessions** is on by default in **Settings → Sources**. It checks previously selected sources on startup, when returning to the app, and every minute while the app is visible. Checks pause while hidden or a dialog is open, share a 30-second cooldown with recent imports, and never overlap an active import. Unchanged libraries do not rebuild the graph. Both manual and automatic refresh preserve your camera, zoom, playback, and selection. Existing layout positions stay stable as new history arrives; **Fit view (F)** recalculates the overview when you want to reframe it. Automatic imports do not select new sources for you.
 
 The auto-import choice is saved in the local SQLite library, so it survives desktop restarts and is shared by browser and desktop instances using that library. Turning it off stops future automatic checks; an import already running can finish. Manual Refresh remains available. There is no background service after the app closes. OpenCode's local service must still be running to import its new history.
 
@@ -140,15 +140,16 @@ Desktop update checks and downloads contact GitHub without session content; npm 
 ## Explore
 
 - Full-viewport, antialiased Three.js map with floating, draggable, dismissible cards. **H** hides/restores cards; **F** fits the view.
-- Source badges distinguish harnesses in the list, inspector, tooltips, and search. Filter by source, project, directory/worktree, date, archived status, or children. The default window is 90 days.
-- Time runs left to right. Each session's trail starts at creation and connects exactly to its node at the latest saved message timestamp. Missing message timestamps leave the node at creation; metadata update times are not substituted. Directory colors group sessions; only distinct fork and child edges represent ancestry. Date filters use session creation; the list and histogram follow session endpoints.
-- Click a session to center its node and recent message trail together in the map area between your panels. Small, dim icons above the dots distinguish user/assistant messages, tools, reasoning, file changes, and other events. Icons are collision-culled and bounded to 64; all plotted dots remain interactive. The latest message uses the session sphere instead of an overlapping dot and remains readable in the explorer. Markers load lazily, capped at the latest 2,000 timed items within the lifetime, plus a selected older item. Counts disclose untimed and out-of-lifetime items.
-- Hover a marker to preview its message or tool payload. Click to focus that marker and open message details below the session card, keeping the map interactive. **Previous / Next** and **← / → / ↑ / ↓** step through events and focus their recorded positions. Untimed items remain readable without inventing a map location. Escape closes message details first; arrow keys on session cards or the map navigate sessions when message details are closed. Form controls and panel-drag handles retain their own arrow-key behavior.
-- **Browse saved events** in the message panel provides filters and 60-item pages. Details include bounded text/input/output, timestamp provenance, status, native IDs, and links between tool calls/results. Saved source order is preserved even without timestamps; no timestamps or tool pairing are inferred. Nearby markers can overlap; step through them with the navigation controls.
+- Source badges distinguish harnesses in the list, inspector, tooltips, and search. Filter by source, project, directory/worktree, date, or children. The default window is **All time**; archived sessions are hidden unless enabled in **Settings → Interface → Show archived sessions**. Previously saved choices remain honored.
+- Selecting a session dims surrounding nodes, halos, and trails. Click or tap empty map space to clear selection and restore the full map brightness without moving the camera. Drags and right-clicks keep the selection; **Settings → Graphics → Focus dimming** controls the dimming effect.
+- Time runs left to right. Each session orb appears at creation, travels with the playback frontier, and leaves its trail behind. It rests at the latest saved message timestamp. Missing message timestamps leave the orb at creation; metadata update times are not substituted. Directory colors group sessions; only distinct fork and child edges represent ancestry. Date filters use session creation; the list and histogram follow session endpoints.
+- Click a session to center its orb and recent message trail together in the map area between your panels. Message dots match the session color; small, dim icons distinguish user and assistant messages. Icons are collision-culled and bounded to 64; all plotted dots remain interactive. The latest message uses the session sphere instead of an overlapping dot and remains readable in the explorer. Markers load lazily, capped at the latest 2,000 timed conversation messages within the lifetime, plus a selected older message. Counts disclose untimed and out-of-lifetime messages.
+- Hover a marker to preview its message. Click to focus that marker and open message details below the session card, keeping the map interactive. **Previous / Next** and **← / → / ↑ / ↓** step through user and assistant messages and focus their recorded positions. Untimed messages remain readable without inventing a map location. Escape closes message details first; arrow keys on session cards or the map navigate sessions when message details are closed. Form controls and panel-drag handles retain their own arrow-key behavior.
+- **Browse messages** opens 60-message pages of the conversation. Details include message text, recorded time, and source provenance. Tool calls, reasoning, and other detailed events are excluded from the dots and message browser. Underlying imported history and file evidence remain saved. Source order is preserved even without timestamps. Nearby markers can overlap; step through them with the navigation controls.
 - Older libraries migrate to schema v4 using their existing saved messages. Reconstructed events are labeled partial; **Refresh sessions** enriches them with structured source events. The explorer asks you to reload if an import changes its snapshot while browsing.
 - Click a session for changed-file satellites and source evidence. File details load in 120-message batches; the map displays at most 80 files. Evidence describes historical edits, not today's Git diff.
 - **Play** follows newly appearing clusters with a half-turn around the graph and a closing pullback (30 seconds at 1×). Dragging, zooming, scrubbing, fitting, or opening a dialog pauses playback. 2D pans without orbiting; reduced motion keeps the camera still.
-- The timeline's calendar offers a styled range picker with presets, month/year navigation, typed ISO dates, and keyboard navigation. Date boundaries are inclusive in your local timezone. Select menus share keyboard/typeahead behavior and styling across filters, settings, search, events, and the launcher.
+- The timeline's calendar offers a styled range picker with presets, month/year navigation, typed ISO dates, and keyboard navigation. Date boundaries are inclusive in your local timezone. Select menus share keyboard/typeahead behavior and styling across filters, settings, search, and the launcher.
 - **Open session** lets you choose one of eight CLI destinations and a working directory. See cross-harness continuation below.
 - Unknown model/cost/token fields stay unknown. Session selection is encoded in a local permalink.
 
@@ -156,10 +157,10 @@ Desktop update checks and downloads contact GitHub without session content; npm 
 
 Open **Settings** using the gear button. Changes apply live and persist on this device:
 
-- **Interface:** 2D/3D, system/on/off motion, list density, panel transparency, and reset panel positions.
+- **Interface:** 2D/3D, system/on/off motion, list density, archived-session visibility, panel transparency, and reset panel positions.
 - **Sound:** procedural interaction tones, volume, chime preview, and mute. Only control interactions produce sound; there is no ambient audio. The speaker button mutes feedback quickly; no audio is downloaded.
 - **Graphics:** performance/balanced/high rendering, glow, node size, stars, labels, and focus dimming.
-- **Trails & playback:** all/selected/hidden lifetime trails, brightness, decorative flow and speed, relationship links, event markers, and 0.25×–3× playback. Flow respects reduced motion and never changes event timestamps or trail endpoints.
+- **Trails & playback:** all/selected/hidden lifetime trails, brightness, decorative flow and speed, relationship links, message dots, and 0.25×–3× playback. Flow respects reduced motion and never changes message timestamps or saved trail endpoints.
 
 **Restore defaults** resets these preferences; they are saved in the local library, with an appearance cache in browser/WebView local storage.
 
@@ -207,7 +208,7 @@ src/imports.ts            Onboarding and source management
 src/search/               Worker search and SQLite checkpoint bridge
 src/layout.ts, scene.ts   Source-agnostic graph and cinematic visualization
 src/timeline.ts           Shared message/tool/event envelope and presentation types
-src/event-explorer.ts     Lazy event browsing, details, and tool correlation links
+src/event-explorer.ts     Lazy user/assistant message browsing and details
 src/event-hover.ts        Bounded, cancellable message previews on marker hover
 src/preferences.ts        Validated, versioned local appearance/audio settings
 src/settings.ts, audio.ts Settings dialog and offline procedural audio lifecycle

@@ -38,6 +38,7 @@ export interface TimelinePage {
   note?: string;
 }
 export type TimelineFilter = 'all' | 'messages' | 'tools' | 'events' | 'untimed';
+export const isConversationMessage = (item: Pick<TimelineEvent, 'kind' | 'role'>) => item.kind === 'message' && (item.role === 'user' || item.role === 'assistant');
 export interface TimelineMarkers {
   sessionID: string;
   revision: string;

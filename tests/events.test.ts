@@ -36,7 +36,7 @@ test('events page through source order, retain simultaneous and untimed items, s
     const jump = store.events(candidate.session.id, { item: tools.related[0].id }); assert.equal(jump.offset, 120); assert.equal(jump.selected!.callID, 'call-1');
     const other = { ...candidate, session: { ...candidate.session, id: 'other', nativeID: 'other' } }; store.upsert(other); store.replace(other, [messages[0]], false);
     assert.equal(store.events(candidate.session.id, { item: tools.related[0].id }).related.length, 1);
-    const markers = store.eventMarkers(candidate.session.id); assert.equal(markers.untimed, 1); assert.equal(markers.items.length, 126);
+    const markers = store.eventMarkers(candidate.session.id); assert.equal(markers.untimed, 1); assert.equal(markers.items.length, 124);
     assert.throws(() => store.events(candidate.session.id, { cursor: 'garbage' }), (e) => e instanceof EventReadError && e.status === 400);
     assert.throws(() => store.events(candidate.session.id, { filter: '__proto__' }), EventReadError);
     assert.throws(() => store.events(candidate.session.id, { item: 'missing' }), (e) => e instanceof EventReadError && e.status === 404);
@@ -105,7 +105,7 @@ test('Codex and Cursor keep tool results, lifecycle events, unknown times and na
   assert.equal(cursor.events![0].callID, 't'); assert.equal(cursor.events![0].kind, 'tool_result'); assert.equal(cursor.events![0].timeSource, 'unknown');
 });
 
-test('marker limits disclose unplotted events and never place unknown or outside-lifetime timestamps', () => {
+test('marker limits disclose unplotted messages and never place unknown or outside-lifetime timestamps', () => {
   const store = new SessionGraphStore(':memory:');
   try {
     store.upsert(candidate);
@@ -113,5 +113,33 @@ test('marker limits disclose unplotted events and never place unknown or outside
     const markers = store.eventMarkers(candidate.session.id);
     assert.equal(markers.items.length, 2000); assert.equal(markers.total, 2012); assert.equal(markers.limited, true); assert.equal(markers.outsideLifetime, 1); assert.equal(markers.untimed, 1);
     assert.equal(store.events(candidate.session.id, { filter: 'untimed' }).selected!.messageID, 'untimed');
+  } finally { store.close(); }
+});
+
+test('conversation reads skip system, tool and reasoning details before limiting or navigating messages', () => {
+  const store = new SessionGraphStore(':memory:');
+  try {
+    store.upsert(candidate);
+    const prompt = message('prompt', 100);
+    const tools = Array.from({ length: 21 }, (_, batch) => {
+      const msg = blankMessage(`tools-${batch}`, 150, 'assistant');
+      msg.events = Array.from({ length: 100 }, (_, i) => eventFor(msg, `tool-${i}`, 'tool_call', 'read', '', { input: '{}' }));
+      return msg;
+    });
+    tools[0].events!.push(eventFor(tools[0], 'system', 'message', 'System', 'System detail', { role: 'system' }));
+    const reply = blankMessage('reply', 200, 'assistant');
+    reply.events = [messageEvent(reply, 'Answer'), eventFor(reply, 'reasoning', 'reasoning', 'Reasoning', 'Detailed reasoning')];
+    const untimed = blankMessage('untimed', 0, 'assistant'); untimed.events = [messageEvent(untimed, 'Untimed answer')];
+    store.replace(candidate, [prompt, ...tools, reply, untimed], false);
+    const markers = store.eventMarkers(candidate.session.id);
+    assert.equal(markers.total, 3); assert.equal(markers.untimed, 1); assert.equal(markers.limited, false);
+    assert.deepEqual(markers.items.map(i => i.role), ['user', 'assistant']);
+    const first = store.events(candidate.session.id, { filter: 'messages' });
+    assert.equal(first.total, 3); assert.equal(first.selected!.messageID, 'prompt');
+    const second = store.events(candidate.session.id, { filter: 'messages', item: first.nextItem! });
+    assert.equal(second.selected!.messageID, 'reply'); assert.equal(second.previousItem, first.selected!.id);
+    assert.equal(store.events(candidate.session.id, { filter: 'messages', item: second.nextItem! }).selected!.time, null);
+    assert.equal(store.events(candidate.session.id, { filter: 'tools' }).total, 2100);
+    assert.equal(store.events(candidate.session.id, { filter: 'events' }).total, 1);
   } finally { store.close(); }
 });

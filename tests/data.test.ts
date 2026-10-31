@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeMessages, editedPaths, sessionFromResponse, type RawMessage, type RawSession } from '../server/opencode';
-import { makeGraph } from '../src/layout';
+import { headPosition, makeGraph, progressX, timeX, trailPosition } from '../src/layout';
 import type { Session } from '../src/types';
 
 function session(id: string, created: number, extra: Partial<Session> = {}): Session {
@@ -40,6 +40,68 @@ test('equal timestamps and malformed relationship cycles keep finite positions',
   assert.ok(graph.nodes.every((n) => n.position.every(Number.isFinite)));
   assert.equal(graph.nodes[0].position[0], graph.nodes[1].position[0]);
   assert.equal(makeGraph([], []).nodes.length, 0);
+});
+
+test('refresh preserves existing coordinates and directory colors as history and directory counts grow', () => {
+  const hour = 3_600_000;
+  const sessions = [session('a', 10 * hour), session('b', 11 * hour), session('branch', 12 * hour, { parentID: 'a' }), session('other', 11 * hour, { directory: '/other' })];
+  const initial = makeGraph(sessions, []);
+  const added = [session('older', hour, { directory: '/new' }), session('newer', 30 * hour, { directory: '/new' }), ...Array.from({ length: 5 }, (_, i) => session(`extra-${i}`, (12 + i) * hour, { directory: '/other' }))];
+  const refreshed = makeGraph([...sessions, ...added], [], initial);
+  for (const old of initial.nodes) {
+    const node = refreshed.nodes.find((n) => n.session.id === old.session.id)!;
+    assert.deepEqual(node.position, old.position);
+    assert.deepEqual(node.startPosition, old.startPosition);
+    assert.equal(node.color, old.color);
+  }
+  assert.equal(refreshed.start, hour);
+  assert.equal(refreshed.end, 30 * hour);
+  assert.deepEqual(refreshed.timeFrame, initial.timeFrame);
+  assert.ok(progressX(0, refreshed) < -150);
+  assert.ok(progressX(1, refreshed) > 150);
+  assert.equal(progressX(.5, refreshed), timeX(15.5 * hour, initial));
+  const fitted = makeGraph([...sessions, ...added], []);
+  assert.equal(progressX(0, fitted), -150);
+  assert.equal(progressX(1, fitted), 150);
+});
+
+test('refresh extends active endpoints accurately without moving their trails or existing events', () => {
+  const hour = 3_600_000;
+  const active = session('active', hour, { activity: { firstMessageAt: hour, lastMessageAt: 2 * hour, userMessages: 2, untimedUserMessages: 0 } });
+  const initial = makeGraph([active, session('sibling', 3 * hour)], []);
+  const updated = { ...active, activity: { ...active.activity!, lastMessageAt: 5 * hour } };
+  const refreshed = makeGraph([updated, session('sibling', 3 * hour)], [], initial);
+  const before = initial.nodes.find((n) => n.session.id === active.id)!;
+  const after = refreshed.nodes.find((n) => n.session.id === active.id)!;
+  assert.deepEqual(after.startPosition, before.startPosition);
+  assert.deepEqual(after.position.slice(1), before.position.slice(1));
+  assert.equal(after.position[0], timeX(5 * hour, initial));
+  assert.deepEqual(trailPosition(after, timeX(1.5 * hour, refreshed)), trailPosition(before, timeX(1.5 * hour, initial)));
+  assert.equal(progressX(1, refreshed), after.position[0]);
+});
+
+test('long sessions travel with time from creation and leave a trail, then rest at their true endpoint', () => {
+  const hour = 3_600_000;
+  const graph = makeGraph([session('long', hour, { activity: { firstMessageAt: hour, lastMessageAt: 10 * hour, userMessages: 2, untimedUserMessages: 0 } }), session('later', 12 * hour)], []);
+  const node = graph.nodes.find(n => n.session.id === 'long')!;
+  const endpoint = [...node.position];
+  for (const time of [0, hour, 2 * hour, 5 * hour, 9 * hour, 10 * hour, 12 * hour]) {
+    const position = headPosition(node, timeX(time, graph));
+    assert.equal(position[0], timeX(Math.max(hour, Math.min(time, 10 * hour)), graph));
+    assert.deepEqual(position.slice(1), node.startPosition.slice(1));
+    assert.deepEqual(trailPosition(node, position[0]), position);
+  }
+  assert.deepEqual(node.position, endpoint, 'Playback must not rewrite saved message coordinates');
+  assert.deepEqual(headPosition(node, timeX(5 * hour, graph)), headPosition(node, progressX(4 / 11, graph)), 'Scrubbing and playback share one time position');
+});
+
+test('refresh can discover an ancestor without shifting an existing child and starts cleanly from an empty graph', () => {
+  const child = session('child', 3_600_000, { parentID: 'parent' });
+  const initial = makeGraph([child], [], makeGraph([], []));
+  const refreshed = makeGraph([session('parent', 1), child], [], initial);
+  assert.deepEqual(refreshed.nodes.find((n) => n.session.id === child.id)?.position, initial.nodes[0].position);
+  assert.deepEqual(refreshed.edges, [{ from: 'parent', to: 'child', kind: 'child' }]);
+  assert.ok(refreshed.nodes.every((n) => n.position.every(Number.isFinite)));
 });
 
 test('file summaries prefer authoritative snapshots and exclude failed edits or reads', () => {

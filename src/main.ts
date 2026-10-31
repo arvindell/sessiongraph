@@ -54,11 +54,11 @@ let timelineRequest = 0;
 let projectID = '';
 let sourceID = '';
 let directory = '';
-let days = 90;
+let days = 0;
 let fromDate = '';
 let toDate = '';
 let includeChildren = true;
-let includeArchived = true;
+let includeArchived = false;
 let listLimit = 60;
 let detailRequest = 0;
 let detailController: AbortController | undefined, timelineController: AbortController | undefined;
@@ -105,18 +105,18 @@ $('#app').innerHTML = `
         <div class="filter-row"><div class="select-wrap"><span id="source-filter-icon">${sourceIcon()}</span><select id="source" aria-label="Session source"><option value="">All sources</option></select>${icon('chevron-down')}</div><button class="icon-button" id="manage-sources" aria-label="Manage sources" title="Import sources">${icon('sliders-horizontal')}</button></div>
         <div class="select-wrap">${icon('folder')}<select id="project" aria-label="Project"><option value="">All projects</option></select>${icon('chevron-down')}</div>
         <div class="select-wrap">${icon('git-branch')}<select id="directory" aria-label="Worktree or directory"><option value="">All directories</option></select>${icon('chevron-down')}</div>
-        <div class="filter-toggles"><label><input type="checkbox" id="children" checked/><span>Child sessions</span></label><label><input type="checkbox" id="archived" checked/><span>Archived</span></label></div>
+        <div class="filter-toggles"><label><input type="checkbox" id="children" checked/><span>Child sessions</span></label></div>
       </div>
       <nav class="session-list" id="session-list" aria-label="Sessions"><div class="list-loading">${[0, 1, 2, 3, 4].map(() => '<div class="skeleton"></div>').join('')}</div></nav>
   </aside>
   <div class="inspector-stack floating-panel" id="inspector" hidden><aside class="inspector glass" id="session-inspector" aria-label="Session details"></aside></div>
   <section class="timeline-panel floating-panel glass" id="timeline" aria-label="Timeline controls">
-    <div class="timeline-top"><button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90" class="active">90D</button><button data-days="0">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button></div>
+    <div class="timeline-top"><button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="0" class="active">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button></div>
     <div class="timeline-track"><button id="play" class="play-button" aria-label="Play timeline">${icon('play')}</button><div class="histogram-wrap"><div id="histogram" class="histogram"></div><input id="scrubber" type="range" min="0" max="1000" value="1000" aria-label="Timeline playback position"/><div class="timeline-cursor" id="timeline-cursor"></div></div><div class="playback-date" id="playback-date">—</div></div>
   </section>
   <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div>
-    <div class="graph-legend"><span><i class="legend-node"></i>Latest message</span><span><i class="legend-node message"></i>Message / event</span><span><i class="legend-line lane"></i>Session lifetime</span><span><i class="legend-line fork"></i>Fork</span><span><i class="legend-line child"></i>Child</span><span id="file-legend" hidden><i class="legend-file"></i>File</span></div>
-    <p>Time runs left to right. A session's trail begins at creation and ends at its latest saved message. Select it to reveal clickable messages, tools, and events. Untimed items remain available in the event explorer. Directory colors group sessions; only fork and child links represent ancestry.</p><button class="secondary-button motion-button" id="motion" aria-pressed="true">${icon('sparkles')}Animate map</button></dialog>
+    <div class="graph-legend"><span><i class="legend-node"></i>Session orb</span><span><i class="legend-node message"></i>Message</span><span><i class="legend-line lane"></i>Session lifetime</span><span><i class="legend-line fork"></i>Fork</span><span><i class="legend-line child"></i>Child</span><span id="file-legend" hidden><i class="legend-file"></i>File</span></div>
+    <p>Time runs left to right. Each orb travels from session creation to its latest saved message, leaving a trail behind. Select it to explore user and assistant messages in matching colors. Messages without timestamps stay readable in the explorer. Click empty space to deselect. Directory colors group sessions; only fork and child links represent ancestry.</p><button class="secondary-button motion-button" id="motion" aria-pressed="true">${icon('sparkles')}Animate map</button></dialog>
   <div id="toast" class="toast" role="status" hidden></div>
   <aside class="shortcut-hints" aria-label="Keyboard shortcuts"><span><kbd>/</kbd>Search</span><span><kbd>F</kbd>Fit view</span><span><kbd>H</kbd>Panels</span><span><kbd>Esc</kbd>Clear selection</span></aside>
 `;
@@ -136,7 +136,7 @@ function openEvents(item?: string) {
   const session = data?.sessions.find((s) => s.id === selectedID);
   if (session) { eventHover.clear(); stopPlayback(); setPanel('inspector', true); eventExplorer.open(session, item, item ? selectedTimeline?.revision : undefined); }
 }
-const settings = createSettings({ change: changePreferences, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, getSources: () => imports.sources(), importSources: (ids) => imports.select(ids), resetPanels: () => {
+const settings = createSettings({ change: changePreferences, getArchived: () => includeArchived, changeArchived: (value) => { includeArchived = value; updateFilters(); }, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, getSources: () => imports.sources(), importSources: (ids) => imports.select(ids), resetPanels: () => {
   document.querySelectorAll<HTMLElement>('.floating-panel').forEach((panel) => { panel.removeAttribute('style'); delete panel.dataset.positioned; });
 } });
 const audio = new InteractionAudio(preferences, settings.audioStatus);
@@ -231,7 +231,7 @@ emptyInspector();
 async function initializeScene() { try {
   const { TimelineScene } = await import('./scene');
   scene = new TimelineScene($('#scene'), {
-    onSelect: (id) => { void audio.play('select'); selectSession(id); },
+    onSelect: (id) => { if (id) { void audio.play('select'); selectSession(id); } else clearSelection(); },
     onPlaybackInterrupt: stopPlayback,
     onEvent: (id) => { void audio.play('select'); openEvents(id); },
     onEventHover: (item, overlapping, x, y) => {
@@ -282,6 +282,7 @@ async function load(background = false) {
     const preferenceRevision = settingsSaver?.revision;
     const next = await fetchJSON<SessionGraphData>('/api/sessiongraph');
     const previous = data, previousSelected = selectedID ? sessionsByID.get(selectedID) : undefined;
+    const preserve = Boolean(previous && graph.nodes.length);
     data = next;
     if (!settingsSaver?.pending && preferenceRevision === settingsSaver?.revision) {
       preferences = { ...normalizePreferences(next.preferences || preferences), autoImport: next.autoImport !== false };
@@ -289,7 +290,7 @@ async function load(background = false) {
       if (!settingsHydrated) {
         const view = normalizeViewState(next.viewState);
         ({ sourceID, projectID, directory, days, fromDate, toDate, includeChildren, includeArchived } = view);
-        $<HTMLInputElement>('#children').checked = includeChildren; $<HTMLInputElement>('#archived').checked = includeArchived;
+        $<HTMLInputElement>('#children').checked = includeChildren;
         viewFingerprint = JSON.stringify(view);
         if (!next.preferences) saveLibrarySettings({ preferences: { ...preferences } });
       }
@@ -297,27 +298,28 @@ async function load(background = false) {
     }
     settingsHydrated = true;
     // Status and source timestamps can change without changing the visible graph.
-    if (background && previous && JSON.stringify(previous.sessions) === JSON.stringify(next.sessions) && JSON.stringify(previous.projects) === JSON.stringify(next.projects)) return;
+    $('#connection-label').textContent = 'Local library';
+    $('.connection').classList.add('connected');
+    $('.connection').title = `Connected · ${count(data.sessions.length)} sessions`;
+    if (previous && JSON.stringify(previous.sessions) === JSON.stringify(next.sessions) && JSON.stringify(previous.projects) === JSON.stringify(next.projects)) { renderGraphMessage(); return; }
     timelineClient.clear();
     sessionsByID = new Map(data.sessions.map((session) => [session.id, session]));
     $<HTMLSelectElement>('#source').innerHTML = '<option value="">All sources</option>' + (data.sources || []).map((s) => `<option value="${escape(s.id)}">${escape(s.name)} · ${s.sessions.toLocaleString()}</option>`).join('');
     $<HTMLSelectElement>('#source').value = sourceID;
     $('#source-filter-icon').innerHTML = sourceIcon(sourceID);
     sessionSearch.setData(data);
-    $('#connection-label').textContent = 'Local library';
-    $('.connection').classList.add('connected');
-    $('.connection').title = `Connected · ${count(data.sessions.length)} sessions`;
     const projectCounts = new Map<string, number>();
     data.sessions.forEach((session) => projectCounts.set(session.projectID, (projectCounts.get(session.projectID) || 0) + 1));
     $<HTMLSelectElement>('#project').innerHTML = '<option value="">All projects</option>' + [...data.projects].filter((p) => projectCounts.has(p.id)).sort((a, b) => (projectCounts.get(b.id) || 0) - (projectCounts.get(a.id) || 0)).map((p) => `<option value="${escape(p.id)}">${escape(p.name)} · ${count(projectCounts.get(p.id) || 0)}</option>`).join('');
     $<HTMLSelectElement>('#project').value = projectID;
     updateDirectories();
-    if (selectedID && !background) {
+    if (selectedID && !previous) {
       const selected = data.sessions.find((s) => s.id === selectedID);
       if (selected && selected.created < Date.now() - days * 86400000) days = 0;
+      if (selected?.archived) includeArchived = true;
     }
-    updateFilters(!background, background);
-    if (selectedID && !background) selectSession(selectedID);
+    updateFilters(!preserve, preserve);
+    if (selectedID && !previous) selectSession(selectedID);
     else if (selectedID) {
       const selected = sessionsByID.get(selectedID);
       if (selected && JSON.stringify(previousSelected) !== JSON.stringify(selected)) {
@@ -371,10 +373,10 @@ function updateFilters(fit = false, preserve = false) {
   sortedSessions = [...filtered].sort((a, b) => sessionEnd(b) - sessionEnd(a));
   filteredIDs = new Set(filtered.map((s) => s.id));
   sessionSearch.setScope(filtered.map((s) => s.id));
-  graph = makeGraph(filtered, data.projects);
+  graph = makeGraph(filtered, data.projects, preserve ? graph : undefined);
   nodeColors = new Map(graph.nodes.map((n) => [n.session.id, n.color]));
   scene?.setCutoff(playback);
-  scene?.setGraph(graph, fit);
+  scene?.setGraph(graph, fit, preserve);
   renderGraphMessage();
   document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.classList.toggle('active', !fromDate && !toDate && Number(button.dataset.days) === days));
   renderList();
@@ -393,17 +395,16 @@ function renderGraphMessage() {
   message.hidden = Boolean(filtered.length && scene);
   if (!filtered.length) message.innerHTML = `${icon('search')}<h3>No matching sessions</h3><button class="text-button" id="clear-filters">Reset filters ${icon('rotate-ccw')}</button>`;
   else if (!scene) message.innerHTML = sceneLoading ? '<h3>Preparing the map…</h3>' : `${icon('box')}<h3>WebGL is unavailable.</h3><p>You can explore every session and its file details in the list.</p>`;
-  $('#clear-filters')?.addEventListener('click', resetFilters);
+  $('#clear-filters')?.addEventListener('click', () => resetFilters());
   refreshIcons();
 }
 
-function resetFilters() {
+function resetFilters(reveal?: Session) {
   sourceID = ''; $<HTMLSelectElement>('#source').value = '';
   $('#source-filter-icon').innerHTML = sourceIcon();
-  projectID = ''; directory = ''; days = 0; fromDate = ''; toDate = ''; includeChildren = true; includeArchived = true;
+  projectID = ''; directory = ''; days = 0; fromDate = ''; toDate = ''; includeChildren = true; includeArchived = reveal?.archived === true;
   $<HTMLSelectElement>('#project').value = '';
   $<HTMLInputElement>('#children').checked = true;
-  $<HTMLInputElement>('#archived').checked = true;
   dateRange.setRange('', '');
   updateDirectories();
   updateFilters(true);
@@ -524,31 +525,31 @@ function renderInspector(session: Session, reveal = true) {
 function renderTimeline(session: Session, timeline?: TimelineMarkers) {
   const endpointMessages = timeline?.items.filter((item) => item.kind === 'message' && item.time === session.activity?.lastMessageAt).length || 0;
   const notes = timeline ? [
-    `${count(timeline.items.length - endpointMessages)} of ${count(timeline.total)} saved events plotted. Click a dot to explore.`,
+    `${count(timeline.items.length - endpointMessages)} of ${count(timeline.total)} saved messages plotted. Click a dot to read.`,
     endpointMessages ? 'The session sphere represents the latest message; read it in the explorer.' : '',
     timeline.untimed ? `${count(timeline.untimed)} have no recorded timestamp; browse them in the explorer.` : '',
     timeline.outsideLifetime ? `${count(timeline.outsideLifetime)} fall outside this lifetime; available in the explorer.` : '',
-    timeline.limited ? 'Map shows the latest 2,000 timed events. The explorer pages through all saved items.' : '',
+    timeline.limited ? 'Map shows the latest 2,000 timed messages. The explorer pages through the full conversation.' : '',
     timeline.partial ? 'Partial history.' : '',
-    'Nearby items can overlap; use Previous / Next in the explorer.',
-  ].filter(Boolean) : ['Loading message & event markers…'];
+    'Nearby messages can overlap; use Previous / Next in the explorer.',
+  ].filter(Boolean) : ['Loading message markers…'];
   $('#message-detail').innerHTML = `<div class="section-label">Session timeline</div><dl class="metadata">
     <div><dt>Trail starts</dt><dd>${timestamp(session.created)}</dd></div>
     <div><dt>Node · last message</dt><dd>${session.activity?.lastMessageAt ? timestamp(session.activity.lastMessageAt) : 'Unknown · at session start'}</dd></div>
-    </dl><div class="event-key"><span style="--event-color:#fff"><i></i>Messages & events · hover to preview</span></div><p class="coverage-note">${notes.map(escape).join('<br>')}</p><button class="secondary-button explore-events">Explore messages & events ${icon('arrow-right')}</button>${timeline?.note ? `<details class="more-details history-coverage"><summary>History coverage ${icon('chevron-down')}</summary><p class="coverage-note">${escape(timeline.note)}</p></details>` : ''}`;
+    </dl><div class="event-key"><span style="--event-color:${nodeColors.get(session.id) || '#b0e9d6'}"><i></i>User & assistant messages · hover to preview</span></div><p class="coverage-note">${notes.map(escape).join('<br>')}</p><button class="secondary-button explore-events">Explore messages ${icon('arrow-right')}</button>${timeline?.note ? `<details class="more-details history-coverage"><summary>History coverage ${icon('chevron-down')}</summary><p class="coverage-note">${escape(timeline.note)}</p></details>` : ''}`;
   $('.explore-events').addEventListener('click', () => openEvents()); refreshIcons();
 }
 
-async function loadTimeline(session: Session) {
+async function loadTimeline(session: Session, refocus = false) {
   const request = ++timelineRequest;
   timelineController?.abort(); const controller = new AbortController(); timelineController = controller;
   try {
     const timeline = await fetchJSON<TimelineMarkers>(`/api/sessiongraph/session/${encodeURIComponent(session.id)}/event-markers`, controller.signal);
     if (controller.signal.aborted || request !== timelineRequest || selectedID !== session.id) return;
-    selectedTimeline = timeline; scene?.setEvents(timeline.items); renderTimeline(session, timeline);
+    selectedTimeline = timeline; scene?.setEvents(timeline.items, refocus); renderTimeline(session, timeline);
   } catch {
     if (controller.signal.aborted || request !== timelineRequest || selectedID !== session.id) return;
-    $('#message-detail').innerHTML = '<div class="section-label">Session timeline</div><p class="coverage-note">Event timing unavailable.</p><button class="secondary-button explore-events">Explore messages & events</button><button class="load-more" id="retry-timeline">Retry event markers</button>';
+    $('#message-detail').innerHTML = '<div class="section-label">Session timeline</div><p class="coverage-note">Message timing unavailable.</p><button class="secondary-button explore-events">Explore messages</button><button class="load-more" id="retry-timeline">Retry message markers</button>';
     $('.explore-events').addEventListener('click', () => openEvents());
     $('#retry-timeline').addEventListener('click', () => void loadTimeline(session));
   }
@@ -607,7 +608,7 @@ function selectSession(id: string) {
   if (!session) return;
   const previous = selectedID;
   eventExplorer.close(); eventHover.clear();
-  if (!filteredIDs.has(id)) resetFilters();
+  if (!filteredIDs.has(id)) resetFilters(session);
   stopPlayback();
   playback = 1;
   updateScrubber();
@@ -621,7 +622,7 @@ function selectSession(id: string) {
   scene?.focus(id);
   updateListSelection(previous);
   void loadFiles(id);
-  void loadTimeline(session);
+  void loadTimeline(session, true);
 }
 
 $('#session-list').addEventListener('click', (event) => {
@@ -636,9 +637,8 @@ $('#project').addEventListener('change', (event) => { projectID = (event.target 
 $('#source').addEventListener('change', (event) => { sourceID = (event.target as HTMLSelectElement).value; $('#source-filter-icon').innerHTML = sourceIcon(sourceID); updateFilters(true); });
 $('#directory').addEventListener('change', (event) => { directory = (event.target as HTMLSelectElement).value; updateFilters(true); });
 $('#children').addEventListener('change', (event) => { includeChildren = (event.target as HTMLInputElement).checked; updateFilters(); });
-$('#archived').addEventListener('change', (event) => { includeArchived = (event.target as HTMLInputElement).checked; updateFilters(); });
 document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.addEventListener('click', () => { days = Number(button.dataset.days); fromDate = ''; toDate = ''; updateFilters(true); }));
-$('#reset-camera').addEventListener('click', () => { stopPlayback(); scene?.reset(); });
+$('#reset-camera').addEventListener('click', () => updateFilters(true));
 $('#refresh').addEventListener('click', () => { if (data?.onboarding) void imports.open(true); else void imports.refresh(); });
 $('#scrubber').addEventListener('input', (event) => { stopPlayback(); playback = Number((event.target as HTMLInputElement).value) / 1000; updateScrubber(); });
 $('#play').addEventListener('click', () => {
@@ -685,7 +685,7 @@ document.addEventListener('keydown', (event) => {
       return;
     }
   }
-  if (event.key.toLowerCase() === 'f') { stopPlayback(); scene?.reset(); }
+  if (event.key.toLowerCase() === 'f') updateFilters(true);
   if (event.key.toLowerCase() === 'h') {
     const visible = (['explorer', 'timeline', 'inspector'] as const).filter((id) => !$(`#${id}`).hidden);
     if (visible.length) { hiddenPanels = visible; visible.forEach((id) => setPanel(id, false)); }

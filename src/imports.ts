@@ -1,5 +1,5 @@
 import type { ImportStatus, SourceStatus } from './types';
-import { sourceName, sourceIcon, sortSources } from './sources';
+import { sourceName, sourceOption, sortSources } from './sources';
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 export function createImports(onChange: (background: boolean) => Promise<void>, onVisibility: () => void) {
@@ -7,9 +7,6 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
   dialog.setAttribute('aria-labelledby', 'imports-heading');
   dialog.innerHTML = `<button class="icon-button dialog-close" aria-label="Close sources">×</button><span class="eyebrow">SessionGraph</span><h2 id="imports-heading">Explore &amp; visualize all your LLM sessions</h2><p class="imports-intro">Your history stays local. Choose the apps to read; import, search, and visualization run on this computer. No account, cloud sync, or telemetry.</p><details class="privacy-disclosure"><summary>Local data &amp; network access</summary><p>Imports are read-only and never start an AI agent. Desktop update checks contact GitHub without session content. Explicitly continuing a session opens another harness, which may contact its model provider.</p><p>Saved history and handoff files are not encrypted by SessionGraph. Your device permissions and backups affect who can access them.</p></details><div class="import-sources"></div><div class="imports-progress" role="status"></div><details class="imports-notes" hidden><summary>Import details</summary><div></div></details><footer><span>Saved locally in SQLite</span><button class="primary-button import-start">Import sessions <span>↗</span></button></footer>`;
   document.body.append(dialog);
-  const search = document.createElement('input'); search.type = 'search'; search.className = 'source-search'; search.placeholder = 'Find a source…'; search.setAttribute('aria-label', 'Find a session source');
-  dialog.querySelector('.import-sources')!.before(search);
-  search.addEventListener('input', () => dialog.querySelectorAll<HTMLElement>('.import-source').forEach(row => { row.hidden = !row.textContent!.toLowerCase().includes(search.value.trim().toLowerCase()); }));
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => dialog.querySelector<T>(s)!;
   let running = false, timer = 0, disposed = false, returnFocus: HTMLElement | null = null;
   let starting = false, polling = false, background = false;
@@ -76,10 +73,9 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
     $('#imports-heading').textContent = first ? 'Explore & visualize all your LLM sessions' : 'Your session sources.';
     if (!dialog.open) dialog.showModal(); onVisibility();
     $('.import-sources').textContent = 'Finding local session sources…';
-    search.value = '';
     try {
       const result = await request<{ sources: SourceStatus[] }>('sources');
-      $('.import-sources').innerHTML = sortSources(result.sources).map((s) => `<label class="import-source" data-source="${escape(s.id)}"><input type="checkbox" value="${escape(s.id)}" ${s.selected || first && s.available ? 'checked' : ''} ${running ? 'disabled' : ''}/><span class="source-symbol">${sourceIcon(s.id)}</span><span><strong>${escape(s.name)}</strong><small>${escape(s.description)}</small><small class="source-imported">${s.sessions ? `${s.sessions.toLocaleString()} saved · ` : ''}${s.lastImport ? `Last import ${new Date(s.lastImport).toLocaleString()}` : 'Not imported yet'}</small></span><span class="source-detected ${s.available ? 'detected' : ''}">${s.available ? 'Detected' : 'Not found'}</span></label>`).join('');
+      $('.import-sources').innerHTML = sortSources(result.sources).map((source) => sourceOption(source, { checked: source.selected || first && source.available, disabled: running })).join('');
       const status = await request<ImportStatus>('import');
       if (status.running) { renderProgress(status); window.clearTimeout(timer); timer = window.setTimeout(poll, 1000); }
       else if (!first) renderProgress(status);

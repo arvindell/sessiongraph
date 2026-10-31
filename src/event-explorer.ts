@@ -1,8 +1,7 @@
-import { timelineColor, timelineLabel, type TimelineFilter, type TimelineItem, type TimelinePage, type TimelineSummary } from './timeline';
+import { timelineColor, timelineLabel, type TimelineItem, type TimelinePage, type TimelineSummary } from './timeline';
 import type { Session } from './types';
 import { sourceName } from './sources';
 import type { TimelineClient } from './timeline-client';
-import { refreshSelects } from './controls';
 
 const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const timestamp = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' });
@@ -12,46 +11,42 @@ const badge = (item: Pick<TimelineSummary, 'kind' | 'role'>) => `<span class="ev
 export function createEventExplorer(container: HTMLElement, client: TimelineClient, callbacks: { select: (item: TimelineItem | null) => void }) {
   const panel = document.createElement('aside');
   panel.className = 'event-panel glass'; panel.id = 'message-panel'; panel.hidden = true; panel.setAttribute('aria-labelledby', 'event-title');
-  panel.innerHTML = `<header class="event-heading"><h2 id="event-title">Messages & events</h2><button class="icon-button event-close" aria-label="Close message details">×</button></header>
-    <div class="event-detail-nav"><button class="secondary-button" data-step="previous" aria-label="Previous event" title="Previous event (← / ↑)">← Previous</button><span class="event-position" role="status"></span><button class="secondary-button" data-step="next" aria-label="Next event" title="Next event (→ / ↓)">Next →</button></div>
-    <div class="event-scroll"><article class="event-content" aria-label="Event details" tabindex="0"></article>
-      <details class="event-browser"><summary>Browse saved events <span class="event-count"></span></summary>
-        <div class="event-toolbar"><label>Show <select aria-label="Event filter"><option value="all">All activity</option><option value="messages">Messages</option><option value="tools">Tool calls & results</option><option value="events">Other events</option><option value="untimed">Without timestamps</option></select></label></div>
-        <nav class="event-list" aria-label="Session events"></nav><div class="event-pagination"><button class="secondary-button" data-page="previous">← Earlier page</button><button class="secondary-button" data-page="next">Later page →</button></div>
+  panel.innerHTML = `<header class="event-heading"><h2 id="event-title">Messages</h2><button class="icon-button event-close" aria-label="Close message details">×</button></header>
+    <div class="event-detail-nav"><button class="secondary-button" data-step="previous" aria-label="Previous message" title="Previous message (← / ↑)">← Previous</button><span class="event-position" role="status"></span><button class="secondary-button" data-step="next" aria-label="Next message" title="Next message (→ / ↓)">Next →</button></div>
+    <div class="event-scroll"><article class="event-content" aria-label="Message details" tabindex="0"></article>
+      <details class="event-browser"><summary>Browse messages <span class="event-count"></span></summary>
+        <nav class="event-list" aria-label="Session messages"></nav><div class="event-pagination"><button class="secondary-button" data-page="previous">← Earlier page</button><button class="secondary-button" data-page="next">Later page →</button></div>
       </details>
     </div><footer class="event-footer"><details><summary>History coverage</summary><p class="event-coverage"></p></details><button class="text-button event-reload">Reload</button></footer>`;
   container.append(panel);
   const $ = <T extends HTMLElement = HTMLElement>(selector: string) => panel.querySelector<T>(selector)!;
   const listeners = new AbortController();
   let pending: AbortController | undefined, session: Session | undefined, page: TimelinePage | undefined;
-  let filter: TimelineFilter = 'all', revision: string | undefined;
+  let revision: string | undefined;
+  const filter = 'messages';
   let busy = false;
   let prefetch: AbortController | undefined, prefetchTimer: ReturnType<typeof setTimeout> | undefined;
   let last: { item?: string; cursor?: string } = {};
-  const row = (item: TimelineSummary) => `<button class="event-row" data-event="${escape(item.id)}" aria-current="${page?.selected?.id === item.id ? 'true' : 'false'}"><span class="event-row-top">${badge(item)}<small>#${item.ordinal + 1}${item.status === 'failed' ? ' · failed' : ''}</small></span><strong>${escape(item.name)}</strong><span class="event-preview">${escape(item.preview || 'No text recorded')}</span><time>${time(item.time)}</time></button>`;
+  const row = (item: TimelineSummary, index: number) => `<button class="event-row" data-event="${escape(item.id)}" aria-current="${page?.selected?.id === item.id ? 'true' : 'false'}"><span class="event-row-top">${badge(item)}<small>#${page!.offset + index + 1}</small></span><span class="event-preview">${escape(item.preview || 'No text recorded')}</span><time>${time(item.time)}</time></button>`;
   function renderRows() {
     if (!page || !$<HTMLDetailsElement>('.event-browser').open) return;
-    $('.event-list').innerHTML = page.items.map(row).join('') || '<p class="event-empty">No saved items in this view.</p>';
+    $('.event-list').innerHTML = page.items.map(row).join('') || '<p class="event-empty">No saved messages.</p>';
   }
   function render() {
     if (!page) return;
-    refreshSelects(panel);
-    $('.event-count').textContent = `${page.total.toLocaleString()} items${page.partial ? ' · partial coverage' : ''}`;
+    $('.event-count').textContent = `${page.total.toLocaleString()} messages${page.partial ? ' · partial coverage' : ''}`;
     renderRows();
     for (const direction of ['previous', 'next'] as const) $<HTMLButtonElement>(`[data-page="${direction}"]`).disabled = !page[`${direction}Cursor`];
     $('.event-coverage').textContent = page.note || (page.partial ? 'Saved history is incomplete or still awaiting import.' : 'Saved local history. Missing timestamps are never inferred.');
     const item = page.selected;
-    $('.event-position').textContent = item ? `#${item.ordinal + 1}` : 'No items';
+    $('.event-position').textContent = item ? `${page.offset + page.items.findIndex((message) => message.id === item.id) + 1} / ${page.total}` : 'No messages';
     for (const direction of ['previous', 'next'] as const) $<HTMLButtonElement>(`[data-step="${direction}"]`).disabled = !page[`${direction}Item`];
-    if (!item) { $('.event-content').innerHTML = '<div class="event-empty"><h3>Nothing here yet.</h3><p>Choose another filter or refresh the source import.</p></div>'; callbacks.select(null); return; }
+    if (!item) { $('.event-content').innerHTML = '<div class="event-empty"><h3>No messages yet.</h3><p>Refresh the source to import saved user and assistant messages.</p></div>'; callbacks.select(null); return; }
     callbacks.select(item);
-    const payload = (name: string, text?: string) => text ? `<section class="event-payload"><h4>${name}</h4><pre>${escape(text)}</pre></section>` : '';
-    $('.event-content').innerHTML = `<div class="event-detail-heading">${badge(item)}${item.status ? `<span class="event-status ${item.status === 'failed' ? 'failed' : ''}">${escape(item.status)}</span>` : ''}<h3>${escape(item.name)}</h3><p>${time(item.time)}${item.timeSource === 'message' ? ' · parent message timestamp' : ''}</p>${item.endTime ? `<p>Completed ${time(item.endTime)}</p>` : ''}${item.time === null ? '<p>No timestamp · this item has no map position.</p>' : item.time < session!.created || item.time > Math.max(session!.created, session!.activity?.lastMessageAt || session!.created) ? '<p>Outside this session’s plotted lifetime.</p>' : ''}</div>
+    $('.event-content').innerHTML = `<div class="event-detail-heading">${badge(item)}<h3>${escape(item.name)}</h3><p>${time(item.time)}</p>${item.time === null ? '<p>No timestamp · this message has no map position.</p>' : item.time < session!.created || item.time > Math.max(session!.created, session!.activity?.lastMessageAt || session!.created) ? '<p>Outside this session’s plotted lifetime.</p>' : ''}</div>
       ${item.partial ? '<p class="event-warning">Some content is shortened, missing, or unsupported in this import.</p>' : ''}
-      ${payload('Message / event', item.text)}${payload('Input', item.input)}${payload('Output', item.output)}
-      ${!item.text && !item.input && !item.output ? '<p class="event-empty">No text payload was recorded.</p>' : ''}
-      ${item.kind === 'tool_call' || item.kind === 'tool_result' ? `<section class="event-correlations"><h4>Linked tool activity</h4>${page.related.length ? page.related.map((related) => `<button class="event-link" data-linked="${escape(related.id)}">${badge(related)}<span>${escape(related.name)}</span><small>#${related.ordinal + 1} →</small></button>`).join('') : '<p>No matching call or result was saved. A call alone does not confirm execution.</p>'}${page.relatedPartial ? '<p>Showing the first 20 linked items.</p>' : ''}</section>` : ''}
-      <details class="event-provenance"><summary>Source details</summary><dl><dt>Source</dt><dd>${escape(sourceName(session?.source))}</dd><dt>Message ID</dt><dd>${escape(item.messageID)}</dd>${item.nativeID ? `<dt>Native event ID</dt><dd>${escape(item.nativeID)}</dd>` : ''}${item.nativeType ? `<dt>Native type</dt><dd>${escape(item.nativeType)}</dd>` : ''}${item.callID ? `<dt>Tool correlation ID</dt><dd>${escape(item.callID)}</dd>` : ''}${item.parentID ? `<dt>Native parent reference</dt><dd>${escape(item.parentID)}</dd>` : ''}<dt>Timestamp source</dt><dd>${escape(item.timeSource)}</dd></dl></details>`;
+      ${item.text ? `<section class="event-payload"><pre>${escape(item.text)}</pre></section>` : '<p class="event-empty">No message text was recorded.</p>'}
+      <details class="event-provenance"><summary>Source details</summary><dl><dt>Source</dt><dd>${escape(sourceName(session?.source))}</dd><dt>Message ID</dt><dd>${escape(item.messageID)}</dd><dt>Timestamp source</dt><dd>${escape(item.timeSource)}</dd></dl></details>`;
   }
   async function load(options: { item?: string; cursor?: string } = {}) {
     if (!session) return;
@@ -96,14 +91,12 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
   panel.addEventListener('click', (event) => {
     const button = (event.target as Element).closest<HTMLButtonElement>('button'); if (!button) return;
     if (button.dataset.event) void load({ item: button.dataset.event });
-    if (button.dataset.linked) { filter = 'all'; $<HTMLSelectElement>('select').value = filter; void load({ item: button.dataset.linked }); }
     if (button.dataset.step) step(button.dataset.step === 'next' ? 'next' : 'previous');
     if (button.dataset.page) { const cursor = button.dataset.page === 'next' ? page?.nextCursor : page?.previousCursor; if (cursor) void load({ cursor }); }
     if (button.hasAttribute('data-retry')) void load(last);
     if (button.hasAttribute('data-reload') || button.classList.contains('event-reload')) reload();
     if (button.classList.contains('event-close')) { close(); document.querySelector<HTMLCanvasElement>('#scene canvas')?.focus({ preventScroll: true }); }
   }, { signal: listeners.signal });
-  $('select').addEventListener('change', () => { filter = $<HTMLSelectElement>('select').value as TimelineFilter; void load(); }, { signal: listeners.signal });
   $('.event-browser').addEventListener('toggle', renderRows, { signal: listeners.signal });
   return {
     close,
@@ -117,7 +110,7 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
     open(value: Session, item?: string, snapshot?: string) {
       clearTimeout(prefetchTimer); prefetch?.abort();
       const sameSession = session?.id === value.id;
-      session = value; revision = snapshot; page = undefined; filter = 'all'; $<HTMLSelectElement>('select').value = filter;
+      session = value; revision = snapshot; page = undefined;
       $('.event-list').replaceChildren(); $('.event-content').innerHTML = '<p class="event-empty">Loading saved history…</p>';
       $('.event-coverage').textContent = 'Loading coverage…';
       if (!sameSession) $<HTMLDetailsElement>('.event-browser').open = false;

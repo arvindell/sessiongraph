@@ -4,6 +4,9 @@ import { DEFAULT_VIEW_STATE, normalizeViewState } from '../src/view-state';
 import { LibrarySettingsSaver, type LibrarySettingsPatch } from '../src/library-settings';
 
 test('saved view state keeps false toggles and custom dates while rejecting malformed ranges and filters', () => {
+  assert.equal(normalizeViewState(undefined).days, 0);
+  assert.equal(normalizeViewState(undefined).includeArchived, false);
+  assert.equal(normalizeViewState({ includeArchived: true, days: 30 }).includeArchived, true);
   assert.deepEqual(normalizeViewState(null), DEFAULT_VIEW_STATE);
   assert.deepEqual(normalizeViewState({ days: 400, fromDate: '2026-02-31', toDate: 'invalid', includeChildren: 'false', directory: 'x'.repeat(4097) }), DEFAULT_VIEW_STATE);
   const range = normalizeViewState({ days: 0, includeArchived: false, includeChildren: false, fromDate: '2024-02-29', toDate: '2024-03-01', sourceID: 'codex' });

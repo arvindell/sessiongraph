@@ -51,7 +51,7 @@ export function createEventHover(tooltip: HTMLElement, container: HTMLElement, c
       timer = setTimeout(async () => {
         const request = new AbortController(); controller = request;
         try {
-          const page = await client.read(sessionID, { item: item.id, revision }, request.signal);
+          const page = await client.read(sessionID, { item: item.id, revision, filter: 'messages' }, request.signal);
           if (request.signal.aborted || key !== nextKey || page.selected?.id !== item.id) return;
           const value = preview(page.selected); cache.set(nextKey, value);
           if (cache.size > 20) cache.delete(cache.keys().next().value!);

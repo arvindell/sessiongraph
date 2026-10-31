@@ -10,7 +10,7 @@ export interface ViewState {
 }
 
 export const DEFAULT_VIEW_STATE: Readonly<ViewState> = Object.freeze({
-  sourceID: '', projectID: '', directory: '', days: 90, fromDate: '', toDate: '', includeChildren: true, includeArchived: true,
+  sourceID: '', projectID: '', directory: '', days: 0, fromDate: '', toDate: '', includeChildren: true, includeArchived: false,
 });
 const validDate = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 export function normalizeViewState(value: unknown): ViewState {

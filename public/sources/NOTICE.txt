@@ -2,3 +2,20 @@ Claude, OpenAI, and OpenCode SVG paths are from Simple Icons (CC0-1.0).
 Claude and OpenCode: https://github.com/simple-icons/simple-icons/tree/develop/icons
 OpenAI: https://github.com/simple-icons/simple-icons/blob/11.15.0/icons/openai.svg
 Brand names and marks belong to their respective owners. SessionGraph is independent.
+
+Gemini CLI, Qwen, GitHub Copilot, Cline, Roo Code, and Kilo Code SVG paths:
+Lobe Icons, MIT License, Copyright (c) 2023 LobeHub.
+https://github.com/lobehub/lobe-icons/tree/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-svg/icons
+Files: geminicli.svg, qwen.svg, githubcopilot.svg, cline.svg, roocode.svg, kilocode.svg.
+Adapted for monochrome CSS masks; path geometry is unchanged.
+See LICENSE-MIT.txt.
+
+Pi mark: https://pi.dev/logo-auto.svg
+https://github.com/earendil-works/pi/tree/35dfa757378bd7a8570670e99c2687bdd1039a06
+MIT License, Copyright (c) 2025 Mario Zechner.
+Adapted with monochrome fill and a cropped viewBox. See LICENSE-MIT.txt.
+
+Continue mark: docs/logo/dark.svg
+https://github.com/continuedev/continue/tree/5522c6f44ca0ac3528b37244818fbfa39b5af470
+Apache License 2.0, Copyright 2023 Continue Dev, Inc.
+Adapted with monochrome fill and responsive dimensions. See LICENSE-APACHE-2.0.txt.

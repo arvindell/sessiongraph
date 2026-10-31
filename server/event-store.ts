@@ -44,15 +44,15 @@ export function eventSummary(row: Record<string, unknown>): TimelineSummary {
 export class EventReadError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
-const filters: Record<TimelineFilter, string> = { all: '1', messages: "kind='message'", tools: "kind IN ('tool_call','tool_result')", events: "kind NOT IN ('message','tool_call','tool_result')", untimed: 'time IS NULL' };
+const filters: Record<TimelineFilter, string> = { all: '1', messages: "kind='message' AND role IN ('user','assistant')", tools: "kind IN ('tool_call','tool_result')", events: "kind NOT IN ('message','tool_call','tool_result')", untimed: 'time IS NULL' };
 function coverage(db: DatabaseSync, session: Session) {
   const row = db.prepare('SELECT * FROM timeline_coverage WHERE session_id=?').get(session.id);
   return { revision: String(row?.revision || 'pending'), partial: Boolean(row?.partial) || session.coverage?.history !== 'complete', note: [row?.note, session.coverage?.note].filter(Boolean).join(' ') || undefined };
 }
 export function readEventMarkers(db: DatabaseSync, session: Session): TimelineMarkers {
   const end = Math.max(session.created, session.activity?.lastMessageAt || session.created);
-  const totals = db.prepare('SELECT count(*) AS total, count(*) FILTER (WHERE time IS NULL) AS untimed, count(*) FILTER (WHERE time<? OR time>?) AS outside FROM timeline_items WHERE session_id=?').get(session.created, end, session.id)!;
-  const rows = db.prepare(`SELECT ${summaryColumns} FROM timeline_items WHERE session_id=? AND time>=? AND time<=? ORDER BY time DESC,ordinal DESC LIMIT 2000`).all(session.id, session.created, end);
+  const totals = db.prepare(`SELECT count(*) AS total, count(*) FILTER (WHERE time IS NULL) AS untimed, count(*) FILTER (WHERE time<? OR time>?) AS outside FROM timeline_items WHERE session_id=? AND (${filters.messages})`).get(session.created, end, session.id)!;
+  const rows = db.prepare(`SELECT ${summaryColumns} FROM timeline_items WHERE session_id=? AND (${filters.messages}) AND time>=? AND time<=? ORDER BY time DESC,ordinal DESC LIMIT 2000`).all(session.id, session.created, end);
   return { sessionID: session.id, ...coverage(db, session), items: rows.reverse().map(eventSummary), total: Number(totals.total), untimed: Number(totals.untimed), outsideLifetime: Number(totals.outside), limited: Number(totals.total) - Number(totals.untimed) - Number(totals.outside) > rows.length };
 }
 export function readEvents(db: DatabaseSync, session: Session, options: { cursor?: string; item?: string; filter?: string; revision?: string } = {}): TimelinePage {

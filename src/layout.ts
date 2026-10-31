@@ -19,17 +19,24 @@ export function directoryLabel(directory: string): string {
 // Metadata updates can be title changes or filesystem writes, not messages.
 // Unknown message times stay at creation until a timestamp is available.
 export const sessionEnd = (session: Session) => Math.max(session.created, session.activity?.lastMessageAt || session.created);
-export const timeX = (time: number, graph: Pick<Graph, 'start' | 'end'>) => (time - graph.start) / Math.max(1, graph.end - graph.start) * 300 - 150;
+export const timeX = (time: number, graph: Pick<Graph, 'start' | 'end' | 'timeFrame'>) => {
+  const frame = graph.timeFrame || graph;
+  return (time - frame.start) / Math.max(1, frame.end - frame.start) * 300 - 150;
+};
+export const progressX = (progress: number, graph: Pick<Graph, 'start' | 'end' | 'timeFrame'>) => timeX(graph.start + (graph.end - graph.start) * progress, graph);
 export const trailPosition = (node: GraphNode, x: number): [number, number, number] => [x, node.position[1], node.position[2]];
+/** A session is born at its start, travels with time, then rests at its last message. */
+export const headPosition = (node: GraphNode, frontier: number) => trailPosition(node, Math.max(node.startPosition[0], Math.min(frontier, node.position[0])));
 export const connectionPositions = (from: GraphNode, to: GraphNode) => [
   trailPosition(from, Math.max(from.startPosition[0], Math.min(to.startPosition[0], from.position[0]))), to.startPosition,
 ] as const;
 
-export function makeGraph(sessions: Session[], projects: Project[]): Graph {
+export function makeGraph(sessions: Session[], projects: Project[], previous?: Graph): Graph {
   if (!sessions.length) return { nodes: [], edges: [], lanes: [], start: 0, end: 0 };
   const ordered = [...sessions].sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
   const start = ordered[0].created;
   const end = ordered.reduce((latest, session) => Math.max(latest, sessionEnd(session)), start + 3_600_000);
+  const timeFrame = previous?.nodes.length ? previous.timeFrame || { start: previous.start, end: previous.end } : { start, end };
   const groups = new Map<string, Session[]>();
   for (const session of ordered) {
     const key = `${session.projectID}:${session.directory}`;
@@ -38,11 +45,16 @@ export function makeGraph(sessions: Session[], projects: Project[]): Graph {
     groups.set(key, group);
   }
   const sortedGroups = [...groups].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  const slots = new Map(previous?.lanes.map((lane, index) => [lane.key, lane.slot ?? index]));
+  let nextSlot = Math.max(-1, ...slots.values()) + 1;
+  for (const [key] of sortedGroups) if (!slots.has(key)) slots.set(key, nextSlot++);
+  sortedGroups.sort((a, b) => slots.get(a[0])! - slots.get(b[0])!);
   const lanes: Lane[] = [];
   const nodes: GraphNode[] = [];
-  sortedGroups.forEach(([key, group], index) => {
-    // The busiest directory is the central trunk. Other directories fan out in
-    // depth and height; every node's X coordinate is its latest saved message.
+  sortedGroups.forEach(([key, group]) => {
+    const index = slots.get(key)!;
+    // The initially busiest directory is the central trunk. Imports retain
+    // those slots; every node's X coordinate is its latest saved message.
     const angle = index * 2.399963;
     const distance = index === 0 ? 0 : 15 + Math.sqrt(index) * 14;
     const y = Math.cos(angle) * distance;
@@ -51,13 +63,13 @@ export function makeGraph(sessions: Session[], projects: Project[]): Graph {
     const project = projects.find((p) => p.id === group[0].projectID);
     const directory = group[0].directory;
     const lane: Lane = {
-      key, label: directoryLabel(directory), color,
+      key, slot: index, label: directoryLabel(directory), color,
       kind: project?.worktrees.includes(directory) ? 'worktree' : 'directory',
       y, z, nodes: [],
     };
     for (const session of group) {
-      const x = timeX(sessionEnd(session), { start, end });
-      const startX = timeX(session.created, { start, end });
+      const x = timeX(sessionEnd(session), timeFrame);
+      const startX = timeX(session.created, timeFrame);
       const seed = hash(session.id);
       const isBranch = Boolean(session.parentID || session.forkID);
       const spread = isBranch ? 12 : 6;
@@ -82,6 +94,14 @@ export function makeGraph(sessions: Session[], projects: Project[]): Graph {
   }
   const byID = new Map(nodes.map((node) => [node.session.id, node]));
   const placed = new Set<string>();
+  // Newly discovered ancestors can add links without moving an existing branch.
+  for (const old of previous?.nodes || []) {
+    const node = byID.get(old.session.id);
+    if (node && node.session.projectID === old.session.projectID && node.session.directory === old.session.directory) {
+      node.position[1] = old.position[1]; node.position[2] = old.position[2];
+      placed.add(node.session.id);
+    }
+  }
   // Give descendants room to branch in Y/Z, while X remains exact chronological
   // time. Directory changes keep their own lane instead of merging two streams.
   function place(node: GraphNode, visited = new Set<string>()) {
@@ -100,5 +120,5 @@ export function makeGraph(sessions: Session[], projects: Project[]): Graph {
   }
   ordered.forEach((session) => place(byID.get(session.id)!));
   nodes.forEach((node) => { node.startPosition = trailPosition(node, node.startPosition[0]); });
-  return { nodes, edges, lanes, start, end };
+  return { nodes, edges, lanes, start, end, timeFrame };
 }

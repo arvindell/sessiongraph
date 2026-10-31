@@ -110,6 +110,8 @@ export interface GraphEdge {
 
 export interface Lane {
   key: string;
+  /** Stable placement slot while importing into the current view. */
+  slot?: number;
   label: string;
   color: string;
   kind: "worktree" | "directory";
@@ -124,4 +126,6 @@ export interface Graph {
   lanes: Lane[];
   start: number;
   end: number;
+  /** Coordinate frame stays fixed across imports; start/end describe current data. */
+  timeFrame?: { start: number; end: number };
 }

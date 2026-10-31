@@ -3,16 +3,15 @@ import { createElement, PanelsTopLeft, Database, Volume2, Sparkles, Orbit, LockK
 import { refreshSelects } from './controls';
 import type { SaveState } from './library-settings';
 import type { ImportStatus, SourceStatus } from './types';
-import { sourceIcon, sortSources } from './sources';
+import { sourceOption, sortSources } from './sources';
 
 type Section = 'interface' | 'sources' | 'audio' | 'graphics' | 'trails' | 'privacy';
 const tabs: [Section, string, IconNode][] = [['interface', 'Interface', PanelsTopLeft], ['sources', 'Sources', Database], ['audio', 'Sound', Volume2], ['graphics', 'Graphics', Sparkles], ['trails', 'Trails & playback', Orbit], ['privacy', 'Privacy', LockKeyhole]];
-const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const toggle = (key: keyof Preferences, label: string, hint: string) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><input type="checkbox" role="switch" data-pref="${key}" aria-label="${label}"/></label>`;
 const range = (key: keyof Preferences, label: string, hint: string, min: number, max: number, unit = '%', step = 1) => `<label class="setting-row setting-range"><span><strong>${label}</strong><small>${hint}</small></span><span class="setting-slider"><input type="range" data-pref="${key}" aria-label="${label}" min="${min}" max="${max}" step="${step}"/><output data-output="${key}" data-unit="${unit}"></output></span></label>`;
 const select = (key: keyof Preferences, label: string, hint: string, options: [string, string][]) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><select data-pref="${key}" aria-label="${label}">${options.map(([value, title]) => `<option value="${value}">${title}</option>`).join('')}</select></label>`;
 
-export function createSettings(callbacks: { change: (patch: Partial<Preferences>) => void; visibility: () => void; previewSound: () => void; resetPanels: () => void; getSources: () => Promise<SourceStatus[]>; importSources: (ids: string[]) => Promise<void> }) {
+export function createSettings(callbacks: { change: (patch: Partial<Preferences>) => void; getArchived: () => boolean; changeArchived: (value: boolean) => void; visibility: () => void; previewSound: () => void; resetPanels: () => void; getSources: () => Promise<SourceStatus[]>; importSources: (ids: string[]) => Promise<void> }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'settings-dialog'; dialog.setAttribute('aria-labelledby', 'settings-title');
   dialog.innerHTML = `<header class="settings-heading"><div><h2 id="settings-title">Settings</h2><p>Import, appearance, and playback preferences.</p></div><button class="icon-button settings-close" aria-label="Close settings">×</button></header>
@@ -22,12 +21,12 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
         ${select('view', 'Default view', 'Switch between depth and a flat timeline.', [['3d', '3D galaxy'], ['2d', '2D timeline']])}
         ${select('motion', 'Motion', 'Camera transitions, reveals, and ambient movement.', [['system', 'Follow system'], ['on', 'On'], ['off', 'Off']])}
         ${select('density', 'Session list', 'Adjust spacing between sessions.', [['comfortable', 'Comfortable'], ['compact', 'Compact']])}
+        <label class="setting-row"><span><strong>Show archived sessions</strong><small>Include archived history in the map and session list.</small></span><input class="settings-archived" type="checkbox" role="switch" aria-label="Show archived sessions"/></label>
         ${range('panelOpacity', 'Panel opacity', 'Adjust panel background transparency.', 55, 100)}
         <div class="settings-note"><span>Restore the default panel layout.</span><button class="secondary-button settings-reset-panels">Reset panel positions</button></div>
       </section>
       <section id="settings-sources" role="tabpanel" aria-labelledby="settings-tab-sources" hidden><h3>Sources</h3><p class="settings-description">Choose the local apps to import. Importing is read-only.</p>
         ${toggle('autoImport', 'Auto-import sessions', 'Check selected sources on startup, on return, and every minute while visible.')}
-        <input type="search" class="source-search" placeholder="Find a source…" aria-label="Find a session source"/>
         <div class="settings-sources-list import-sources"></div>
         <div class="settings-import-progress" role="status"></div>
         <div class="settings-note"><span>Source changes apply when you import. Previously saved history is kept.</span><button class="secondary-button settings-import" disabled>Import selected sources</button></div>
@@ -53,7 +52,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
         ${toggle('trailFlow', 'Flowing trails', 'A decorative pulse along each lifetime; respects Motion.')}
         ${range('trailSpeed', 'Flow speed', 'How quickly the light travels along the trails.', 10, 100)}
         ${toggle('relationships', 'Relationship links', 'Show recorded fork and child connections.')}
-        ${toggle('messageDots', 'Message & event dots', 'Clickable user, assistant, tool, and event markers on the selected trail.')}
+        ${toggle('messageDots', 'Message dots', 'User and assistant messages, colored to match the selected session.')}
         ${range('playbackSpeed', 'Playback speed', '1× plays the full timeline in 30 seconds.', .25, 3, '×', .25)}
         <p class="settings-footnote">Flow is decorative. Message dots reflect saved timestamps; visual settings never alter your history.</p>
       </section>
@@ -66,9 +65,8 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
     </div></div><footer class="settings-footer"><span class="settings-save-status" role="status">Changes save automatically on this device.</span><button class="text-button settings-reset">Restore defaults</button><button class="primary-button settings-done">Done</button></footer>`;
   document.body.append(dialog);
   const events = new AbortController(), options = { signal: events.signal };
-  const sourceSearch = dialog.querySelector<HTMLInputElement>('.source-search')!;
-  const filterSources = () => dialog.querySelectorAll<HTMLElement>('.import-source').forEach(row => { row.hidden = !row.textContent!.toLowerCase().includes(sourceSearch.value.trim().toLowerCase()); });
-  sourceSearch.addEventListener('input', filterSources, options);
+  const archived = dialog.querySelector<HTMLInputElement>('.settings-archived')!;
+  archived.addEventListener('change', () => callbacks.changeArchived(archived.checked), options);
   let focus: HTMLElement | null = null;
   let sourceRequest = 0, sourcesLoading = false, sourcesRunning = false, active: Section = 'interface';
   const sourceControls = () => {
@@ -82,8 +80,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
     try {
       const sources = await callbacks.getSources();
       if (events.signal.aborted || request !== sourceRequest) return;
-      list.innerHTML = sortSources(sources).map((source) => `<label class="import-source"><input class="settings-source" type="checkbox" value="${escape(source.id)}" ${source.selected ? 'checked' : ''}/><span class="source-symbol">${sourceIcon(source.id)}</span><span><strong>${escape(source.name)}</strong><small>${escape(source.description)}</small><small class="source-imported">${source.sessions.toLocaleString()} saved${source.error ? ` · ${escape(source.error)}` : ''}</small></span><span class="source-detected ${source.available ? 'detected' : ''}">${source.available ? 'Detected' : 'Not found'}</span></label>`).join('');
-      filterSources();
+      list.innerHTML = sortSources(sources).map((source) => sourceOption(source, { settings: true })).join('');
     } catch (error) {
       if (events.signal.aborted || request !== sourceRequest) return;
       list.textContent = error instanceof Error ? error.message : 'Could not detect sources.';
@@ -129,16 +126,17 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
     callbacks.change({ [key]: value });
   }, options);
   dialog.querySelector('.settings-preview')!.addEventListener('click', callbacks.previewSound, options);
-  dialog.querySelector('.settings-reset')!.addEventListener('click', () => callbacks.change({ ...DEFAULT_PREFERENCES }), options);
+  dialog.querySelector('.settings-reset')!.addEventListener('click', () => { callbacks.changeArchived(false); callbacks.change({ ...DEFAULT_PREFERENCES }); }, options);
   dialog.querySelector('.settings-reset-panels')!.addEventListener('click', callbacks.resetPanels, options);
   return {
-    open() { if (dialog.open) return; focus = document.activeElement as HTMLElement; dialog.showModal(); callbacks.visibility(); dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus(); if (active === 'sources') void loadSources(); },
+    open() { if (dialog.open) return; archived.checked = callbacks.getArchived(); focus = document.activeElement as HTMLElement; dialog.showModal(); callbacks.visibility(); dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus(); if (active === 'sources') void loadSources(); },
     importStatus(status: ImportStatus) {
       const wasRunning = sourcesRunning; sourcesRunning = status.running; sourceControls();
       dialog.querySelector('.settings-import-progress')!.textContent = status.running ? `Importing · ${status.imported.toLocaleString()} saved` : `${status.imported.toLocaleString()} imported · ${status.unchanged.toLocaleString()} unchanged${status.failed ? ` · ${status.failed} unavailable` : ''}${status.errors.length ? ` · ${status.errors[0]}` : ''}`;
       if (wasRunning && !status.running && dialog.open && active === 'sources') void loadSources();
     },
     render(values: Preferences, saved: boolean, saving: SaveState = 'saved') {
+      archived.checked = callbacks.getArchived();
       for (const control of dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-pref]')) {
         const key = control.dataset.pref as keyof Preferences;
         if (control.type === 'checkbox') (control as HTMLInputElement).checked = Boolean(values[key]);
