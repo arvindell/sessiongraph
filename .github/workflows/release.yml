@@ -73,12 +73,18 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf rpm
       - run: pnpm install --frozen-lockfile
       - run: node scripts/set-release-version.mjs ${{ env.RELEASE_VERSION }}
-      - run: pnpm desktop:build --bundles ${{ matrix.bundles }}
+      - run: pnpm desktop:build --config src-tauri/tauri.release.conf.json --bundles ${{ matrix.bundles }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
       - if: matrix.target == 'linux-x64'
         run: pnpm package:desktop
       - if: matrix.target != 'linux-x64'
         run: pnpm package:desktop --platform-only
       - run: node scripts/collect-release.mjs
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
       - uses: actions/upload-artifact@v4
         with:
           name: sessiongraph-${{ matrix.target }}
@@ -95,12 +101,21 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       TAG: ${{ needs.version.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.version.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - uses: actions/download-artifact@v4
         with:
           pattern: sessiongraph-*
           path: release
           merge-multiple: true
+      - name: Validate signed updater manifest
+        run: node scripts/updater-manifest.mjs release
+      - name: Demo video
+        run: cp docs/sessiongraph-demo.mp4 release/sessiongraph-demo.mp4
       - name: Checksums
         working-directory: release
         run: sha256sum * > SHA256SUMS

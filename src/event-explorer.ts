@@ -2,6 +2,7 @@ import { timelineColor, timelineLabel, type TimelineFilter, type TimelineItem, t
 import type { Session } from './types';
 import { sourceName } from './sources';
 import type { TimelineClient } from './timeline-client';
+import { refreshSelects } from './controls';
 
 const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const timestamp = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' });
@@ -34,6 +35,7 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
   }
   function render() {
     if (!page) return;
+    refreshSelects(panel);
     $('.event-count').textContent = `${page.total.toLocaleString()} items${page.partial ? ' · partial coverage' : ''}`;
     renderRows();
     for (const direction of ['previous', 'next'] as const) $<HTMLButtonElement>(`[data-page="${direction}"]`).disabled = !page[`${direction}Cursor`];

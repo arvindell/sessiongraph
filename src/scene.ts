@@ -11,6 +11,7 @@ import { DEFAULT_PREFERENCES, motionEnabled, type Preferences } from './preferen
 import type { FileChange, Graph, GraphNode } from './types';
 import type { TimelineItem, TimelineSummary } from './timeline';
 import { ScreenGrid } from './screen-grid';
+import { eventIcon } from './event-icons';
 
 type Label = { element: HTMLDivElement; point: THREE.Vector3; priority?: boolean; visible?: boolean; transform?: string };
 
@@ -87,6 +88,9 @@ export class TimelineScene {
   private eventMarkers: { item: TimelineSummary; position: THREE.Vector3 }[] = [];
   private selectedEvent: string | null = null;
   private focusedEvent?: TimelineSummary;
+  private focusedSession: string | null = null;
+  private eventIcons: { element: HTMLDivElement; marker: number; visible: boolean; transform: string }[] = [];
+  private iconPoint = new THREE.Vector3();
   private markerUniforms = { uPixelRatio: { value: 1 }, uSelected: { value: -1 }, uHovered: { value: -1 } };
   private fileOffsets: THREE.Vector3[] = [];
   private fileOrigin = new THREE.Vector3();
@@ -137,6 +141,7 @@ export class TimelineScene {
     this.controls.maxDistance = 1200;
     this.controls.addEventListener('start', () => {
       this.targetPosition = undefined; this.targetLook = undefined;
+      this.focusedSession = null;
       if (this.playing) callbacks.onPlaybackInterrupt();
     });
     this.camera.position.set(20, 70, 320);
@@ -221,6 +226,7 @@ export class TimelineScene {
     clearGroup(this.selectionGroup);
     clearGroup(this.filesGroup);
     this.eventMarkers = [];
+    this.eventIcons = [];
     this.fileMesh = undefined;
     this.fileOffsets = [];
     this.labels = [];
@@ -361,6 +367,7 @@ export class TimelineScene {
   setPlaying(playing: boolean) {
     if (this.playing === playing) return;
     this.playing = playing;
+    if (playing) { this.focusedSession = null; this.camera.clearViewOffset(); }
     if (playing && this.motion) {
       if (!this.playbackPath) this.buildPlaybackPath();
       this.targetPosition = undefined; this.targetLook = undefined;
@@ -379,11 +386,11 @@ export class TimelineScene {
     const verticalFov = THREE.MathUtils.degToRad(this.camera.fov) / 2;
     const framingFov = Math.min(verticalFov, Math.atan(Math.tan(verticalFov) * this.camera.aspect));
     const distance = THREE.MathUtils.clamp(radius / Math.sin(framingFov) * 1.08, 160, 1100);
-    // A slow, front-facing orbital arc keeps chronological direction readable.
-    const yaw = this.flat ? 0 : -.65 + this.cutoff * 1.3;
+    // Sweep a half-turn around the activity frontier, ending on the far side.
+    const yaw = this.flat ? 0 : -.3 + this.cutoff * Math.PI;
     const elevation = this.flat ? 0 : .16 + Math.sin(this.cutoff * Math.PI) * .12;
     const angle = Math.atan2(Math.sin(yaw - this.playbackSphere.theta), Math.cos(yaw - this.playbackSphere.theta));
-    this.playbackSphere.theta += angle * (1 - Math.exp(-1.5 * delta));
+    this.playbackSphere.theta += angle * (1 - Math.exp(-3 * delta));
     this.playbackSphere.phi = THREE.MathUtils.damp(this.playbackSphere.phi, Math.PI / 2 - elevation, 1.5, delta);
     this.playbackSphere.radius = THREE.MathUtils.damp(this.playbackSphere.radius, distance, 1.25, delta);
     this.controls.target.lerp(this.playbackFocus, 1 - Math.exp(-2.1 * delta));
@@ -438,6 +445,7 @@ export class TimelineScene {
     clearGroup(this.selectionGroup);
     clearGroup(this.filesGroup);
     this.eventMarkers = [];
+    this.clearEventIcons();
     this.fileMesh = undefined;
     this.fileOffsets = [];
     this.labels = this.labels.filter((label) => { if (label.priority) label.element.remove(); return !label.priority; });
@@ -466,6 +474,7 @@ export class TimelineScene {
     const old = this.selectionGroup.getObjectByName('event-markers');
     if (old) { clearGroup(old as THREE.Group); old.removeFromParent(); }
     this.eventMarkers = [];
+    this.clearEventIcons();
     this.dirty = true;
     const node = this.selected ? this.nodeByID.get(this.selected) : undefined;
     if (!node) return;
@@ -501,11 +510,24 @@ export class TimelineScene {
     const group = new THREE.Group(); group.name = 'event-markers'; group.visible = this.preferences.messageDots;
     const points = new THREE.Points(geometry, material); points.renderOrder = 10;
     group.add(points); this.selectionGroup.add(group);
+    // Bound DOM work independently of the 2,000-dot GPU/picking budget.
+    const recent = this.eventMarkers.length - 1, chosen = new Set<number>();
+    for (let i = recent; i >= Math.max(0, recent - 31); i--) chosen.add(i);
+    for (let i = 0; i < 32 && recent > 31; i++) chosen.add(Math.floor(i * (recent - 32) / 31));
+    for (const marker of [...chosen].sort((a, b) => b - a)) {
+      const element = document.createElement('div'); element.className = 'event-marker-icon'; element.setAttribute('aria-hidden', 'true');
+      element.append(eventIcon(this.eventMarkers[marker].item)); this.labelLayer.append(element);
+      this.eventIcons.push({ element, marker, visible: false, transform: '' });
+    }
+    if (this.focusedSession === this.selected && this.selected) this.focus(this.selected);
   }
+
+  private clearEventIcons() { for (const icon of this.eventIcons) icon.element.remove(); this.eventIcons = []; }
 
   selectEvent(id: string | null) { this.selectedEvent = id; if (!id) this.focusedEvent = undefined; this.markerUniforms.uSelected.value = this.eventMarkers.findIndex((marker) => marker.item.id === id); this.dirty = true; }
 
   focusEvent(item: TimelineItem | TimelineSummary) {
+    this.focusedSession = null;
     const node = this.selected ? this.nodeByID.get(this.selected) : undefined;
     if (!node || item.time === null) return;
     const x = timeX(item.time, this.graph);
@@ -575,7 +597,14 @@ export class TimelineScene {
     const node = this.nodeByID.get(id);
     if (!node) return;
     if (this.selected !== id) this.select(id);
-    this.focusPoint(new THREE.Vector3(...node.position), 160);
+    this.focusedSession = id;
+    const recent = this.eventMarkers.filter((marker) => marker.item.kind === 'message').slice(-12);
+    const length = node.position[0] - node.startPosition[0];
+    const span = Math.min(length, 60, Math.max(8, recent.length ? node.position[0] - recent[0].position.x : Math.min(40, length * .3)));
+    const target = new THREE.Vector3(...node.position); target.x -= span / 2;
+    const area = this.focusArea();
+    const distance = Math.max(85, (span + 18) * this.height / Math.max(160, area.width) / (2 * Math.tan(Math.PI / 8)));
+    this.focusPoint(target, Math.min(distance, 220));
   }
 
   private focusPoint(target: THREE.Vector3, distance: number) {
@@ -586,22 +615,31 @@ export class TimelineScene {
     this.dirty = true;
   }
 
-  private frameFocus() {
+  private focusArea() {
     const width = this.container.clientWidth, height = this.container.clientHeight;
-    let x = width / 2, y = height / 2;
+    let left = 16, right = width - 16, top = width >= 760 ? 92 : 72, bottom = height - 24;
     const inspector = document.getElementById('inspector'), explorer = document.getElementById('explorer');
     if (width >= 760) {
-      const left = explorer && !explorer.hidden ? explorer.getBoundingClientRect().right + 20 : 0;
-      const right = inspector && !inspector.hidden ? inspector.getBoundingClientRect().left - 20 : width;
-      if (right - left > 160) x = (left + right) / 2;
+      left = explorer && !explorer.hidden ? explorer.getBoundingClientRect().right + 24 : left;
+      right = inspector && !inspector.hidden ? inspector.getBoundingClientRect().left - 24 : right;
+      if (right - left < 160) { left = 16; right = width - 16; }
     } else if (inspector && !inspector.hidden) {
       const rect = inspector.getBoundingClientRect();
-      if (rect.top > 140) y = (70 + rect.top) / 2;
+      if (rect.top > 160) bottom = Math.min(bottom, rect.top - 20);
     }
+    const timeline = document.getElementById('timeline');
+    if (timeline && !timeline.hidden) { const rect = timeline.getBoundingClientRect(); if (rect.top > top + 160) bottom = Math.min(bottom, rect.top - 24); }
+    return { x: (left + right) / 2, y: (top + bottom) / 2, width: right - left, height: bottom - top };
+  }
+
+  private frameFocus() {
+    const width = this.container.clientWidth, height = this.container.clientHeight;
+    const { x, y } = this.focusArea();
     this.camera.setViewOffset(width, height, width / 2 - x, height / 2 - y, width, height);
   }
 
   reset() {
+    this.focusedSession = null;
     this.camera.clearViewOffset();
     if (!this.graph.nodes.length) return;
     const bounds = new THREE.Box3().setFromPoints(this.graph.nodes.flatMap((node) => [new THREE.Vector3(...node.startPosition), new THREE.Vector3(...node.position)]));
@@ -655,6 +693,9 @@ export class TimelineScene {
       focusDimming: this.focusUniforms.uFocus.value,
       nodeSegments: this.nodeMesh?.geometry.parameters.widthSegments,
       eventMarkers: this.eventMarkers.length,
+      eventIcons: this.eventIcons.filter((icon) => icon.visible).length,
+      focusArea: this.focusArea(),
+      selectedScreen: this.selected && this.nodeByID.has(this.selected) ? (() => { const point = new THREE.Vector3(...this.nodeByID.get(this.selected)!.position); if (this.flat) point.z = 0; point.project(this.camera); return [(point.x + 1) / 2 * this.width, (1 - point.y) / 2 * this.height]; })() : undefined,
       selectedEvent: this.selectedEvent,
       selectedEventPosition: this.eventMarkers.find((marker) => marker.item.id === this.selectedEvent)?.position.toArray(),
       markerSamples: this.eventMarkers.slice(0, 30).map(({ item, position }) => { const p = position.clone(); if (this.flat) p.z *= .001; p.project(this.camera); return { id: item.id, kind: item.kind, x: (p.x + 1) / 2 * this.container.clientWidth, y: (1 - p.y) / 2 * this.container.clientHeight }; }),
@@ -891,6 +932,19 @@ export class TimelineScene {
         const transform = `translate(${x}px, ${y}px)`;
         if (label.transform !== transform) { label.element.style.transform = transform; label.transform = transform; }
         occupied.push({ x, y, width: labelWidth });
+      }
+    }
+    for (const icon of this.eventIcons) {
+      const marker = this.eventMarkers[icon.marker], point = this.iconPoint.copy(marker.position);
+      if (this.flat) point.z = 0;
+      point.project(this.camera);
+      const x = (point.x + 1) / 2 * width - 6, y = (1 - point.y) / 2 * height - 25;
+      const visible = this.preferences.messageDots && this.selectionGroup.visible && marker.position.x <= this.clipPlane.constant && point.z > -1 && point.z < 1 && x > 12 && x < width - 24 && y > 12 && y < height - 30 && !occupied.some((box) => x < box.x + box.width + 12 && x + 24 > box.x && Math.abs(y - box.y) < 24);
+      if (visible !== icon.visible) { icon.element.classList.toggle('visible', visible); icon.visible = visible; }
+      if (visible) {
+        const transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+        if (transform !== icon.transform) { icon.element.style.transform = transform; icon.transform = transform; }
+        occupied.push({ x, y, width: 12 });
       }
     }
     this.composer.render();

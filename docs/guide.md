@@ -21,13 +21,19 @@ Installers appear in `src-tauri/target/release/bundle/`. On macOS, open `macos/S
 
 ### npm launcher
 
-The launcher and platform packages are public on npm. No sign-in is needed:
+The launcher and platform packages are configured for public npm distribution. Registry publishing is still being finalized; use the [desktop downloads](../README.md#install) in the meantime. Once published:
 
 ```sh
 npx sessiongraph
 # Or use your browser with a local backend:
 npx sessiongraph --browser
 ```
+
+The default command opens the native desktop app from your matching OS/architecture package. `--browser` instead starts a local authenticated server and opens the explorer in your default browser; keep the terminal open and press Ctrl+C to stop it. Both modes share the same saved SQLite library.
+
+### Desktop updates
+
+The desktop app checks GitHub Releases in the background. An unobtrusive **Update** pill appears in the lower-left corner when a newer version is available. Clicking it downloads and verifies the signed package; **Restart** installs it and relaunches the app. Failed downloads or installs can be retried. Offline checks stay quiet. Browser mode is updated by installing a newer launcher package.
 
 To test installation before publishing:
 
@@ -57,6 +63,8 @@ pnpm start
 ## Import and update
 
 On first launch, choose the apps to import. Reopen **Manage sources** next to the source filter to change that selection. **Refresh sessions** imports updates from your selected sources.
+
+Onboarding closes automatically after a successful import and library refresh. Import failures remain visible with retry controls.
 
 - Source/native session IDs are the stable identity: importing the same session again updates its existing record. Duplicate source files and repeated message IDs do not create extra sessions/messages.
 - Unchanged source revisions skip history reads. Changed sessions are reread and their normalized messages, timeline events, file evidence, and index version are replaced in one SQLite transaction.
@@ -105,12 +113,13 @@ The database is a local plaintext copy of imported conversation text, protected 
 - Full-viewport, antialiased Three.js map with floating, draggable, dismissible cards. **H** hides/restores cards; **F** fits the view.
 - Source badges distinguish harnesses in the list, inspector, tooltips, and search. Filter by source, project, directory/worktree, date, archived status, or children. The default window is 90 days.
 - Time runs left to right. Each session's trail starts at creation and connects exactly to its node at the latest saved message timestamp. Missing message timestamps leave the node at creation; metadata update times are not substituted. Directory colors group sessions; only distinct fork and child edges represent ancestry. Date filters use session creation; the list and histogram follow session endpoints.
-- Click a session to focus its glowing colored node, highlight its trail, dim surrounding nodes, and reveal small, soft white message/event markers without outlines. The latest message uses the session sphere instead of an overlapping dot and remains readable in the explorer. Markers load lazily, capped at the latest 2,000 timed items within the lifetime, plus a selected older item. Counts disclose untimed and out-of-lifetime items.
+- Click a session to center its node and recent message trail together in the map area between your panels. Small, dim icons above the dots distinguish user/assistant messages, tools, reasoning, file changes, and other events. Icons are collision-culled and bounded to 64; all plotted dots remain interactive. The latest message uses the session sphere instead of an overlapping dot and remains readable in the explorer. Markers load lazily, capped at the latest 2,000 timed items within the lifetime, plus a selected older item. Counts disclose untimed and out-of-lifetime items.
 - Hover a marker to preview its message or tool payload. Click to focus that marker and open message details below the session card, keeping the map interactive. **Previous / Next** and **← / → / ↑ / ↓** step through events and focus their recorded positions. Untimed items remain readable without inventing a map location. Escape closes message details first; arrow keys on session cards or the map navigate sessions when message details are closed. Form controls and panel-drag handles retain their own arrow-key behavior.
 - **Browse saved events** in the message panel provides filters and 60-item pages. Details include bounded text/input/output, timestamp provenance, status, native IDs, and links between tool calls/results. Saved source order is preserved even without timestamps; no timestamps or tool pairing are inferred. Nearby markers can overlap; step through them with the navigation controls.
 - Older libraries migrate to schema v4 using their existing saved messages. Reconstructed events are labeled partial; **Refresh sessions** enriches them with structured source events. The explorer asks you to reload if an import changes its snapshot while browsing.
 - Click a session for changed-file satellites and source evidence. File details load in 120-message batches; the map displays at most 80 files. Evidence describes historical edits, not today's Git diff.
-- **Play** follows newly appearing clusters with a gentle orbital pass and a closing pullback (30 seconds at 1×). Dragging, zooming, scrubbing, fitting, or opening a dialog pauses playback. 2D pans without orbiting; reduced motion keeps the camera still.
+- **Play** follows newly appearing clusters with a half-turn around the graph and a closing pullback (30 seconds at 1×). Dragging, zooming, scrubbing, fitting, or opening a dialog pauses playback. 2D pans without orbiting; reduced motion keeps the camera still.
+- The timeline's calendar offers a styled range picker with presets, month/year navigation, typed ISO dates, and keyboard navigation. Date boundaries are inclusive in your local timezone. Select menus share keyboard/typeahead behavior and styling across filters, settings, search, events, and the launcher.
 - **Open session** lets you choose OpenCode, Claude Code, Codex, or Cursor Agent and a working directory. See cross-harness continuation below.
 - Unknown model/cost/token fields stay unknown. Session selection is encoded in a local permalink.
 

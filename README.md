@@ -6,7 +6,9 @@
   <a href="docs/releases.md">Releases</a>
 </p>
 
-![SessionGraph showing a timeline of demo sessions](docs/screenshot.png)
+[![SessionGraph in action: playback, search, messages, and settings using synthetic sessions](docs/sessiongraph-demo.gif)](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4)
+
+*Real app, entirely synthetic sessions. [Watch the video](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4) · [Full-resolution screenshot](docs/sessiongraph.png)*
 
 Explore **OpenCode, Claude Code, Codex, and Cursor** in one local-first app.
 Search conversations, explore clickable messages and tool calls, inspect changed files, and continue in another harness.
@@ -15,26 +17,45 @@ Importing, searching, and visualization stay on your computer.
 
 ### Install
 
-Download a desktop app from [Releases](https://github.com/arvindell/sessiongraph/releases/latest):
+Download the latest desktop app — no Node.js required:
 
-| macOS | Windows | Linux |
-| --- | --- | --- |
-| Apple Silicon / Intel · `.dmg` | x64 · `.exe`, `.msi` | x64 / ARM64 · `.deb`, `.rpm`, `.AppImage` |
+| Platform | Direct downloads |
+| --- | --- |
+| macOS · Apple Silicon | [DMG](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-darwin-arm64.dmg) |
+| macOS · Intel | [DMG](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-darwin-x64.dmg) |
+| Windows · x64 | [EXE](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-win32-x64.exe) · [MSI](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-win32-x64.msi) |
+| Linux · x64 | [AppImage](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-x64.AppImage) · [DEB](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-x64.deb) · [RPM](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-x64.rpm) |
+| Linux · ARM64 | [AppImage](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-arm64.AppImage) · [DEB](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-arm64.deb) · [RPM](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-arm64.rpm) |
 
-Or launch with **Node.js 24+**:
+Desktop updates appear as a small **Update** pill. Download and verify, then click **Restart** when you're ready.
+
+The npm launcher requires **Node.js 24+** (registry publishing is being finalized; use the downloads above for now):
 
 ```sh
 npx sessiongraph
 npx sessiongraph --browser
 ```
 
-The npm launcher and platform packages are public; no npm login is needed.
+- **`sessiongraph`** opens the native desktop app for your OS, with its own local backend and bundled runtime.
+- **`sessiongraph --browser`** starts an authenticated localhost server and opens the same explorer in your default browser. Keep the terminal running; **Ctrl+C** stops it.
+- Both use the same saved local library. Import once, explore in either mode.
+
+### Harness support
+
+| Harness | Import from | Continue sessions |
+| --- | --- | --- |
+| <img src="public/sources/opencode.svg" width="14" alt=""/> **OpenCode** | Authenticated local API; run OpenCode when importing | Native resume / saved-context handoff |
+| <img src="public/sources/claude.svg" width="14" alt=""/> **Claude Code** | Local projects, worktrees, and subagents via SDK | Native resume / saved-context handoff |
+| <img src="public/sources/openai.svg" width="14" alt=""/> **Codex** | Active and archived local rollouts | Native resume / saved-context handoff |
+| <img src="public/sources/cursor.svg" width="14" alt=""/> **Cursor** | IDE transcripts, CLI and ACP stores | CLI resume where supported / saved-context handoff |
+
+Import is read-only. Saved sessions remain available when a harness is offline. [Coverage and limitations →](docs/guide.md#source-coverage)
 
 ### Develop
 
 ```sh
 pnpm install
-pnpm dev
+portless sessiongraph pnpm dev
 ```
 
 `pnpm desktop:dev` runs the native app. `pnpm test` runs the tests.

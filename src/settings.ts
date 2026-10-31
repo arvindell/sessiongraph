@@ -1,7 +1,9 @@
 import { DEFAULT_PREFERENCES, type Preferences } from './preferences';
+import { createElement, PanelsTopLeft, Volume2, Sparkles, Orbit, type IconNode } from 'lucide';
+import { refreshSelects } from './controls';
 
 type Section = 'interface' | 'audio' | 'graphics' | 'trails';
-const tabs: [Section, string, string][] = [['interface', 'Interface', '01'], ['audio', 'Sound', '02'], ['graphics', 'Graphics', '03'], ['trails', 'Trails & playback', '04']];
+const tabs: [Section, string, IconNode][] = [['interface', 'Interface', PanelsTopLeft], ['audio', 'Sound', Volume2], ['graphics', 'Graphics', Sparkles], ['trails', 'Trails & playback', Orbit]];
 const toggle = (key: keyof Preferences, label: string, hint: string) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><input type="checkbox" role="switch" data-pref="${key}" aria-label="${label}"/></label>`;
 const range = (key: keyof Preferences, label: string, hint: string, min: number, max: number, unit = '%', step = 1) => `<label class="setting-row setting-range"><span><strong>${label}</strong><small>${hint}</small></span><span class="setting-slider"><input type="range" data-pref="${key}" aria-label="${label}" min="${min}" max="${max}" step="${step}"/><output data-output="${key}" data-unit="${unit}"></output></span></label>`;
 const select = (key: keyof Preferences, label: string, hint: string, options: [string, string][]) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><select data-pref="${key}" aria-label="${label}">${options.map(([value, title]) => `<option value="${value}">${title}</option>`).join('')}</select></label>`;
@@ -10,7 +12,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
   const dialog = document.createElement('dialog');
   dialog.className = 'settings-dialog'; dialog.setAttribute('aria-labelledby', 'settings-title');
   dialog.innerHTML = `<header class="settings-heading"><div><span class="settings-eyebrow">YOUR CORNER OF THE COSMOS</span><h2 id="settings-title">Make yourself at home.</h2><p>Tune the atmosphere. Find your focus.</p></div><button class="icon-button settings-close" aria-label="Close settings">×</button></header>
-    <div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="Settings categories">${tabs.map(([id, name, number], i) => `<button role="tab" id="settings-tab-${id}" aria-controls="settings-${id}" aria-selected="${!i}" tabindex="${i ? -1 : 0}" data-tab="${id}"><span>${number}</span>${name}</button>`).join('')}</nav>
+    <div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="Settings categories">${tabs.map(([id, name, glyph], i) => `<button role="tab" id="settings-tab-${id}" aria-controls="settings-${id}" aria-selected="${!i}" tabindex="${i ? -1 : 0}" data-tab="${id}">${createElement([glyph[0], { ...glyph[1], 'aria-hidden': 'true', 'stroke-width': 1.5 }, glyph[2]]).outerHTML}${name}</button>`).join('')}</nav>
     <div class="settings-content">
       <section id="settings-interface" role="tabpanel" aria-labelledby="settings-tab-interface"><h3>Less friction. More focus.</h3><p class="settings-description">A workspace that feels right, every time you return.</p>
         ${select('view', 'Default view', 'Switch between depth and a flat timeline.', [['3d', '3D galaxy'], ['2d', '2D timeline']])}
@@ -91,6 +93,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
       }
       dialog.querySelector('.settings-save-status')!.textContent = saved ? 'Saved on this device · changes apply live.' : 'Applied for this visit; local storage is unavailable.';
       (dialog.querySelector('.settings-preview') as HTMLButtonElement).disabled = values.muted || !values.clickSounds || !values.clickVolume;
+      refreshSelects(dialog);
     },
     audioStatus(text: string) { dialog.querySelector('.settings-audio-status')!.textContent = text; },
     dispose() { events.abort(); dialog.remove(); },

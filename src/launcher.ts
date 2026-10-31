@@ -1,6 +1,7 @@
 import type { Session } from './types';
 import { HARNESSES, isHarness, sessionWebUrl, validSessionID, type LaunchConnection, type PreparedLaunch } from './launch-links';
 import { sourceName } from './sources';
+import { focusSelect } from './controls';
 
 export function createSessionLauncher(onVisibility: () => void) {
   const dialog = document.createElement('dialog');
@@ -154,7 +155,7 @@ export function createSessionLauncher(onVisibility: () => void) {
       command.placeholder = 'Preparing command…';
       $<HTMLDetailsElement>('.launch-context').open = false;
       if (!dialog.open) dialog.showModal();
-      onVisibility(); select.focus(); void prepare();
+      onVisibility(); focusSelect(select); void prepare();
       try {
         const response = await fetch(`/api/sessiongraph/session/${encodeURIComponent(session.id)}/connection`, { signal: connectionController.signal });
         if (!response.ok) throw new Error('Connection unavailable');

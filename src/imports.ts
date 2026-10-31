@@ -9,6 +9,7 @@ export function createImports(onChange: () => Promise<void>, onVisibility: () =>
   document.body.append(dialog);
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => dialog.querySelector<T>(s)!;
   let running = false, timer = 0, disposed = false, returnFocus: HTMLElement | null = null;
+  let onboarding = false, view = 0, closeAfterImport: number | undefined;
   async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`/api/sessiongraph/${path}`, options), value = await response.json();
     if (!response.ok) throw new Error(value.error || 'Import unavailable.');
@@ -30,19 +31,26 @@ export function createImports(onChange: () => Promise<void>, onVisibility: () =>
   async function poll() {
     if (disposed) return;
     try {
-      const status = await request<ImportStatus>('import'); renderProgress(status);
+      const status = await request<ImportStatus>('import'); if (disposed) return; renderProgress(status);
       if (status.running) timer = window.setTimeout(poll, 1000);
-      else { await onChange(); }
-    } catch (error) { running = false; $('.imports-progress').textContent = error instanceof Error ? error.message : 'Import disconnected.'; $<HTMLButtonElement>('.import-start').disabled = false; }
+      else {
+        const completedView = closeAfterImport; closeAfterImport = undefined;
+        await onChange();
+        if (!disposed && completedView === view && dialog.open && !status.failed && !status.errors.length) dialog.close();
+      }
+    } catch (error) { running = false; $('.imports-progress').textContent = error instanceof Error ? error.message : 'Import disconnected.'; $<HTMLButtonElement>('.import-start').disabled = false; dialog.querySelectorAll<HTMLInputElement>('input').forEach((input) => { input.disabled = false; }); }
   }
   async function start(sources?: string[]) {
     if (running) { if (!dialog.open) dialog.showModal(); onVisibility(); return; }
+    running = true; $<HTMLButtonElement>('.import-start').disabled = true;
+    closeAfterImport = onboarding && dialog.open && sources !== undefined ? view : undefined;
     try {
       renderProgress(await request<ImportStatus>('import', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'import' }, body: JSON.stringify({ sources }) }));
       window.clearTimeout(timer); timer = window.setTimeout(poll, 100);
-    } catch (error) { $('.imports-progress').textContent = error instanceof Error ? error.message : 'Import unavailable.'; }
+    } catch (error) { running = false; closeAfterImport = undefined; $<HTMLButtonElement>('.import-start').disabled = false; $('.imports-progress').textContent = error instanceof Error ? error.message : 'Import unavailable.'; }
   }
   async function open(first = false) {
+    onboarding = first; view++;
     returnFocus = document.activeElement as HTMLElement;
     $('#imports-heading').textContent = first ? 'Search & visualize all your LLM sessions' : 'Your session sources.';
     if (!dialog.open) dialog.showModal(); onVisibility();
@@ -57,7 +65,7 @@ export function createImports(onChange: () => Promise<void>, onVisibility: () =>
   }
   $('.import-start').addEventListener('click', () => void start([...dialog.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value)));
   $('.dialog-close').addEventListener('click', () => dialog.close());
-  dialog.addEventListener('close', () => { onVisibility(); returnFocus?.focus(); });
+  dialog.addEventListener('close', () => { view++; closeAfterImport = undefined; onVisibility(); returnFocus?.focus(); });
   dialog.addEventListener('keydown', (event) => event.stopPropagation());
   return { open, refresh: () => start(), resume: () => { window.clearTimeout(timer); void poll(); }, dispose: () => { disposed = true; window.clearTimeout(timer); dialog.remove(); } };
 }

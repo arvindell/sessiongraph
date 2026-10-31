@@ -12,12 +12,15 @@ import { InteractionAudio } from './audio';
 import { createEventExplorer } from './event-explorer';
 import { createEventHover } from './event-hover';
 import { TimelineClient } from './timeline-client';
+import { createDesktopUpdater } from './updater';
+import { createDateRange } from './date-range';
+import { observeSelects, refreshSelects } from './controls';
 import type { TimelineMarkers } from './timeline';
 import type { SessionGraphData, Graph, Session, SessionDetail } from './types';
 import './style.css';
 
 const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX };
-const refreshIcons = () => createIcons({ icons, attrs: { 'stroke-width': 1.5 } });
+const refreshIcons = () => { createIcons({ icons, attrs: { 'stroke-width': 1.5 } }); refreshSelects(); };
 const icon = (name: string, cls = '') => `<i data-lucide="${name}" class="${cls}" aria-hidden="true"></i>`;
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -102,7 +105,7 @@ $('#app').innerHTML = `
   </aside>
   <div class="inspector-stack floating-panel" id="inspector" hidden><aside class="inspector glass" id="session-inspector" aria-label="Session details"></aside></div>
   <section class="timeline-panel floating-panel glass" id="timeline" aria-label="Timeline controls">
-    <div class="timeline-top"><button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90" class="active">90D</button><button data-days="0">All</button></div><details class="custom-dates"><summary class="icon-button" aria-label="Custom date range" title="Custom date range">${icon('sliders-horizontal')}</summary><div class="date-popover"><label>From<input type="date" id="from-date" aria-label="From date"/></label><label>To<input type="date" id="to-date" aria-label="To date"/></label><button id="apply-dates" class="secondary-button">Apply ${icon('arrow-right')}</button></div></details><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button></div>
+    <div class="timeline-top"><button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90" class="active">90D</button><button data-days="0">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button></div>
     <div class="timeline-track"><button id="play" class="play-button" aria-label="Play timeline">${icon('play')}</button><div class="histogram-wrap"><div id="histogram" class="histogram"></div><input id="scrubber" type="range" min="0" max="1000" value="1000" aria-label="Timeline playback position"/><div class="timeline-cursor" id="timeline-cursor"></div></div><div class="playback-date" id="playback-date">—</div></div>
   </section>
   <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div>
@@ -112,6 +115,9 @@ $('#app').innerHTML = `
 `;
 refreshIcons();
 const disposePanelDragging = setupPanelDragging();
+const desktopUpdater = createDesktopUpdater();
+const disposeSelects = observeSelects();
+const dateRange = createDateRange($('.custom-dates'), (from, to) => { fromDate = from; toDate = to; updateFilters(true); }, stopPlayback);
 const modalVisibility = () => { const open = Boolean(document.querySelector('dialog[open]')); if (open && playing) stopPlayback(); scene?.setSuspended(open); };
 const timelineClient = new TimelineClient();
 const eventHover = createEventHover($('#tooltip'), $('#scene'), timelineClient);
@@ -177,10 +183,6 @@ for (const id of ['explorer', 'timeline', 'inspector'] as const) {
 }
 $('#close-explorer').addEventListener('click', () => { setPanel('explorer', false); $('#toggle-explorer').focus(); });
 $('#close-timeline').addEventListener('click', () => { stopPlayback(); setPanel('timeline', false); $('#toggle-timeline').focus(); });
-const customDates = $<HTMLDetailsElement>('.custom-dates');
-customDates.addEventListener('toggle', () => {
-  if (customDates.open) customDates.classList.toggle('open-below', customDates.getBoundingClientRect().top < 280);
-});
 
 function showToast(text: string) {
   $('#toast').textContent = text;
@@ -340,8 +342,7 @@ function resetFilters() {
   $<HTMLSelectElement>('#project').value = '';
   $<HTMLInputElement>('#children').checked = true;
   $<HTMLInputElement>('#archived').checked = true;
-  $<HTMLInputElement>('#from-date').value = '';
-  $<HTMLInputElement>('#to-date').value = '';
+  dateRange.setRange('', '');
   updateDirectories();
   updateFilters(true);
 }
@@ -376,8 +377,7 @@ function renderHistogram() {
   $('#histogram').innerHTML = buckets.map((n) => `<span style="height:${Math.max(4, n / peak * 100)}%;opacity:${n ? 0.8 : 0.15}" title="${n} session endpoints"></span>`).join('');
   $('#date-label').textContent = graph.start ? `${date(graph.start)} — ${date(graph.end, true)}` : 'No sessions';
   if (graph.start) {
-    $<HTMLInputElement>('#from-date').value = fromDate || inputDate(graph.start);
-    $<HTMLInputElement>('#to-date').value = toDate || inputDate(graph.end);
+    dateRange.setRange(fromDate || inputDate(graph.start), toDate || inputDate(graph.end));
   }
   updateScrubber();
 }
@@ -576,12 +576,6 @@ $('#directory').addEventListener('change', (event) => { directory = (event.targe
 $('#children').addEventListener('change', (event) => { includeChildren = (event.target as HTMLInputElement).checked; updateFilters(); });
 $('#archived').addEventListener('change', (event) => { includeArchived = (event.target as HTMLInputElement).checked; updateFilters(); });
 document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.addEventListener('click', () => { days = Number(button.dataset.days); fromDate = ''; toDate = ''; updateFilters(true); }));
-$('#apply-dates').addEventListener('click', () => {
-  const from = $<HTMLInputElement>('#from-date').value, to = $<HTMLInputElement>('#to-date').value;
-  if (!from || !to || from > to) return showToast('Choose a valid date range, with From before To.');
-  fromDate = from; toDate = to; updateFilters(true);
-  $<HTMLDetailsElement>('.custom-dates').open = false;
-});
 $('#reset-camera').addEventListener('click', () => { stopPlayback(); scene?.reset(); });
 $('#refresh').addEventListener('click', () => { if (data?.onboarding) void imports.open(true); else void imports.refresh(); });
 $('#scrubber').addEventListener('input', (event) => { stopPlayback(); playback = Number((event.target as HTMLInputElement).value) / 1000; updateScrubber(); });
@@ -639,4 +633,4 @@ document.addEventListener('keydown', (event) => {
 
 void load().then(() => { if (data?.importing) imports.resume(); });
 if (import.meta.env.DEV) Object.assign(window, { sessionGraphDiagnostics: () => scene?.diagnostics(), sessionGraphAudioDiagnostics: () => audio.diagnostics(), sessionGraphSearchDiagnostics: sessionSearch.diagnostics });
-if (import.meta.hot) import.meta.hot.dispose(() => { detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });
+if (import.meta.hot) import.meta.hot.dispose(() => { detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); desktopUpdater.dispose(); dateRange.dispose(); disposeSelects(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });
