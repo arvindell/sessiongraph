@@ -31,10 +31,6 @@ function overlay(context: CanvasRenderingContext2D, graph: Graph, progress: numb
   context.font = '12px "Geist Variable", sans-serif'; context.fillStyle = '#92b0a3';
   context.fillText('Sessions', WIDTH / 2 - 105, y + 87);
   context.fillText('Burnt tokens', WIDTH / 2 + 105, y + 87);
-  if (usage.missing) {
-    context.font = '9px "Geist Variable", sans-serif'; context.fillStyle = '#698477';
-    context.fillText(usage.recorded ? 'Known usage only' : 'Usage unavailable', WIDTH / 2 + 105, y + 104);
-  }
   context.textAlign = 'left';
 }
 

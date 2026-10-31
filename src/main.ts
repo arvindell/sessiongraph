@@ -73,6 +73,7 @@ let tokenPlayback = playbackTokens([]), tokenDisplay = '';
 let sessionPlayback = playbackSessions([]);
 let playbackPanels: { explorer: boolean; inspector: boolean } | undefined;
 let playbackShare: ReturnType<typeof import('./share').createPlaybackShare> | undefined;
+let shareRevealTimer = 0, shareReady = false;
 let preferences: Preferences = { ...DEFAULT_PREFERENCES }, preferencesSaved = true;
 let autoImport: AutoImportScheduler | undefined;
 let settingsSaver: LibrarySettingsSaver | undefined;
@@ -116,13 +117,15 @@ $('#app').innerHTML = `
       <nav class="session-list" id="session-list" aria-label="Sessions"><div class="list-loading">${[0, 1, 2, 3, 4].map(() => '<div class="skeleton"></div>').join('')}</div></nav>
   </aside>
   <div class="inspector-stack floating-panel" id="inspector" hidden><aside class="inspector glass" id="session-inspector" aria-label="Session details"></aside></div>
-  <section class="timeline-panel floating-panel glass" id="timeline" aria-label="Timeline controls">
+  <div class="timeline-dock floating-panel" id="timeline">
+    <div class="playback-share"><button id="share-playback" class="primary-button" disabled>${icon('share-2')}Share SessionGraph</button></div>
+    <section class="timeline-panel glass" aria-label="Timeline controls">
     <div class="timeline-top"><button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="0" class="active">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button></div>
     <div class="timeline-track"><button id="play" class="play-button" aria-label="Play timeline">${icon('play')}</button><div class="histogram-wrap"><div id="histogram" class="histogram"></div><input id="scrubber" type="range" min="0" max="1000" value="1000" aria-label="Timeline playback position"/><div class="timeline-cursor" id="timeline-cursor"></div></div><div class="playback-date" id="playback-date">—</div></div>
     <div class="playback-period" id="playback-period" aria-label="Approximate playback date">—</div>
     <div class="playback-summary" id="playback-summary" hidden><span><strong id="playback-sessions">0</strong><span>Sessions</span></span><span><strong id="playback-tokens">0</strong><span>Burnt tokens</span></span><small id="playback-token-coverage"></small></div>
-    <div class="playback-share"><button id="share-playback" class="primary-button" disabled>${icon('share-2')}Share SessionGraph</button></div>
-  </section>
+    </section>
+  </div>
   <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div>
     <div class="graph-legend"><span><i class="legend-node"></i>Session orb</span><span><i class="legend-node message"></i>Message</span><span><i class="legend-line lane"></i>Session lifetime</span><span><i class="legend-line fork"></i>Fork</span><span><i class="legend-line child"></i>Child</span><span id="file-legend" hidden><i class="legend-file"></i>File</span></div>
     <p>Time runs left to right. Each orb travels from session creation to its latest saved message, leaving a trail behind. Select it to explore user and assistant messages in matching colors. Messages without timestamps stay readable in the explorer. Click empty space to deselect. Directory colors group sessions; only fork and child links represent ancestry.</p><button class="secondary-button motion-button" id="motion" aria-pressed="true">${icon('sparkles')}Animate map</button></dialog>
@@ -184,7 +187,7 @@ settingsSaver = new LibrarySettingsSaver(async (patch) => {
   if (state === 'saved') void autoImport?.check();
 });
 const launcher = createSessionLauncher(modalVisibility);
-const imports = createImports((background) => load(background), modalVisibility);
+const imports = createImports((background) => load(background), modalVisibility, showToast);
 autoImport = new AutoImportScheduler({
   eligible: () => preferences.autoImport && !settingsSaver?.pending && document.visibilityState === 'visible' && Boolean(data && !data.onboarding && data.sources?.some((source) => source.selected)),
   busy: () => imports.busy || Boolean(document.querySelector('dialog[open]')),
@@ -200,6 +203,8 @@ document.addEventListener('sessiongraph-import-status', (event) => {
   const status = (event as CustomEvent<import('./types').ImportStatus>).detail;
   autoImport?.activity();
   settings.importStatus(status);
+  if (data) data.importing = status.running;
+  if (!filtered.length) renderGraphMessage();
   $('#refresh').classList.toggle('spinning', status.running);
   $('.connection').title = status.running ? `Importing ${sourceName(status.source)} · ${status.imported} sessions saved` : status.failed ? 'Import unavailable · open Manage sources for details' : 'Local library · SQLite';
 }, { signal: autoImportEvents.signal });
@@ -401,13 +406,27 @@ function updateFilters(fit = false, preserve = false) {
 }
 
 function renderGraphMessage() {
-  $<HTMLButtonElement>('#share-playback').disabled = !filtered.length || !scene;
+  updateShareButton();
   const message = $('#graph-message');
   message.hidden = Boolean(filtered.length && scene);
-  if (!filtered.length) message.innerHTML = `${icon('search')}<h3>No matching sessions</h3><button class="text-button" id="clear-filters">Reset filters ${icon('rotate-ccw')}</button>`;
+  if (!filtered.length) message.innerHTML = data?.importing
+    ? '<div class="loading-orbit"><span></span><span></span><span></span></div><h3>Importing your sessions…</h3><p>Your map will appear when the import finishes.</p>'
+    : data && !data.sessions.length ? `${icon('folder')}<h3>Your map starts here</h3><p>Choose a source with saved conversations to get started.</p><button class="primary-button" id="empty-sources">Choose sources ${icon('arrow-right')}</button>`
+    : `${icon('search')}<h3>No matching sessions</h3><button class="text-button" id="clear-filters">Reset filters ${icon('rotate-ccw')}</button>`;
   else if (!scene) message.innerHTML = sceneLoading ? '<h3>Preparing the map…</h3>' : `${icon('box')}<h3>WebGL is unavailable.</h3><p>You can explore every session and its file details in the list.</p>`;
   $('#clear-filters')?.addEventListener('click', () => resetFilters());
+  $('#empty-sources')?.addEventListener('click', () => void imports.open());
   refreshIcons();
+}
+
+function updateShareButton(reset = false) {
+  const available = Boolean(filtered.length && scene);
+  if (reset || !available) { window.clearTimeout(shareRevealTimer); shareRevealTimer = 0; shareReady = false; }
+  $('.playback-share').classList.toggle('ready', shareReady && available);
+  $<HTMLButtonElement>('#share-playback').disabled = !shareReady || !available;
+  if (available && !shareReady && !shareRevealTimer) shareRevealTimer = window.setTimeout(() => {
+    shareRevealTimer = 0; shareReady = true; updateShareButton();
+  }, 1000);
 }
 
 function resetFilters(reveal?: Session) {
@@ -448,7 +467,7 @@ function renderHistogram() {
   const buckets = timelineBuckets(filtered.map(sessionEnd), graph.start, graph.end);
   const peak = Math.max(...buckets, 1);
   $('#histogram').innerHTML = buckets.map((n) => `<span style="height:${Math.max(4, n / peak * 100)}%;opacity:${n ? 0.8 : 0.15}" title="${n} session endpoints"></span>`).join('');
-  $('#date-label').textContent = graph.start ? `${date(graph.start)} — ${date(graph.end, true)}` : 'No sessions';
+  $('#date-label').textContent = graph.start ? `${date(graph.start, new Date(graph.start).getFullYear() !== new Date(graph.end).getFullYear())} — ${date(graph.end, true)}` : 'No sessions';
   if (graph.start) {
     dateRange.setRange(fromDate || inputDate(graph.start), toDate || inputDate(graph.end));
   }
@@ -460,7 +479,7 @@ function updateScrubber() {
   $('#timeline-cursor').style.left = `${playback * 100}%`;
   $('#histogram').style.setProperty('--progress', `${playback * 100}%`);
   const time = graph.start + (graph.end - graph.start) * playback;
-  $('#playback-date').textContent = graph.start ? date(time) : '—';
+  $('#playback-date').textContent = graph.start ? date(time, new Date(graph.start).getFullYear() !== new Date(graph.end).getFullYear()) : '—';
   const period = graph.nodes.length ? playbackDate(time, graph.end - graph.start) : '—';
   if ($('#playback-period').textContent !== period) $('#playback-period').textContent = period;
   const usage = tokenPlayback.at(time, playback >= 1);
@@ -693,6 +712,7 @@ $('#play').addEventListener('click', () => {
   setPanel('explorer', false); setPanel('inspector', false); setPanel('timeline', true);
   eventHover.clear(); tooltipSession = undefined;
   $('#app').classList.add('playback-mode');
+  updateShareButton(true);
   playing = true;
   playbackOutroTime = 0;
   scene?.setPlaying(true);
@@ -711,7 +731,7 @@ $('#share-playback').addEventListener('click', async () => {
   } catch { showToast('Could not open GIF sharing. Please try again.'); }
   finally { button.disabled = !filtered.length || !scene; }
 });
-if (import.meta.hot) import.meta.hot.dispose(() => playbackShare?.dispose());
+if (import.meta.hot) import.meta.hot.dispose(() => { window.clearTimeout(shareRevealTimer); playbackShare?.dispose(); });
 for (const flat of [false, true]) $(`#view-${flat ? '2d' : '3d'}`).addEventListener('click', () => changePreferences({ view: flat ? '2d' : '3d' }));
 $('#motion').addEventListener('click', () => changePreferences({ motion: motionEnabled(preferences, reducedMotion.matches) ? 'off' : 'on' }));
 $('#help').addEventListener('click', () => { $<HTMLDialogElement>('#help-dialog').showModal(); modalVisibility(); });
