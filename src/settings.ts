@@ -1,9 +1,9 @@
 import { DEFAULT_PREFERENCES, type Preferences } from './preferences';
-import { createElement, PanelsTopLeft, Volume2, Sparkles, Orbit, type IconNode } from 'lucide';
+import { createElement, PanelsTopLeft, Volume2, Sparkles, Orbit, LockKeyhole, type IconNode } from 'lucide';
 import { refreshSelects } from './controls';
 
-type Section = 'interface' | 'audio' | 'graphics' | 'trails';
-const tabs: [Section, string, IconNode][] = [['interface', 'Interface', PanelsTopLeft], ['audio', 'Sound', Volume2], ['graphics', 'Graphics', Sparkles], ['trails', 'Trails & playback', Orbit]];
+type Section = 'interface' | 'audio' | 'graphics' | 'trails' | 'privacy';
+const tabs: [Section, string, IconNode][] = [['interface', 'Interface', PanelsTopLeft], ['audio', 'Sound', Volume2], ['graphics', 'Graphics', Sparkles], ['trails', 'Trails & playback', Orbit], ['privacy', 'Privacy', LockKeyhole]];
 const toggle = (key: keyof Preferences, label: string, hint: string) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><input type="checkbox" role="switch" data-pref="${key}" aria-label="${label}"/></label>`;
 const range = (key: keyof Preferences, label: string, hint: string, min: number, max: number, unit = '%', step = 1) => `<label class="setting-row setting-range"><span><strong>${label}</strong><small>${hint}</small></span><span class="setting-slider"><input type="range" data-pref="${key}" aria-label="${label}" min="${min}" max="${max}" step="${step}"/><output data-output="${key}" data-unit="${unit}"></output></span></label>`;
 const select = (key: keyof Preferences, label: string, hint: string, options: [string, string][]) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><select data-pref="${key}" aria-label="${label}">${options.map(([value, title]) => `<option value="${value}">${title}</option>`).join('')}</select></label>`;
@@ -45,6 +45,12 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
         ${toggle('messageDots', 'Message & event dots', 'Clickable user, assistant, tool, and event markers on the selected trail.')}
         ${range('playbackSpeed', 'Playback speed', '1× plays the full timeline in 30 seconds.', .25, 3, '×', .25)}
         <p class="settings-footnote">Flow is decorative. Message dots reflect saved timestamps; visual settings never alter your history.</p>
+      </section>
+      <section id="settings-privacy" role="tabpanel" aria-labelledby="settings-tab-privacy" hidden><h3>Your history stays here.</h3><p class="settings-description">No account. No cloud sync. No telemetry.</p>
+        <div class="setting-row"><span><strong>Processed on this computer</strong><small>Importing, indexing, search, and visualization run locally. Imports read your selected sources without changing them or starting an AI agent.</small></span></div>
+        <div class="setting-row"><span><strong>Update checks use the internet</strong><small>Desktop update checks and downloads contact GitHub without session content. npm installation contacts its registry. These services receive ordinary connection metadata, including your public IP address.</small></span></div>
+        <div class="setting-row"><span><strong>Continuing a session is your choice</strong><small>Explicitly launching another harness lets it read the selected context. It may contact its model provider under its own privacy settings.</small></span></div>
+        <div class="setting-row"><span><strong>Local storage is not encrypted by SessionGraph</strong><small>Saved conversations, search text, and handoff files rely on your device's access controls. Disk encryption and backup or sync settings affect confidentiality. Deselecting a source keeps previously imported history.</small></span></div>
       </section>
     </div></div><footer class="settings-footer"><span class="settings-save-status" role="status">Changes save automatically on this device.</span><button class="text-button settings-reset">Restore defaults</button><button class="primary-button settings-done">Done</button></footer>`;
   document.body.append(dialog);

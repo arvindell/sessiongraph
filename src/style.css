@@ -525,7 +525,10 @@ html[data-motion='false'] *, html[data-motion='false'] *::before, html[data-moti
 .imports-dialog .primary-button { flex: 0 0 auto; white-space: nowrap; }
 .imports-dialog .eyebrow { font: 10px var(--mono); letter-spacing: .18em; color: #83b9a3; }
 .imports-dialog h2 { margin: 16px 0 12px; font-size: clamp(24px, 4vw, 32px); font-weight: 450; letter-spacing: -.04em; }
-.imports-intro { color: #91a99d; font-size: 13px; line-height: 1.6; margin-bottom: 28px; }
+.imports-intro { color: #91a99d; font-size: 13px; line-height: 1.6; margin-bottom: 14px; }
+.privacy-disclosure { color: #91a99d; font-size: 11px; line-height: 1.65; margin-bottom: 24px; }
+.privacy-disclosure summary { cursor: pointer; color: #aec9bb; }
+.privacy-disclosure p { font-size: inherit; line-height: inherit; margin: 10px 0 0; }
 .import-sources { display: grid; gap: 10px; }
 .import-source { display: flex; align-items: center; gap: 14px; padding: 18px 14px; border: 1px solid #b0e9d61c; border-radius: 10px; cursor: pointer; background: #b0e9d603; }
 .import-source:has(input:checked) { border-color: #b0e9d658; background: #b0e9d608; }

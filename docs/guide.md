@@ -95,6 +95,8 @@ Source roots respect `CLAUDE_CONFIG_DIR` and `CODEX_HOME`. `SESSIONGRAPH_SERVICE
 
 ## Local storage and privacy
 
+**Your session content stays on this computer during import, search, and exploration.** No account. No cloud sync. No telemetry. See [Privacy and local data](../PRIVACY.md) for the full network disclosure and ways to verify the behavior.
+
 SessionGraph's own SQLite database stores source preferences, session metadata, normalized messages and timeline events, file evidence, import revisions, and bounded search checkpoints. New installations use:
 
 - macOS: `~/Library/Application Support/SessionGraph/sessiongraph.sqlite`
@@ -107,6 +109,8 @@ Existing installations reuse `Session Atlas/session-atlas.sqlite` or `Atlas/atla
 All parsing, deduplication, indexing, and visualization run on this computer. No telemetry, embeddings service, model inference, uploads, or remote fonts are used. Source histories are read-only. OpenCode uses its authenticated API; Cursor databases are parsed only from temporary private copies. The native app binds its backend to `127.0.0.1` on a random port with an ephemeral authentication cookie; imports from other origins are rejected. Source credentials stay in the backend.
 
 The database is a local plaintext copy of imported conversation text, protected by filesystem permissions. It uses WAL journaling, versioned migrations, atomic session replacement, and a cross-process import lock. App bundles and npm tarballs contain only application assets, never your database. Opening a session in a destination app is a separate, explicit action; that app controls its own network behavior.
+
+Desktop update checks and downloads contact GitHub without session content; npm installation contacts its registry. Those services receive ordinary connection metadata, including your public IP address. SessionGraph does not encrypt stored history, search text, or saved-context handoff files. Your device permissions, disk encryption, and backups affect confidentiality.
 
 ## Explore
 

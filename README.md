@@ -3,6 +3,7 @@
 <p align="center">
   <a href="https://github.com/arvindell/sessiongraph/releases/latest">Download</a> ·
   <a href="docs/guide.md">Documentation</a> ·
+  <a href="PRIVACY.md">Privacy</a> ·
   <a href="docs/releases.md">Releases</a>
 </p>
 
@@ -14,6 +15,14 @@ Explore **OpenCode, Claude Code, Codex, and Cursor** in one local-first app.
 Search conversations, explore clickable messages and tool calls, inspect changed files, and continue in another harness.
 Hover to preview messages, click to focus, and tune the glowing map, trails, and click sounds in Settings.
 Importing, searching, and visualization stay on your computer.
+
+### Your history stays local
+
+**No account. No cloud sync. No telemetry.** SessionGraph reads your selected local sources and keeps imported conversations and the search index on your computer. Importing and exploring history never starts an AI agent or sends your conversations to a model provider.
+
+Desktop update checks and downloads contact GitHub without session content; npm installation contacts the npm registry. Explicitly continuing a session opens your chosen harness, which follows its own network and privacy settings. Saved history is not encrypted by SessionGraph; device access and backups affect its confidentiality.
+
+[Read the privacy details, storage locations, and verification steps →](PRIVACY.md)
 
 ### Install
 
