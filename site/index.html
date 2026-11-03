@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#080e13">
+    <meta name="description" content="A local, open-source app for your AI coding history. Search conversations, explore session branches, and pick up where you left off across your coding tools.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SessionGraph">
+    <meta property="og:url" content="https://sessiongraph.vercel.app/">
+    <meta property="og:title" content="SessionGraph — Explore your AI coding history">
+    <meta property="og:description" content="Explore your AI coding history in one local app. Free, open source, and built for macOS, Windows, and Linux.">
+    <meta property="og:image" content="https://sessiongraph.vercel.app/assets/social.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <title>SessionGraph — Explore your AI coding history</title>
+    <link rel="canonical" href="https://sessiongraph.vercel.app/">
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="/assets/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/main.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="page-shell">
+      <header class="header">
+        <a class="brand" href="/" aria-label="SessionGraph home">
+          <img src="/assets/favicon.svg" width="32" height="32" alt="">
+          <span>SessionGraph<span class="brand-dot">.</span></span>
+        </a>
+        <nav aria-label="Main navigation">
+          <a href="https://github.com/arvindell/sessiongraph">GitHub <span aria-hidden="true">↗</span></a>
+          <a class="nav-download" href="#download">Download <span aria-hidden="true">↓</span></a>
+        </nav>
+      </header>
+
+      <main id="main">
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <h1 id="hero-title">Explore your<br><span>AI coding history.</span></h1>
+            <div class="hero-intro">
+              <p>Search conversations, follow session branches, and resume work across your coding tools.</p>
+              <a class="button" href="#download">Download <span aria-hidden="true">↓</span></a>
+            </div>
+          </div>
+
+          <figure class="product" id="demo">
+            <div class="product-screen">
+              <img id="product-poster" src="/assets/sessiongraph.webp" width="1600" height="1000" alt="SessionGraph showing a branching map of coding sessions, a searchable conversation list, and a timeline." fetchpriority="high">
+              <video id="product-video" width="1600" height="1000" controls playsinline muted preload="none" poster="/assets/sessiongraph.webp" aria-label="SessionGraph product walkthrough using synthetic sessions" hidden>
+                <source data-src="/assets/demo.mp4" type="video/mp4">
+                Your browser does not support this video. <a href="/assets/demo.mp4">Download the demo.</a>
+              </video>
+            </div>
+            <figcaption>
+              <button class="demo-button" id="demo-toggle" aria-controls="product-video" aria-expanded="false" hidden><span class="play-icon" aria-hidden="true">▷</span><span id="demo-label">Watch demo</span></button>
+              <noscript><a href="/assets/demo.mp4">Watch the demo ↗</a></noscript>
+            </figcaption>
+          </figure>
+          <p class="sr-only" id="demo-status" role="status"></p>
+        </section>
+
+        <section class="sources" aria-label="Supported sources">
+          <ul class="source-list">
+            <li><img src="/assets/sources/opencode.svg" alt="" width="20" height="20">OpenCode</li>
+            <li><img src="/assets/sources/claude.svg" alt="" width="20" height="20">Claude Code</li>
+            <li><img src="/assets/sources/openai.svg" alt="" width="20" height="20">Codex</li>
+            <li><img src="/assets/sources/cursor.svg" alt="" width="20" height="20">Cursor</li>
+            <li><img src="/assets/sources/gemini.svg" alt="" width="20" height="20">Gemini CLI</li>
+            <li><img src="/assets/sources/pi.svg" alt="" width="20" height="20">Pi</li>
+          </ul>
+          <a class="text-link" href="https://github.com/arvindell/sessiongraph/blob/main/docs/import-coverage.md">All sources &amp; coverage <span aria-hidden="true">↗</span></a>
+        </section>
+
+        <aside class="local-note" aria-label="Privacy">
+          <p>Your sessions stay on your computer.<br>No account, cloud sync, or telemetry.</p>
+          <a class="text-link" href="https://github.com/arvindell/sessiongraph/blob/main/PRIVACY.md">Privacy <span aria-hidden="true">↗</span></a>
+        </aside>
+
+        <section class="downloads" id="download" aria-labelledby="download-title">
+          <div class="download-heading">
+            <h2 id="download-title">Download</h2>
+            <a class="text-link" href="https://github.com/arvindell/sessiongraph/releases/latest">Release notes <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="platforms">
+            <div class="platform">
+              <h3>macOS</h3>
+              <p>Apple Silicon &amp; Intel</p>
+              <a class="platform-primary" href="https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-darwin-arm64.dmg">Download for Apple Silicon <span aria-hidden="true">↓</span></a>
+              <a class="platform-secondary" href="https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-darwin-x64.dmg">Intel Mac <span aria-hidden="true">↓</span></a>
+            </div>
+            <div class="platform">
+              <h3>Windows</h3>
+              <p>64-bit</p>
+              <a class="platform-primary" href="https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-win32-x64.exe">Download installer <span aria-hidden="true">↓</span></a>
+              <a class="platform-secondary" href="https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-win32-x64.msi">MSI installer <span aria-hidden="true">↓</span></a>
+            </div>
+            <div class="platform">
+              <h3>Linux</h3>
+              <p>x64 &amp; ARM64</p>
+              <a class="platform-primary" href="https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-x64.AppImage">Download AppImage · x64 <span aria-hidden="true">↓</span></a>
+              <details class="linux-options"><summary>Other Linux packages <span aria-hidden="true">+</span></summary><div class="linux-links">
+                <span>x64</span><a href="https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-x64.deb">DEB</a><a href="https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-x64.rpm">RPM</a>
+                <span>ARM64</span><a href="https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-arm64.AppImage">AppImage</a><a href="https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-arm64.deb">DEB</a><a href="https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-arm64.rpm">RPM</a>
+              </div></details>
+            </div>
+          </div>
+          <div class="terminal-row">
+            <p>Terminal <span>Node.js 24+</span></p>
+            <div class="command"><span aria-hidden="true">$</span><code>npx sessiongraph</code><button id="copy-command" aria-label="Copy npx sessiongraph command" hidden><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="1.5" stroke="currentColor"/><path d="M12 7V4.5A1.5 1.5 0 0 0 10.5 3h-6A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7" stroke="currentColor"/></svg></button></div>
+            <p id="copy-status" class="sr-only" role="status"></p>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <a class="brand footer-brand" href="/">SessionGraph<span class="brand-dot">.</span></a>
+        <p>Free &amp; open source. <a href="https://github.com/arvindell/sessiongraph/blob/main/LICENSE">MIT license.</a></p>
+        <div><a href="https://github.com/arvindell/sessiongraph/blob/main/docs/guide.md">Docs</a><a href="https://github.com/arvindell/sessiongraph/issues">Feedback <span aria-hidden="true">↗</span></a></div>
+      </footer>
+    </div>
+  </body>
+</html>

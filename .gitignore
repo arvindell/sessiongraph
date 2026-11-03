@@ -13,3 +13,4 @@ packages/*/payload/
 release/
 *.tgz
 *.sqlite*
+.vercel/
