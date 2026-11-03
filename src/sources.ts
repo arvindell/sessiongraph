@@ -4,6 +4,7 @@ const sources: Record<string, { name: string; icon: string }> = {
   opencode: { name: 'OpenCode', icon: 'opencode' },
   'claude-code': { name: 'Claude Code', icon: 'claude' },
   codex: { name: 'Codex', icon: 'openai' },
+  't3-code': { name: 'T3 Code', icon: 't3' },
   cursor: { name: 'Cursor', icon: 'cursor' },
   gemini: { name: 'Gemini CLI', icon: 'gemini' },
   'qwen-code': { name: 'Qwen Code', icon: 'qwen' },

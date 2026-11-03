@@ -24,7 +24,11 @@ export function sqliteRevision(path: string): string {
   })]);
 }
 
-export function withSqliteSnapshot<T>(path: string, read: (db: DatabaseSync) => T, expected?: string): T {
+export function withSqliteSnapshot<T>(path: string, read: (db: DatabaseSync) => T, expected?: string, pinned = false): T {
+  // An active source can change after discovery. A pinned copy keeps all pages
+  // of that import on the same already-verified SQLite snapshot.
+  const retained = copies.get(path);
+  if (pinned && expected && retained?.revision === expected) return read(retained.db);
   const revision = sqliteRevision(path);
   if (expected && revision !== expected) throw new Error('History database changed during import; import again.');
   let copy = copies.get(path);
@@ -52,7 +56,7 @@ export function withSqliteSnapshot<T>(path: string, read: (db: DatabaseSync) => 
     }
   }
   const result = read(copy.db);
-  if (sqliteRevision(path) !== revision) throw new Error('History database changed during reading; import again.');
+  if (!pinned && sqliteRevision(path) !== revision) throw new Error('History database changed during reading; import again.');
   return result;
 }
 
