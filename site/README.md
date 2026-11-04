@@ -2,7 +2,7 @@
 
 Static HTML, CSS, and JavaScript. No dependencies or build step.
 
-Production: https://sessiongraph.vercel.app/
+Production: https://sessiongraph.ai/
 
 ## Preview
 
@@ -18,4 +18,4 @@ Only this directory is served. `vercel.json` configures static hosting and respo
 
 The screenshot and video are derived from the repository’s public, synthetic demo assets. Fonts are self-hosted subsets of Geist and IBM Plex Mono; their licenses are in `assets/licenses/`. Source marks are reused from `public/sources/`.
 
-After `sessiongraph.ai` is purchased, attach the apex and `www` domains to this project, redirect `www` to the apex, and update the canonical, Open Graph URLs, and sitemap to the verified production domain.
+`sessiongraph.ai` is the production domain. `www.sessiongraph.ai` permanently redirects to the apex with HTTP 308. DNS is managed by Vercel. The canonical URL, Open Graph URLs, and sitemap use the apex domain.

@@ -89,7 +89,7 @@ portless sessiongraph pnpm dev
 `pnpm desktop:dev` runs the native app. `pnpm test` runs the tests.
 See the [guide](docs/guide.md) for source coverage, shortcuts, storage, and building locally.
 
-The public landing page lives in [`site/`](site/README.md) and deploys to [sessiongraph.vercel.app](https://sessiongraph.vercel.app).
+The public landing page lives in [`site/`](site/README.md) and deploys to [sessiongraph.ai](https://sessiongraph.ai).
 
 ### License
 
