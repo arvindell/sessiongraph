@@ -568,6 +568,17 @@ html[data-motion='false'] *, html[data-motion='false'] *::before, html[data-moti
 .source-icon-roo { color: #d9b59a; }
 .source-icon-kilo { color: #e6ce83; }
 .source-icon-continue { color: #abd9bb; }
+.source-icon-openclaw, .source-icon-cherry { color: #efa2a0; }
+.source-icon-hermes, .source-icon-amp, .source-icon-mistral { color: #e9bd85; }
+.source-icon-kimi, .source-icon-deepseek, .source-icon-minimax, .source-icon-antigravity { color: #a7bcf2; }
+.source-icon-grok, .source-icon-zed, .source-icon-warp, .source-icon-lmstudio { color: #c3d2d7; }
+.source-icon-junie, .source-icon-kiro, .source-icon-muse { color: #c4adea; }
+.source-icon-mimo { color: #e9ae82; }
+.source-icon-devin, .source-icon-goose, .source-icon-unsloth, .source-icon-trae { color: #a8d6b9; }
+.source-icon-codebuddy, .source-icon-commandcode { color: #b3d6dd; }
+.source-icon-prime, .source-icon-senpi, .source-icon-kimchi, .source-icon-gajae { color: #d5c4a9; }
+.source-icon-droid, .source-icon-codebuff, .source-icon-freebuff, .source-icon-jcode, .source-icon-zcode { color: #bed2c5; }
+.source-icon-proma, .source-icon-aside, .source-icon-augment, .source-icon-fx, .source-icon-crush, .source-icon-octofriend, .source-icon-mux, .source-icon-reasonix, .source-icon-hindsight { color: #d0c0dd; }
 .source-symbol .source-icon { width: 20px; height: 20px; flex-basis: 20px; }
 .source-badge .source-icon, .search-result-meta .source-icon { width: 12px; height: 12px; flex-basis: 12px; vertical-align: -2px; }
 .search-result-meta .source-icon { margin-right: 5px; }
