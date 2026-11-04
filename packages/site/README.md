@@ -17,7 +17,30 @@ pnpm --filter sessiongraph-site build
 
 Vite serves the UI at `http://127.0.0.1:5190`, including `/account` and `/@username` rewrites. It does not emulate the serverless API. UI fixtures or a separately configured API are needed for authenticated flows.
 
-API integration tests use a dedicated local PostgreSQL database named `sessiongraph_test`. They rebuild its application tables and refuse non-loopback database addresses. CI provisions this database automatically. Run locally with `TEST_DATABASE_URL` set, then `pnpm --filter sessiongraph-site test`. Tests translate DSQL's asynchronous index syntax for PostgreSQL; they do not contact production.
+### Local PostgreSQL
+
+From the repository root, start the database dependency with Docker Compose:
+
+```sh
+docker compose up -d --wait
+```
+
+This runs PostgreSQL 17 on `127.0.0.1:55439` with two databases:
+
+| Database | Connection URL |
+| --- | --- |
+| Development | `postgresql://sessiongraph@127.0.0.1:55439/sessiongraph_dev` |
+| API tests | `postgresql://sessiongraph@127.0.0.1:55439/sessiongraph_test` |
+
+The local-only stack uses passwordless authentication and binds its published port to loopback. Set `SESSIONGRAPH_POSTGRES_PORT` to use a different host port, and update your connection URLs accordingly. Data lives in a Docker-managed named volume; `docker compose down` stops the stack and retains it. The initialization SQL creates the test database when the volume is first initialized.
+
+Run the API integration tests against the test database:
+
+```sh
+TEST_DATABASE_URL=postgresql://sessiongraph@127.0.0.1:55439/sessiongraph_test pnpm --filter sessiongraph-site test
+```
+
+Tests rebuild their application tables and refuse non-loopback addresses or database names other than `sessiongraph_test`. CI provisions its own database automatically. Tests translate DSQL's asynchronous index syntax for PostgreSQL; they do not contact production. The Compose stack supplies the database only; local website API routing and authentication still need a development server setup.
 
 ## Runtime configuration
 

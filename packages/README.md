@@ -17,3 +17,5 @@ pnpm --filter @sessiongraph/core typecheck
 pnpm --filter sessiongraph-site typecheck
 pnpm --filter sessiongraph-site build
 ```
+
+`docker compose up -d --wait` starts the local PostgreSQL dependency with separate development and test databases. See the [website development guide](site/README.md#local-postgresql) for connection URLs and API test commands.
