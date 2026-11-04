@@ -1,4 +1,4 @@
-import type { Session } from './types';
+import type { Session } from '@sessiongraph/core/types';
 
 export const validTokenCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 export function sumRecordedTokens(values: unknown[]): number | null {

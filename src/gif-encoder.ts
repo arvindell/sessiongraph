@@ -1,5 +1,5 @@
 import * as gifenc from 'gifenc';
-import { gifFrameDelay } from './playback';
+import { gifFrameDelay } from '@sessiongraph/core/playback';
 
 // Vite resolves the ESM build; Node's test runner resolves the CommonJS bundle.
 const fallback = gifenc.default;

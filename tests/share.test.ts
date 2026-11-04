@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeGraph } from '../src/layout';
+import { makeGraph } from '@sessiongraph/core/layout';
 import { projectAliases, shareGraph } from '../src/share-graph';
 import { playbackTokens } from '../src/playback-tokens';
-import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, PLAYBACK_FRAMES, SHARE_FRAMES, gifFrameDelay, overviewTurn, playbackSessions, shareFrameProgress, shareFrameOutro } from '../src/playback';
+import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, PLAYBACK_FRAMES, SHARE_FRAMES, gifFrameDelay, overviewTurn, playbackSessions, shareFrameProgress, shareFrameOutro } from '@sessiongraph/core/playback';
 import { createGifEncoder } from '../src/gif-encoder';
-import type { Session } from '../src/types';
+import type { Session } from '@sessiongraph/core/types';
 
 const session = (id: string, source: string, directory: string, extra: Partial<Session> = {}): Session => ({
   id, nativeID: 'private-native', source, title: 'Secret customer issue', directory, projectID: 'private-project',

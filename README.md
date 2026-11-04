@@ -90,7 +90,7 @@ portless sessiongraph pnpm dev
 `pnpm desktop:dev` runs the native app. `pnpm test` runs the tests.
 See the [guide](docs/guide.md) for source coverage, shortcuts, storage, and building locally.
 
-The public landing page lives in [`site/`](site/README.md) and deploys to [sessiongraph.ai](https://sessiongraph.ai).
+Shared graph code and the website are organized as pnpm workspace packages in [`packages/`](packages/README.md). The website lives in [`packages/site/`](packages/site/README.md) and serves [sessiongraph.ai](https://sessiongraph.ai).
 
 ### License
 

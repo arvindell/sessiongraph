@@ -1,5 +1,9 @@
 allowBuilds:
   esbuild: true
+  '@prisma/engines': true
+  prisma: true
+packages:
+  - 'packages/*'
 # These are release outputs; source builds never install their own native binaries.
 ignoredOptionalDependencies:
   - 'sessiongraph-app-*'

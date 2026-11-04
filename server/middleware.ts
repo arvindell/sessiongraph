@@ -5,8 +5,12 @@ import { Importer } from './importer';
 import { getLaunchConnection, prepareLaunch, launchTerminal } from './launch';
 import { isHarness } from '../src/launch-links';
 import { EventReadError } from './event-store';
-import { normalizePreferences } from '../src/preferences';
-import { normalizeViewState } from '../src/view-state';
+import { normalizePreferences } from '@sessiongraph/core/preferences';
+import { normalizeViewState } from '@sessiongraph/core/view-state';
+import { PublishingClient, PublishingError } from './publishing';
+import { publishingSettings } from '@sessiongraph/core/public-graph';
+
+const publishing = new PublishingClient();
 
 const generation = Symbol('sessiongraph-backend');
 const runtime = globalThis as typeof globalThis & { sessionGraphRuntime?: { store: SessionGraphStore; importer: Importer; generation?: symbol } };
@@ -39,6 +43,18 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
   if (req.method !== 'GET' && typeof req.headers['x-sessiongraph-action'] !== 'string') return json(403, { error: 'Use the SessionGraph application.' });
   try {
     const { store, importer } = library();
+    if (url.pathname.startsWith('/api/sessiongraph/publishing')) {
+      const action = url.pathname.slice('/api/sessiongraph/publishing'.length);
+      if (action === '/settings' && req.method === 'GET') return json(200, publishingSettings(store.setting('publishing')));
+      if (action === '/status' && req.method === 'GET') return json(200, await publishing.status());
+      if (action === '/login' && req.method === 'POST') return json(200, publishing.login());
+      if (action === '/poll' && req.method === 'POST') return json(200, await publishing.poll());
+      if (action === '/logout' && req.method === 'POST') return json(200, await publishing.logout());
+      if (action === '/preview' && req.method === 'POST') { const value = await body(req); return json(200, publishing.prepare(store, value?.ids, value?.settings)); }
+      if (action === '/publish' && req.method === 'POST') { const value = await body(req); return json(200, await publishing.publish(value?.id, value?.confirmed)); }
+      if (action === '/unpublish' && req.method === 'POST') return json(200, await publishing.unpublish());
+      return json(405, { error: 'Method not allowed.' });
+    }
     if (url.pathname === '/api/sessiongraph/settings' && req.method === 'POST') {
       const value = await body(req);
       if (!value || typeof value !== 'object' || Array.isArray(value) || !['autoImport', 'preferences', 'viewState'].some((key) => value[key] !== undefined)) return json(400, { error: 'Choose valid settings.' });
@@ -102,6 +118,7 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
     }
     return json(404, { error: 'Not found.' });
   } catch (error) {
+    if (error instanceof PublishingError) return json(error.status, { error: error.message });
     if (error instanceof EventReadError) return json(error.status, { error: error.message });
     console.error('[sessiongraph] Local operation failed:', error instanceof Error ? error.name : 'Unknown error');
     return json(500, { error: 'Local operation failed. Check the import status or retry.' });

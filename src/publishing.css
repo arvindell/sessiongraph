@@ -1,0 +1,20 @@
+.publishing-dialog { width: min(1000px, calc(100% - 32px)); max-width: none; }
+.publishing-dialog > header { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.publishing-dialog h2 { margin: 0; }
+.publishing-disclosure, .publishing-scope, .publishing-note, .publishing-summary { color: #a1b6ad; font-size: 12px; line-height: 1.7; }
+.publishing-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 20px; padding: 18px; border: 1px solid #c9e3db20; border-radius: 6px; }
+.publishing-fields legend { padding-inline: 8px; font-size: 13px; }
+.publishing-fields label, .publishing-confirm { display: flex; gap: 9px; align-items: center; font-size: 12px; line-height: 1.7; }
+.publishing-dialog input[type=checkbox] { accent-color: #b0e9d6; }
+.publishing-account, .publishing-dialog footer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.publishing-account { font-size: 13px; }
+.publishing-status { font-size: 13px; line-height: 1.7; color: #b0e9d6; min-height: 22px; }
+.publishing-confirm { align-items: flex-start; }
+.publishing-confirm input { margin-top: 4px; }
+.publishing-dialog footer { justify-content: flex-end; }
+.publishing-dialog footer [data-animation] { margin-right: auto; }
+.publishing-json { max-height: 280px; overflow: auto; padding: 15px; background: #060b10; font: 11px/1.5 monospace; }
+.publishing-link { display: block; text-align: right; margin-top: 15px; color: #b0e9d6; font-size: 13px; }
+.publishing-connect { margin-block: 15px; font-size: 13px; }
+.publishing-connect strong { font-family: monospace; letter-spacing: .1em; }
+@media(max-width:600px) { .publishing-fields { grid-template-columns: repeat(2, 1fr); } }

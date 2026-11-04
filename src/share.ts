@@ -1,12 +1,12 @@
 import { createElement, Share2 } from 'lucide';
-import { TimelineScene } from './scene';
+import { TimelineScene } from '@sessiongraph/core/scene';
 import { shareGraph } from './share-graph';
-import { SHARE_FPS, SHARE_FRAMES, playbackDate, playbackSessions, shareFrameProgress, shareFrameOutro, timelineBuckets } from './playback';
+import { SHARE_FPS, SHARE_FRAMES, playbackDate, playbackSessions, shareFrameProgress, shareFrameOutro, timelineBuckets } from '@sessiongraph/core/playback';
 import { playbackTokens } from './playback-tokens';
 import { SHARE_FORMATS, SHARE_CAPTION, SHARE_X_URL, saveAnimation, shareCancelled, type ShareFormat } from './share-files';
-import { sessionEnd } from './layout';
-import type { Graph } from './types';
-import type { Preferences } from './preferences';
+import { sessionEnd } from '@sessiongraph/core/layout';
+import type { Graph } from '@sessiongraph/core/types';
+import type { Preferences } from '@sessiongraph/core/preferences';
 
 const WIDTH = 960, HEIGHT = 600;
 const compact = (value: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);

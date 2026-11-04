@@ -1,5 +1,5 @@
 import { setImmediate as yieldToIO } from 'node:timers/promises';
-import type { ImportStatus, SourceStatus } from '../src/types';
+import type { ImportStatus, SourceStatus } from '@sessiongraph/core/types';
 import type { ImportedMessage, SessionAdapter } from './adapters/types';
 import { SessionGraphStore } from './store';
 import { boundEventPayloads } from './events';

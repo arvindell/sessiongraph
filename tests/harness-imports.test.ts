@@ -13,7 +13,7 @@ import { createCursorAdapter } from '../server/adapters/cursor';
 import { codexAdapter } from '../server/adapters/codex';
 import { expandHistory } from '../server/adapters/compressed';
 import { protoFields } from '../server/adapters/harness-metadata';
-import { sourceName } from '../src/sources';
+import { sourceName } from '@sessiongraph/core/sources';
 import { Importer } from '../server/importer';
 import { SessionGraphStore } from '../server/store';
 import type { ImportedMessage, SessionAdapter } from '../server/adapters/types';

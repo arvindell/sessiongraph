@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_VIEW_STATE, normalizeViewState } from '../src/view-state';
+import { DEFAULT_VIEW_STATE, normalizeViewState } from '@sessiongraph/core/view-state';
 import { LibrarySettingsSaver, type LibrarySettingsPatch } from '../src/library-settings';
 
 test('saved view state keeps false toggles and custom dates while rejecting malformed ranges and filters', () => {

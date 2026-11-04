@@ -1,5 +1,5 @@
 import MiniSearch from 'minisearch';
-import type { Project, Session } from '../types';
+import type { Project, Session } from '@sessiongraph/core/types';
 import type { Fragment, SearchHit } from './types';
 import { contentVersion } from './persistence';
 

@@ -1,4 +1,4 @@
-import type { Graph, GraphNode, Session } from './types';
+import type { Graph, GraphNode, Session } from '@sessiongraph/core/types';
 
 const adjectives = 'Cosmic Wobbly Disco Sneaky Bouncy Galactic Crispy Dizzy Fuzzy Noodle Groovy Sleepy Spicy Jolly Loopy Squishy Turbo Giggly Velvet Soggy Zippy Fluffy Moonwalking Wiggly Fizzy Snazzy Goofy Jazzy Tiny Chunky Dapper Wacky'.split(' ');
 const nouns = 'Wombat Pickle Pancake Badger Potato Narwhal Noodle Goblin Otter Turnip Hamster Comet Dumpling Goose Biscuit Llama Muffin Squid Raccoon Toaster Waffle Penguin Yeti Pudding Walrus Taco Jellybean Platypus Sloth Cactus Donut Mongoose'.split(' ');

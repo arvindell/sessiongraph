@@ -1,9 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "",
-  "installCommand": "",
+  "buildCommand": "pnpm --filter sessiongraph-site build",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "outputDirectory": "dist",
   "cleanUrls": true,
+  "git": { "deploymentEnabled": { "feat/public-profiles": false } },
+  "rewrites": [{ "source": "/@:username", "destination": "/profile.html" }],
+  "functions": { "api/**/*.ts": { "maxDuration": 60 } },
+  "crons": [{ "path": "/api/maintenance", "schedule": "0 8 * * *" }],
   "headers": [
     {
       "source": "/(.*)",

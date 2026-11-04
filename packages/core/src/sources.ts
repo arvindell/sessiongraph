@@ -66,6 +66,7 @@ const sources: Record<string, { name: string; icon: string }> = {
   hindsight: { name: 'Hindsight', icon: 'hindsight' },
 };
 export const sourceName = (id?: string) => sources[id || 'opencode']?.name || id || 'Unknown';
+export const isKnownSource = (id: unknown): id is string => typeof id === 'string' && Object.hasOwn(sources, id);
 export const sourceIcon = (id?: string) => {
   const file = sources[id || '']?.icon || 'generic';
   return `<span class="source-icon source-icon-${file}" aria-hidden="true" style="--source-icon:url('/sources/${file}.svg')"></span>`;

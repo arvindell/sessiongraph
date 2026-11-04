@@ -1,4 +1,4 @@
-import type { Session } from './types';
+import type { Session } from '@sessiongraph/core/types';
 export const HARNESSES = [
   { id: 'opencode', name: 'OpenCode', command: 'opencode' },
   { id: 'claude-code', name: 'Claude Code', command: 'claude' },

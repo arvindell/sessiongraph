@@ -1,4 +1,4 @@
-import { timelineColor, timelineLabel, type TimelineItem, type TimelineSummary } from './timeline';
+import { timelineColor, timelineLabel, type TimelineItem, type TimelineSummary } from '@sessiongraph/core/timeline';
 import type { TimelineClient } from './timeline-client';
 
 /** Read a bounded preview only while its marker is hovered; never select it. */

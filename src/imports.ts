@@ -1,5 +1,5 @@
-import type { ImportStatus, SourceStatus } from './types';
-import { sourceName, sourceOption, sortSources } from './sources';
+import type { ImportStatus, SourceStatus } from '@sessiongraph/core/types';
+import { sourceName, sourceOption, sortSources } from '@sessiongraph/core/sources';
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 export function createImports(onChange: (background: boolean) => Promise<void>, onVisibility: () => void, notice: (message: string) => void) {

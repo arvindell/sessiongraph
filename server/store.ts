@@ -2,15 +2,15 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { SessionGraphData, Session, SessionDetail, SessionTimeline, SourceStatus } from '../src/types';
+import type { SessionGraphData, Session, SessionDetail, SessionTimeline, SourceStatus } from '@sessiongraph/core/types';
 import type { ContentPage } from '../src/search/types';
 import { MAX_CHARACTERS, validRecord, type CachedContent } from '../src/search/persistence';
 import type { Candidate, ImportedMessage } from './adapters/types';
 import { databasePath } from './config';
 import { activitySQL, isUserMessage, messageTime } from './activity';
 import { EVENT_SCHEMA, writeEvents, readEvents, readEventMarkers } from './event-store';
-import { normalizePreferences, type Preferences } from '../src/preferences';
-import { normalizeViewState } from '../src/view-state';
+import { normalizePreferences, type Preferences } from '@sessiongraph/core/preferences';
+import { normalizeViewState } from '@sessiongraph/core/view-state';
 import { visibleSessions } from '../src/session-links';
 
 /** SessionGraph owns this database. No adapter opens or modifies a harness database. */
