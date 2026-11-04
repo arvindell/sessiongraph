@@ -11,6 +11,7 @@ import { normalizeViewState, type ViewState } from './view-state';
 import { playbackTokens } from './playback-tokens';
 import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, playbackDate, playbackSessions, timelineBuckets } from './playback';
 import { sourceName, sourceIcon } from './sources';
+import { sessionMatchesSource } from './session-links';
 import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from './preferences';
 import { createSettings } from './settings';
 import { InteractionAudio } from './audio';
@@ -381,7 +382,7 @@ function updateFilters(fit = false, preserve = false) {
   const min = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : days ? now - days * 86400000 : 0;
   const max = toDate ? new Date(`${toDate}T23:59:59.999`).getTime() : Infinity;
   filtered = data.sessions.filter((s) =>
-    (!sourceID || s.source === sourceID) && (!projectID || s.projectID === projectID) && (!directory || s.directory === directory) &&
+    sessionMatchesSource(s, sourceID) && (!projectID || s.projectID === projectID) && (!directory || s.directory === directory) &&
     (includeChildren || !s.parentID || Boolean(s.forkID)) && (includeArchived || !s.archived) &&
     s.created >= min && s.created <= max,
   );

@@ -37,6 +37,13 @@ test('field filters, quotes, ancestry, dates and view scope do not leak other re
   assert.equal(parseQuery('after:2024-02-29').error, undefined);
 });
 
+test('source filters include T3 threads explicitly bound to that provider', () => {
+  const index = new SessionSearchIndex();
+  index.setData([session('t3-code:app', 'T3 task', { source: 't3-code', linkedSessionIDs: ['codex:native'] })], projects);
+  assert.deepEqual(index.search('source:codex').hits.map((hit) => hit.id), ['t3-code:app']);
+  assert.deepEqual(index.search('source:claude').hits, []);
+});
+
 test('refresh invalidates changed/deleted transcript evidence while keeping unchanged entries', () => {
   const index = new SessionSearchIndex();
   const a = session('a', 'First'), b = session('b', 'Second');

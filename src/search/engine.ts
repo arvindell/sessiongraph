@@ -98,7 +98,7 @@ export class SessionSearchIndex {
       const { session, doc } = entry;
       if (viewOnly && !this.scope.has(session.id)) return false;
       for (const [key, value] of plan.filters) {
-        if (key === 'source' && !normalize(session.source || 'opencode').includes(value)) return false;
+        if (key === 'source' && ![session.source || 'opencode', ...(session.linkedSessionIDs || []).map((id) => id.split(':')[0])].some((source) => normalize(source).includes(value))) return false;
         if (key === 'project' && !normalize(doc.project).includes(value) && !normalize(session.projectID).includes(value)) return false;
         if (key === 'dir' && !normalize(session.directory).includes(value)) return false;
         if (key === 'model' && !normalize(session.model).includes(value)) return false;

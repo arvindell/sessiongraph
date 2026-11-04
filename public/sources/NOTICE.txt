@@ -19,3 +19,25 @@ Continue mark: docs/logo/dark.svg
 https://github.com/continuedev/continue/tree/5522c6f44ca0ac3528b37244818fbfa39b5af470
 Apache License 2.0, Copyright 2023 Continue Dev, Inc.
 Adapted with monochrome fill and responsive dimensions. See LICENSE-APACHE-2.0.txt.
+
+Additional monochrome SVG paths from Lobe Icons, MIT License, Copyright (c) 2023 LobeHub:
+https://github.com/lobehub/lobe-icons/tree/ea434b96e75813517b377825e01c0df61dee8836/packages/static-svg/icons
+Files: amp.svg, kimi.svg, grok.svg, cherrystudio.svg, commandcode.svg,
+codebuddy.svg (also used for WorkBuddy), deepseek.svg, mistral.svg, muse.svg,
+minimax.svg, goose.svg, devin.svg, unsloth.svg, kiro.svg, antigravity.svg,
+trae.svg, lmstudio.svg, openclaw.svg, hermesagent.svg, junie.svg.
+The source assets were adapted for monochrome CSS masks and renamed where needed.
+See LICENSE-MIT.txt.
+
+Zed Industries, Warp, and Xiaomi paths from Simple Icons (CC0-1.0):
+https://github.com/simple-icons/simple-icons/tree/b45ca1f11d9d013a7c462944d90a049bc613ad4f/icons
+Files: zedindustries.svg, warp.svg, xiaomi.svg. The Xiaomi mark identifies
+the MiMo sources at small sizes. Adapted for monochrome CSS masks.
+
+Source-specific initial marks for Aside, Augment, Codebuff, Crush, Freebuff,
+Fx, Gajae-Code, Hindsight, Jcode, Kimchi, Mux, Prime Agent, Proma, Reasonix,
+Senpi, and ZCode use glyph outlines from Geist Bold, Copyright 2024 The Geist
+Project Authors, SIL Open Font License 1.1. These are identification initials,
+not the products' official marks. See LICENSE-OFL-1.1.txt.
+The Factory Droid and Octofriend symbols are original SessionGraph drawings,
+not official product marks.

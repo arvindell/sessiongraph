@@ -9,6 +9,8 @@ export interface Session {
   projectID: string;
   parentID?: string;
   forkID?: string;
+  /** Explicit provider-native conversations recorded as part of this app thread. */
+  linkedSessionIDs?: string[];
   directory: string;
   created: number;
   updated: number;
