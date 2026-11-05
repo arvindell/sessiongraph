@@ -10,6 +10,7 @@ const sources: Record<string, { name: string; icon: string }> = {
   'qwen-code': { name: 'Qwen Code', icon: 'qwen' },
   pi: { name: 'Pi', icon: 'pi' },
   copilot: { name: 'GitHub Copilot CLI', icon: 'copilot' },
+  'copilot-chat': { name: 'GitHub Copilot Chat (VS Code)', icon: 'copilot' },
   cline: { name: 'Cline', icon: 'cline' },
   'roo-code': { name: 'Roo Code', icon: 'roo' },
   'kilo-code': { name: 'Kilo Code', icon: 'kilo' },

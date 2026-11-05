@@ -33,6 +33,8 @@ interface LocalSource {
   extras?: (path: string) => string[];
   /** Immutable creation metadata in a shared index must not invalidate every session. */
   revisionExtras?: boolean;
+  /** Native identity of a primary file whose read failure must block stale copies. */
+  authoritativeIdentity?: (path: string) => string | undefined;
   parse: (path: string, files: Map<string, string>) => LocalHistory | undefined;
 }
 
@@ -128,6 +130,7 @@ export function localFileAdapter(source: LocalSource): SessionAdapter {
     async discover() {
       const listing = await historyFiles(source.roots(), source.match), found = new Map<string, Candidate>();
       let failed = 0;
+      const blocked = new Set<string>();
       for (const path of listing.files) {
         try {
           const before = await states(path), rev = revision(before);
@@ -148,12 +151,16 @@ export function localFileAdapter(source: LocalSource): SessionAdapter {
           const previous = found.get(candidate.session.id);
           const preferred = candidate.locator.path.endsWith('.jsonl'), previousPreferred = previous?.locator.path.endsWith('.jsonl');
           if (!previous || preferred && !previousPreferred || preferred === previousPreferred && candidate.session.updated > previous.session.updated) found.set(candidate.session.id, candidate);
-        } catch { failed++; }
+        } catch {
+          failed++;
+          const nativeID = source.authoritativeIdentity?.(path);
+          if (nativeID) blocked.add(identity(source.id, nativeID));
+        }
       }
       const listed = new Set(listing.files); for (const path of metadata.keys()) if (!listed.has(path)) metadata.delete(path);
       if (failed) listing.warnings.push(`${failed} ${source.name} histories were unreadable, changing, unsupported, or over the size limit. Saved imports are kept.`);
-      const sessions = [...found.values()];
-      return { sessions, projects: [...new Map(sessions.map(c => { const p = project(source.id, c.session.directory); return [p.id, p]; })).values()], warnings: listing.warnings };
+      const sessions = [...found.values()].filter(c => !blocked.has(c.session.id));
+      return { sessions, projects: [...new Map(sessions.map(c => { const p = project(source.id, c.session.directory); return [p.id, p]; })).values()], warnings: listing.warnings, blocked: [...blocked] };
     },
     async read(candidate, cursor) {
       const offset = cursor === undefined ? 0 : Number(cursor);

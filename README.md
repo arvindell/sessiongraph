@@ -63,6 +63,7 @@ npx sessiongraph --browser
 | <img src="public/sources/qwen.svg" width="14" alt=""/> **Qwen Code** | Local project chat records | Native resume / saved-context handoff |
 | <img src="public/sources/pi.svg" width="14" alt=""/> **Pi** | Local JSONL session trees | Native resume / saved-context handoff |
 | <img src="public/sources/copilot.svg" width="14" alt=""/> **GitHub Copilot CLI** | Local persisted session events | Native resume / saved-context handoff |
+| <img src="public/sources/copilot.svg" width="14" alt=""/> **GitHub Copilot Chat (VS Code)** | VS Code / Insiders saved Chat UI history on Windows, macOS, and Linux | Saved-context handoff to a supported CLI |
 | <img src="public/sources/cline.svg" width="14" alt=""/> **Cline** | Extension tasks and CLI/SDK message snapshots | Saved-context handoff to a supported CLI |
 | <img src="public/sources/roo.svg" width="14" alt=""/> **Roo Code** | Local extension task histories | Saved-context handoff to a supported CLI |
 | <img src="public/sources/kilo.svg" width="14" alt=""/> **Kilo Code / CLI** | Extension task JSON; separate Kilo CLI SQLite source | Saved-context handoff to a supported CLI |
