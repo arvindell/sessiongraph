@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SessionGraphStore } from '../server/store';
 import { blankMessage, blankSession } from '../server/adapters/common';
-import { connectionPositions, makeGraph, sessionEnd, timeX, trailPosition } from '../src/layout';
+import { connectionPositions, makeGraph, sessionEnd, timeX, trailPosition } from '@sessiongraph/core/layout';
 import type { ImportedMessage } from '../server/adapters/types';
 
 const user = (id: string, time: number): ImportedMessage => ({ ...blankMessage(id, time, 'user'), fragments: [{ kind: 'You', text: id, time }] });

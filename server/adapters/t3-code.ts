@@ -6,7 +6,7 @@ import { addText, blankMessage, blankSession, digest, identity, project } from '
 import type { Candidate, ImportedMessage, SessionAdapter } from './types';
 import { hasTable, sqliteRevision, withSqliteSnapshot } from './sqlite-snapshot';
 import { eventFor, eventText, messageEvent } from '../events';
-import type { TimelineEvent } from '../../src/timeline';
+import type { TimelineEvent } from '@sessiongraph/core/timeline';
 
 type Row = Record<string, unknown>;
 const SOURCE = 't3-code';

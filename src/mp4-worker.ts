@@ -1,5 +1,5 @@
 import { BufferTarget, canEncodeVideo, Mp4OutputFormat, Output, Quality, VideoSample, VideoSampleSource } from 'mediabunny';
-import { SHARE_FPS, SHARE_FRAMES } from './playback';
+import { SHARE_FPS, SHARE_FRAMES } from '@sessiongraph/core/playback';
 
 let output: Output<Mp4OutputFormat, BufferTarget> | undefined, source: VideoSampleSource | undefined;
 let frame = 0;

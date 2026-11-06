@@ -1,6 +1,6 @@
-import { timelineColor, timelineLabel, type TimelineItem, type TimelinePage, type TimelineSummary } from './timeline';
-import type { Session } from './types';
-import { sourceName } from './sources';
+import { timelineColor, timelineLabel, type TimelineItem, type TimelinePage, type TimelineSummary } from '@sessiongraph/core/timeline';
+import type { Session } from '@sessiongraph/core/types';
+import { sourceName } from '@sessiongraph/core/sources';
 import type { TimelineClient } from './timeline-client';
 
 const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);

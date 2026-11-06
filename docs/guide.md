@@ -219,11 +219,11 @@ server/middleware.ts      Same-origin local library/import/index endpoints
 server/standalone.ts      Authenticated loopback server + bundled web assets
 src/imports.ts            Onboarding and source management
 src/search/               Worker search and SQLite checkpoint bridge
-src/layout.ts, scene.ts   Source-agnostic graph and cinematic visualization
-src/timeline.ts           Shared message/tool/event envelope and presentation types
+packages/core/src/        Shared graph, Three.js renderer, session/timeline types, and public viewer
+packages/site/            Website, public profiles, accounts, organizations, and hosted API
 src/event-explorer.ts     Lazy user/assistant message browsing and details
 src/event-hover.ts        Bounded, cancellable message previews on marker hover
-src/preferences.ts        Validated, versioned local appearance/audio settings
+packages/core/src/preferences.ts  Validated, versioned local appearance/audio settings
 src/settings.ts, audio.ts Settings dialog and offline procedural audio lifecycle
 src-tauri/                Native WebView shell, owned backend lifecycle
 bin/sessiongraph.mjs      npm desktop/browser launcher

@@ -1,6 +1,6 @@
-import type { FileChange, Project, Session, SourceStatus } from '../../src/types';
+import type { FileChange, Project, Session, SourceStatus } from '@sessiongraph/core/types';
 import type { Fragment } from '../../src/search/types';
-import type { TimelineEvent } from '../../src/timeline';
+import type { TimelineEvent } from '@sessiongraph/core/timeline';
 
 /** Native identity is independent of file locations, titles, and timestamps.
  * Adapters never execute an agent turn or modify the source's storage.

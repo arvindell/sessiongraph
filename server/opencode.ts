@@ -1,7 +1,7 @@
 import { Service } from '@opencode/client/service';
 import { basename } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { SessionGraphData, FileChange, Project, Session, SessionDetail } from '../src/types';
+import type { SessionGraphData, FileChange, Project, Session, SessionDetail } from '@sessiongraph/core/types';
 import { serviceFile } from './config';
 import { sumRecordedTokens } from '../src/playback-tokens';
 

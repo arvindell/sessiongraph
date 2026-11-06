@@ -12,7 +12,8 @@
 ## Wiring
 
 - Browser and desktop share the vanilla TypeScript/Three.js frontend in `src/main.ts` and API in `server/middleware.ts`. Tauri starts `server/standalone.ts` as a bundled Node child and opens its authenticated loopback URL; preserve backend lifecycle ownership and origin checks.
-- Add sources via `server/adapters/types.ts` and `server/adapters/index.ts`. `server/importer.ts` coordinates reads; `server/store.ts` owns SQLite migrations and snapshot replacement. Shared models live in `src/types.ts` and `src/timeline.ts`.
+- Workspace source packages live in `packages/`: `@sessiongraph/core` holds the shared graph/renderer/types, and `sessiongraph-site` holds the website/API. Import shared code via `@sessiongraph/core/<module>`. The root package owns the local app and native release tooling. Keep cloud provisioning and account-specific infrastructure configuration outside this public repository.
+- Add sources via `server/adapters/types.ts` and `server/adapters/index.ts`. `server/importer.ts` coordinates reads; `server/store.ts` owns SQLite migrations and snapshot replacement. Shared models live in `packages/core/src/types.ts` and `packages/core/src/timeline.ts`.
 - Search runs in `src/search/worker.ts`; persisted checkpoints use SQLite through `src/search/sqlite-cache.ts`, not IndexedDB. Clearing the search index must preserve imported history.
 - Storage resolution in `server/config.ts` honors `SESSIONGRAPH_DATA_DIR` and reuses legacy Session Atlas/Atlas libraries in place. Preserve legacy environment aliases and database precedence. See `docs/guide.md` for source-specific coverage and storage details.
 

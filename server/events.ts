@@ -1,7 +1,7 @@
 import { digest } from './adapters/common';
 import { messageTime } from './activity';
 import type { ImportedMessage } from './adapters/types';
-import type { TimelineEvent, TimelineItem } from '../src/timeline';
+import type { TimelineEvent, TimelineItem } from '@sessiongraph/core/timeline';
 
 /** Keep JSON readable while bounding payloads and excluding binary/credential fields. */
 export function eventText(value: unknown, limit = 32_000): string {

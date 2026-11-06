@@ -5,7 +5,7 @@ import { stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute } from 'node:path';
 import { cliCommand, HARNESSES, isHarness, resumeArgs, type HarnessID, type LaunchConnection, type PreparedLaunch } from '../src/launch-links';
 import { getSessionInfo } from './opencode';
-import type { Session } from '../src/types';
+import type { Session } from '@sessiongraph/core/types';
 import { serviceFile } from './config';
 import { harnessExecutable, launchCommand, terminalExecutable } from './harnesses';
 import { saveHandoff } from './handoff';

@@ -1,6 +1,6 @@
 import { excerpt, normalize, parseQuery, words } from './engine';
-import type { SessionGraphData, Session } from '../types';
-import { sourceName, sourceIcon } from '../sources';
+import type { SessionGraphData, Session } from '@sessiongraph/core/types';
+import { sourceName, sourceIcon } from '@sessiongraph/core/sources';
 import { contentVersion } from './persistence';
 import type { ContentPage, IndexStatus, SearchHit, SearchRequest, SearchResponse } from './types';
 

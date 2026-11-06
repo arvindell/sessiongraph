@@ -1,18 +1,18 @@
 import { createIcons, Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2 } from 'lucide';
-import type { TimelineScene } from './scene';
-import { directoryLabel, makeGraph, sessionEnd } from './layout';
+import type { TimelineScene } from '@sessiongraph/core/scene';
+import { directoryLabel, makeGraph, sessionEnd } from '@sessiongraph/core/layout';
 import { setupPanelDragging } from './panels';
 import { createSessionSearch } from './search/ui';
 import { createSessionLauncher } from './launcher';
 import { createImports } from './imports';
 import { AutoImportScheduler, AUTO_IMPORT_INTERVAL } from './auto-import';
 import { LibrarySettingsSaver, type LibrarySettingsPatch } from './library-settings';
-import { normalizeViewState, type ViewState } from './view-state';
+import { normalizeViewState, type ViewState } from '@sessiongraph/core/view-state';
 import { playbackTokens } from './playback-tokens';
-import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, playbackDate, playbackSessions, timelineBuckets } from './playback';
-import { sourceName, sourceIcon } from './sources';
+import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, playbackDate, playbackSessions, timelineBuckets } from '@sessiongraph/core/playback';
+import { sourceName, sourceIcon } from '@sessiongraph/core/sources';
 import { sessionMatchesSource } from './session-links';
-import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from './preferences';
+import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from '@sessiongraph/core/preferences';
 import { createSettings } from './settings';
 import { InteractionAudio } from './audio';
 import { createEventExplorer } from './event-explorer';
@@ -21,9 +21,10 @@ import { TimelineClient } from './timeline-client';
 import { createDesktopUpdater } from './updater';
 import { createDateRange } from './date-range';
 import { observeSelects, refreshSelects } from './controls';
-import type { TimelineMarkers } from './timeline';
-import type { SessionGraphData, Graph, Session, SessionDetail } from './types';
+import type { TimelineMarkers } from '@sessiongraph/core/timeline';
+import type { SessionGraphData, Graph, Session, SessionDetail } from '@sessiongraph/core/types';
 import './style.css';
+import './publishing.css';
 
 const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2 };
 const refreshIcons = () => { createIcons({ icons, attrs: { 'stroke-width': 1.5 } }); refreshSelects(); };
@@ -74,6 +75,7 @@ let tokenPlayback = playbackTokens([]), tokenDisplay = '';
 let sessionPlayback = playbackSessions([]);
 let playbackPanels: { explorer: boolean; inspector: boolean } | undefined;
 let playbackShare: ReturnType<typeof import('./share').createPlaybackShare> | undefined;
+let publishingDialog: ReturnType<typeof import('./publishing').createPublishing> | undefined;
 let shareRevealTimer = 0, shareReady = false;
 let preferences: Preferences = { ...DEFAULT_PREFERENCES }, preferencesSaved = true;
 let autoImport: AutoImportScheduler | undefined;
@@ -105,6 +107,7 @@ $('#app').innerHTML = `
     <button class="icon-button" id="help" aria-label="Help" title="Help">${icon('circle-help')}</button>
     <button class="icon-button" id="mute-audio" aria-label="Mute sound" title="Mute sound" aria-pressed="false" data-sound="none">${icon('volume-2')}</button>
     <button class="icon-button" id="open-settings" aria-label="Settings" title="Settings" aria-haspopup="dialog">${icon('settings-2')}</button>
+    <button class="icon-button" id="open-publishing" aria-label="Publish and account" title="Publish and account" aria-haspopup="dialog">${icon('share-2')}</button>
   </nav>
   <aside class="sidebar floating-panel glass" id="explorer" aria-label="Sessions">
       <div class="panel-heading"><button class="panel-handle" data-drag-panel="explorer" aria-label="Move sessions panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span>Sessions</span><span class="small-badge" id="list-count">—</span></button><button class="icon-button" id="refresh" aria-label="Refresh sessions" title="Refresh sessions">${icon('refresh-cw')}</button><button class="icon-button" id="close-explorer" aria-label="Close sessions">${icon('x')}</button></div>
@@ -150,7 +153,7 @@ function openEvents(item?: string) {
   const session = data?.sessions.find((s) => s.id === selectedID);
   if (session) { eventHover.clear(); stopPlayback(); setPanel('inspector', true); eventExplorer.open(session, item, item ? selectedTimeline?.revision : undefined); }
 }
-const settings = createSettings({ change: changePreferences, getArchived: () => includeArchived, changeArchived: (value) => { includeArchived = value; updateFilters(); }, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, getSources: () => imports.sources(), importSources: (ids) => imports.select(ids), resetPanels: () => {
+const settings = createSettings({ publishing: openPublishing, change: changePreferences, getArchived: () => includeArchived, changeArchived: (value) => { includeArchived = value; updateFilters(); }, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, getSources: () => imports.sources(), importSources: (ids) => imports.select(ids), resetPanels: () => {
   document.querySelectorAll<HTMLElement>('.floating-panel').forEach((panel) => { panel.removeAttribute('style'); delete panel.dataset.positioned; });
 } });
 const audio = new InteractionAudio(preferences, settings.audioStatus);
@@ -201,7 +204,7 @@ document.addEventListener('visibilitychange', checkAutoImport, { signal: autoImp
 const autoImportTimer = window.setInterval(checkAutoImport, AUTO_IMPORT_INTERVAL);
 $('#manage-sources').addEventListener('click', () => void imports.open());
 document.addEventListener('sessiongraph-import-status', (event) => {
-  const status = (event as CustomEvent<import('./types').ImportStatus>).detail;
+  const status = (event as CustomEvent<import('@sessiongraph/core/types').ImportStatus>).detail;
   autoImport?.activity();
   settings.importStatus(status);
   if (data) data.importing = status.running;
@@ -245,7 +248,7 @@ function emptyInspector() {
 emptyInspector();
 
 async function initializeScene() { try {
-  const { TimelineScene } = await import('./scene');
+  const { TimelineScene } = await import('@sessiongraph/core/scene');
   scene = new TimelineScene($('#scene'), {
     onSelect: (id) => { if (id) { void audio.play('select'); selectSession(id); } else clearSelection(); },
     onPlaybackInterrupt: stopPlayback,
@@ -724,15 +727,23 @@ $('#play').addEventListener('click', () => {
   playFrame = requestAnimationFrame(animatePlayback);
 });
 document.addEventListener('visibilitychange', () => { lastPlayTime = performance.now(); }, { signal: autoImportEvents.signal });
-$('#share-playback').addEventListener('click', async () => {
+async function exportAnimation() {
   const button = $<HTMLButtonElement>('#share-playback'); button.disabled = true;
   try {
     if (!playbackShare) { const { createPlaybackShare } = await import('./share'); playbackShare = createPlaybackShare(modalVisibility); }
     if (graph.nodes.length) playbackShare.open(graph, preferences);
   } catch { showToast('Could not open GIF sharing. Please try again.'); }
   finally { button.disabled = !filtered.length || !scene; }
-});
-if (import.meta.hot) import.meta.hot.dispose(() => { window.clearTimeout(shareRevealTimer); playbackShare?.dispose(); });
+}
+async function openPublishing() {
+  try {
+    if (!publishingDialog) { const { createPublishing } = await import('./publishing'); publishingDialog = createPublishing(modalVisibility, () => void exportAnimation()); }
+    await publishingDialog.open(filtered.map(session => session.id));
+  } catch { showToast('Could not open publishing. Please try again.'); }
+}
+$('#share-playback').addEventListener('click', openPublishing);
+$('#open-publishing').addEventListener('click', openPublishing);
+if (import.meta.hot) import.meta.hot.dispose(() => { window.clearTimeout(shareRevealTimer); playbackShare?.dispose(); publishingDialog?.dispose(); });
 for (const flat of [false, true]) $(`#view-${flat ? '2d' : '3d'}`).addEventListener('click', () => changePreferences({ view: flat ? '2d' : '3d' }));
 $('#motion').addEventListener('click', () => changePreferences({ motion: motionEnabled(preferences, reducedMotion.matches) ? 'off' : 'on' }));
 $('#help').addEventListener('click', () => { $<HTMLDialogElement>('#help-dialog').showModal(); modalVisibility(); });

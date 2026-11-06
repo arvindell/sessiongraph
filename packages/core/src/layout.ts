@@ -120,19 +120,25 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
   }
   // Give descendants room to branch in Y/Z, while X remains exact chronological
   // time. Directory changes keep their own lane instead of merging two streams.
-  function place(node: GraphNode, visited = new Set<string>()) {
-    const id = node.session.id;
-    if (placed.has(id) || visited.has(id)) return;
-    visited.add(id);
-    const parentID = node.session.forkID || node.session.parentID;
-    const parent = parentID ? byID.get(parentID) : undefined;
-    if (parent && laneKey(parent.session) === laneKey(node.session)) {
-      place(parent, visited);
-      const direction = hash(id + 'branch') > 0.5 ? 1 : -1;
-      node.position[1] = parent.position[1] + direction * (9 + hash(id) * 15);
-      node.position[2] = parent.position[2] + (hash(id + 'depth') - 0.5) * 18;
+  function place(node: GraphNode) {
+    const chain: { node: GraphNode; parent?: GraphNode }[] = [], visited = new Set<string>();
+    let current: GraphNode | undefined = node;
+    while (current && !placed.has(current.session.id) && !visited.has(current.session.id)) {
+      visited.add(current.session.id);
+      const parentID: string | undefined = current.session.forkID || current.session.parentID;
+      const candidate: GraphNode | undefined = parentID ? byID.get(parentID) : undefined;
+      const parent: GraphNode | undefined = candidate && laneKey(candidate.session) === laneKey(current.session) ? candidate : undefined;
+      chain.push({ node: current, parent }); current = parent;
     }
-    placed.add(id);
+    for (const { node, parent } of chain.reverse()) {
+      const id = node.session.id;
+      if (parent) {
+        const direction = hash(id + 'branch') > 0.5 ? 1 : -1;
+        node.position[1] = parent.position[1] + direction * (9 + hash(id) * 15);
+        node.position[2] = parent.position[2] + (hash(id + 'depth') - 0.5) * 18;
+      }
+      placed.add(id);
+    }
   }
   ordered.forEach((session) => place(byID.get(session.id)!));
   nodes.forEach((node) => { node.startPosition = trailPosition(node, node.startPosition[0]); });

@@ -1,10 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { ImportedMessage } from './adapters/types';
-import type { TimelineItem, TimelineSummary } from '../src/timeline';
+import type { TimelineItem, TimelineSummary } from '@sessiongraph/core/timeline';
 import { normalizedEvents } from './events';
 import { randomUUID } from 'node:crypto';
-import type { TimelineFilter, TimelineMarkers, TimelinePage } from '../src/timeline';
-import type { Session } from '../src/types';
+import type { TimelineFilter, TimelineMarkers, TimelinePage } from '@sessiongraph/core/timeline';
+import type { Session } from '@sessiongraph/core/types';
 
 export const EVENT_SCHEMA = `CREATE TABLE IF NOT EXISTS timeline_items (
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, id TEXT NOT NULL, message_id TEXT NOT NULL,

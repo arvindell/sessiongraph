@@ -1,0 +1,32 @@
+{
+  "name": "sessiongraph-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "pnpm generate && vite build",
+    "dev": "vite --host 127.0.0.1 --port 5190",
+    "typecheck": "pnpm generate && tsc --noEmit",
+    "test": "pnpm generate && tsx --test tests/*.test.ts",
+    "db:migrate": "PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=1 prisma migrate deploy"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@sessiongraph/core": "workspace:*",
+    "@aws/aurora-dsql-node-postgres-connector": "^0.1.9",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "@vercel/oidc-aws-credentials-provider": "^3.3.18",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "prisma": "7.10.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0",
+    "vite": "^7.2.0"
+  }
+}

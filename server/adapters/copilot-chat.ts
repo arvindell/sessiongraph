@@ -5,7 +5,7 @@ import { addText, blankMessage } from './common';
 import { eventFor, eventText } from '../events';
 import { historyFiles, localFileAdapter, object, text, time, type Raw } from './local-files';
 import type { ImportedMessage } from './types';
-import type { TimelineEvent } from '../../src/timeline';
+import type { TimelineEvent } from '@sessiongraph/core/timeline';
 import { vscodeChatLog } from './vscode-chat-log';
 
 /** These are VS Code's own chat stores, rather than the extension's globalStorage. */

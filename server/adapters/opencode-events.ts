@@ -1,7 +1,7 @@
 import { eventFor, eventText, messageEvent } from '../events';
 import { messageTime } from '../activity';
 import type { ImportedMessage } from './types';
-import type { TimelineEvent } from '../../src/timeline';
+import type { TimelineEvent } from '@sessiongraph/core/timeline';
 
 /** OpenCode V2 events, obtained only through its authenticated read API. */
 export function opencodeEvents(raw: any, message: ImportedMessage): TimelineEvent[] {

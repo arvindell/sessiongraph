@@ -1,0 +1,21 @@
+.account-main, .profile-main { padding: 54px 0 80px; }
+.account-main { max-width: 800px; margin: auto; }
+.account-main h1, .profile-main h1 { font-size: 38px; letter-spacing: -.04em; }
+.account-main h2 { font-size: 22px; font-weight: 480; margin: 0 0 20px; }
+.account-main h3 { font-size: 16px; font-weight: 480; }
+.account-main section section { padding: 32px 0; border-top: 1px solid var(--line); }
+.account-main p, .profile-main > p { color: var(--muted); font-size: 14px; line-height: 1.8; }
+.account-main #status { min-height: 24px; color: var(--mint); }
+.account-row { display: flex; align-items: center; gap: 15px; margin-block: 15px; flex-wrap: wrap; }
+.account-row > :first-child { margin: 0 auto 0 0; }
+.account-main button { border: 1px solid var(--line); border-radius: 5px; padding: 9px 13px; background: #101c21; font-size: 13px; }
+.account-main button.button { background: var(--mint); color: #101c21; }
+.account-main form { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; margin-block: 26px; }
+.account-main form h3, .account-main form > p { flex-basis: 100%; margin: 0; }
+.account-main label { display: grid; gap: 8px; font-size: 13px; flex: 1; min-width: 170px; }
+.account-main input, .account-main select { border: 1px solid #c9e3db30; border-radius: 5px; padding: 10px; font: inherit; background: #101c21; color: #dbe7e3; min-width: 0; width: 100%; }
+.account-main input:focus-visible, .account-main select:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+.account-actions { display: flex; gap: 14px; align-items: center; }
+.account-main .connect-code { font: 26px var(--mono); color: var(--mint); letter-spacing: .12em; }
+.profile-main > p { margin-block: 20px; }
+.profile-main .profile-note { font-size: 12px; }

@@ -1,5 +1,5 @@
 import { SessionSearchIndex } from './engine';
-import type { Session } from '../types';
+import type { Session } from '@sessiongraph/core/types';
 import type { ContentPage, Fragment, SearchRequest, SearchResponse } from './types';
 import { contentVersion, MAX_CHARACTERS, SESSION_CHARACTERS } from './persistence';
 import { SQLiteSearchCache } from './sqlite-cache';

@@ -1,4 +1,4 @@
-import type { Session } from './types';
+import type { Session } from '@sessiongraph/core/types';
 
 /** An app thread owns its explicitly bound provider conversation in the map. */
 export function visibleSessions(sessions: Session[]): Session[] {
