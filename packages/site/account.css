@@ -16,6 +16,12 @@
 .account-main input, .account-main select { border: 1px solid #c9e3db30; border-radius: 5px; padding: 10px; font: inherit; background: #101c21; color: #dbe7e3; min-width: 0; width: 100%; }
 .account-main input:focus-visible, .account-main select:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
 .account-actions { display: flex; gap: 14px; align-items: center; }
+.account-skeleton { margin-top: 30px; }
+.account-skeleton-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.account-skeleton-section { display: grid; gap: 20px; padding: 32px 0; border-top: 1px solid var(--line); }
+.account-skeleton-section .skeleton-line + .skeleton-line { margin-top: 0; }
+.account-skeleton-button { width: 110px; height: 36px; }
+.account-skeleton-row { width: 100%; height: 46px; }
 .account-main .connect-code { font: 26px var(--mono); color: var(--mint); letter-spacing: .12em; }
 .profile-main > p { margin-block: 20px; }
 .profile-main .profile-note { font-size: 12px; }

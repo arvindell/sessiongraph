@@ -11,4 +11,28 @@
 .graph-loading { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 30px; text-align: center; }
 .graph-loading p { color: var(--muted); }
 .graph-loading a { color: var(--mint); font-size: 13px; }
+.graph-loading[data-state=loading] { position: relative; padding: 0; }
+.graph-loading:not([data-state=loading]) .graph-skeleton { display: none; }
+.graph-skeleton { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(ellipse at 65% 45%, #b0e9d603, transparent 65%), #080e13; }
+.graph-skeleton-toolbar { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; }
+.graph-skeleton-toolbar > span { width: 170px; height: 44px; border-radius: 10px; }
+.graph-skeleton-toolbar > span:last-child { width: 280px; }
+.graph-skeleton-panel, .graph-skeleton-timeline { position: absolute; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #0b141a; }
+.graph-skeleton-panel { top: 76px; left: 16px; width: 265px; bottom: 180px; max-height: 520px; overflow: hidden; }
+.graph-skeleton-panel .skeleton-title { margin-bottom: 22px; }
+.graph-skeleton-search { height: 34px; margin-bottom: 28px; }
+.graph-skeleton-panel .skeleton-short { margin-bottom: 26px; }
+.graph-skeleton-streams { position: absolute; top: 30%; left: max(310px, 32%); right: 8%; display: grid; gap: 52px; opacity: .5; }
+.graph-skeleton-streams > span { height: 3px; width: 85%; }
+.graph-skeleton-streams > span:nth-child(even) { width: 62%; margin-left: 20%; }
+.graph-skeleton-timeline { bottom: 30px; left: 50%; transform: translateX(-50%); width: min(634px, calc(100% - 32px)); }
+.graph-skeleton-track { height: 30px; margin-block: 18px; }
+@media(max-width:760px) {
+  .graph-skeleton-toolbar { top: 10px; left: 10px; right: 10px; }
+  .graph-skeleton-toolbar > span { width: 85px; }
+  .graph-skeleton-toolbar > span:last-child { width: 180px; }
+  .graph-skeleton-panel { top: 64px; left: 10px; width: 220px; bottom: 190px; }
+  .graph-skeleton-streams { left: 65%; right: 10px; }
+  .graph-skeleton-timeline { bottom: 26px; width: calc(100% - 20px); }
+}
 @media(max-width:720px) { .graph-header { padding-inline: 12px; gap: 12px; } .graph-header .brand span, .graph-header-divider, .graph-header nav a:last-child { display: none; } .graph-header nav { font-size: 11px; } .graph-footer { font-size: 9px; } }

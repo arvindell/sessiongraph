@@ -1,10 +1,18 @@
 <!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#080e13"><meta name="robots" content="noindex"><title>Public graph — SessionGraph</title><link rel="icon" href="/assets/favicon.svg"><link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"><link rel="stylesheet" href="/style.css"><script type="module" src="/profile.ts"></script></head>
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#080e13"><meta name="robots" content="noindex"><title>Public graph — SessionGraph</title><link rel="icon" href="/assets/favicon.svg"><link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/profile.css"><script type="module" src="/profile.ts"></script></head>
   <body class="graph-page">
     <a class="skip-link" href="#public-graph">Skip to graph</a>
     <header class="graph-header"><a class="brand" href="/" aria-label="SessionGraph home"><img src="/assets/brand/mark.svg" width="28" height="28" alt=""><span>SessionGraph</span></a><span class="graph-header-divider"></span><h1 id="profile-name">Public graph</h1><nav aria-label="Main navigation"><a href="/explore">Explore graphs</a><a href="/#download">Create yours ↗</a></nav></header>
-    <div class="graph-loading" id="profile-loading"><p id="profile-summary" role="status">Loading public graph…</p><a href="/explore">← Explore graphs</a></div>
+    <div class="graph-loading" id="profile-loading" data-state="loading" aria-busy="true">
+      <div class="graph-skeleton" aria-hidden="true">
+        <div class="graph-skeleton-toolbar"><span class="skeleton"></span><span class="skeleton"></span></div>
+        <div class="graph-skeleton-panel"><span class="skeleton skeleton-line skeleton-title"></span><span class="skeleton graph-skeleton-search"></span><span class="skeleton skeleton-line"></span><span class="skeleton skeleton-line skeleton-short"></span><span class="skeleton skeleton-line"></span><span class="skeleton skeleton-line skeleton-short"></span><span class="skeleton skeleton-line"></span><span class="skeleton skeleton-line skeleton-short"></span></div>
+        <div class="graph-skeleton-streams"><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span></div>
+        <div class="graph-skeleton-timeline"><span class="skeleton skeleton-line skeleton-short"></span><span class="skeleton graph-skeleton-track"></span><span class="skeleton skeleton-line"></span></div>
+      </div>
+      <p id="profile-summary" class="sr-only" role="status">Loading public graph…</p><a id="profile-back" href="/explore" hidden>← Explore graphs</a>
+    </div>
     <main id="public-graph" hidden></main>
     <p id="profile-info" class="graph-footer"></p>
   </body>

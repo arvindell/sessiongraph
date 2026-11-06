@@ -1,0 +1,8 @@
+.skeleton { position: relative; display: block; overflow: hidden; border-radius: 5px; background: #ffffff07; }
+.skeleton::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 15%, #ffffff06 45%, transparent 75%); transform: translateX(-100%); animation: skeleton-sweep 1.8s ease-in-out infinite; }
+.skeleton-line { height: 12px; width: 68%; }
+.skeleton-line + .skeleton-line { margin-top: 12px; }
+.skeleton-title { height: 18px; width: 48%; }
+.skeleton-short { width: 36%; }
+@keyframes skeleton-sweep { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }

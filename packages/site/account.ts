@@ -1,6 +1,7 @@
-import './account.css';
+export {};
+
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
-const status = (message: string) => { $('#status').textContent = message; };
+const status = (message: string) => { $('#status').textContent = message; $('#status').classList.toggle('sr-only', !message); };
 const device = new URLSearchParams(location.search).get('device');
 const challenge = device && /^[a-f0-9]{64}$/.test(device) ? device : null;
 let currentUser = '';
@@ -17,6 +18,7 @@ function text(tag: string, value: string) { const e = document.createElement(tag
 async function account() {
   try {
     const user = await api('account'); currentUser = user.username;
+    $('#account-loading').hidden = true;
     $('#login').hidden = true; $('#account').hidden = false; $('#username').textContent = `@${user.username}`;
     const link = $<HTMLAnchorElement>('#profile-link'); link.href = `/@${user.username}`; link.hidden = !user.publication;
     $('#unpublish').hidden = !user.publication;
@@ -28,7 +30,7 @@ async function account() {
     $('#login').hidden = false; $('#account').hidden = true;
     $<HTMLAnchorElement>('#github-login').href = `/api/auth/github${challenge ? `?device=${challenge}` : ''}`;
     status(new URLSearchParams(location.search).has('error') ? 'Login was cancelled or expired. Please try again.' : '');
-  }
+  } finally { $('#account-loading').hidden = true; }
 }
 async function organizations() {
   const data = await api('organizations');

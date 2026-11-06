@@ -5,6 +5,14 @@
 .graph-card { min-width: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #0b141a; transition: border-color .2s, transform .2s; }
 .graph-card:hover { border-color: #b0e9d655; transform: translateY(-3px); }
 .graph-card-preview { aspect-ratio: 16 / 9; display: grid; place-items: center; background: #0a141b; border-bottom: 1px solid var(--line); overflow: hidden; color: var(--muted); font-size: 12px; }
+.graph-card-preview { position: relative; }
+.graph-thumbnail-skeleton { position: absolute; inset: 0; border-radius: 0; }
+.graph-card-preview.is-loading img { opacity: 0; }
+.graph-card-skeleton .graph-card-preview { border-radius: 0; background: #ffffff04; }
+.graph-card-skeleton .graph-card-body { min-height: 136px; }
+.graph-card-skeleton .skeleton-title { margin-bottom: 18px; }
+.graph-card-skeleton:hover { transform: none; border-color: var(--line); }
+#graph-gallery:not([hidden]) + #gallery-loading { margin-top: 22px; }
 .graph-card-preview img { width: 100%; height: 100%; object-fit: contain; }
 .graph-card-body { padding: 20px; }
 .graph-card h2 { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 18px; font-size: 17px; font-weight: 500; overflow-wrap: anywhere; }
