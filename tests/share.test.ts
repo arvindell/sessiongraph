@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { makeGraph } from '@sessiongraph/core/layout';
 import { projectAliases, shareGraph } from '../src/share-graph';
 import { playbackTokens } from '../src/playback-tokens';
-import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, PLAYBACK_FRAMES, SHARE_FRAMES, gifFrameDelay, overviewTurn, playbackSessions, shareFrameProgress, shareFrameOutro } from '@sessiongraph/core/playback';
-import { createGifEncoder } from '../src/gif-encoder';
+import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, PLAYBACK_FRAMES, SHARE_FRAMES, SHARE_FPS, overviewTurn, playbackSessions, shareFrameProgress, shareFrameOutro } from '@sessiongraph/core/playback';
+import { SHARE_FORMATS } from '../src/share-files';
+import { switchShareMode } from '../src/share-modes';
 import type { Session } from '@sessiongraph/core/types';
 
 const session = (id: string, source: string, directory: string, extra: Partial<Session> = {}): Session => ({
@@ -55,29 +56,12 @@ test('session counter follows creation and rewind, including unknown usage and a
   assert.equal(playbackSessions([])(5000), 0);
 });
 
-test('GIF encodes the timeline, full overview orbit, and ending hold with bounded centisecond rounding', () => {
-  const encoder = createGifEncoder();
-  const rgba = new Uint8Array(2 * 2 * 4).fill(255);
-  for (let frame = 0; frame < SHARE_FRAMES; frame++) { rgba[0] = frame % 256; encoder.add(rgba, 2, 2); }
-  const bytes = Buffer.from(encoder.finish());
-  assert.equal(bytes.subarray(0, 6).toString(), 'GIF89a');
-  let offset = 13 + (bytes[10] & 128 ? 3 * 2 ** ((bytes[10] & 7) + 1) : 0), frames = 0, duration = 0;
-  const subblocks = () => { while (bytes[offset]) { offset += bytes[offset] + 1; } offset++; };
-  while (bytes[offset] !== 0x3b) {
-    const type = bytes[offset++];
-    if (type === 0x21) {
-      const extension = bytes[offset++];
-      if (extension === 0xf9) { duration += bytes.readUInt16LE(offset + 2) * 10; }
-      subblocks();
-    } else {
-      assert.equal(type, 0x2c); frames++;
-      assert.equal(bytes.readUInt16LE(offset + 4), 2); assert.equal(bytes.readUInt16LE(offset + 6), 2);
-      const packed = bytes[offset + 8]; offset += 9;
-      if (packed & 128) offset += 3 * 2 ** ((packed & 7) + 1);
-      offset++; subblocks();
-    }
-  }
-  assert.equal(frames, 630); assert.equal(duration, 21_000); assert.equal(duration, PLAYBACK_DURATION + PLAYBACK_ORBIT_DURATION + PLAYBACK_END_HOLD);
+test('video is MP4-only and covers the full timeline, overview orbit, and ending hold', () => {
+  assert.deepEqual(Object.keys(SHARE_FORMATS), ['mp4']);
+  assert.equal(SHARE_FORMATS.mp4.mime, 'video/mp4');
+  assert.equal(SHARE_FORMATS.mp4.filename, 'sessiongraph-playback.mp4');
+  const duration = SHARE_FRAMES / SHARE_FPS * 1000;
+  assert.equal(SHARE_FRAMES, 630); assert.equal(duration, 21_000); assert.equal(duration, PLAYBACK_DURATION + PLAYBACK_ORBIT_DURATION + PLAYBACK_END_HOLD);
   assert.equal(shareFrameProgress(0), 0);
   assert.ok(shareFrameProgress(PLAYBACK_FRAMES - 2) < 1);
   assert.equal(shareFrameProgress(PLAYBACK_FRAMES - 1), 1);
@@ -86,8 +70,6 @@ test('GIF encodes the timeline, full overview orbit, and ending hold with bounde
   assert.equal(shareFrameOutro(450), 1 / 150);
   assert.equal(shareFrameOutro(599), 1);
   assert.equal(shareFrameOutro(629), 1);
-  let elapsed = 0;
-  for (let frame = 0; frame < SHARE_FRAMES; frame++) { elapsed += gifFrameDelay(frame); assert.ok(Math.abs(elapsed - (frame + 1) * 1000 / 30) < 5); }
 });
 
 test('overview makes a full turn with a prolonged smooth slowdown and no end drift', () => {
@@ -99,4 +81,22 @@ test('overview makes a full turn with a prolonged smooth slowdown and no end dri
   assert.ok(steps[0] < steps[20]);
   for (let index = 100; index < steps.length - 1; index++) assert.ok(steps[index] > steps[index + 1], 'Slows smoothly over the final third');
   assert.ok(steps.at(-1)! < steps[50] / 1000, 'Settles at a near-zero velocity instead of snapping to a stop');
+});
+
+test('switching share modes finishes queued dialog cleanup before opening the next view', async () => {
+  const events: string[] = [];
+  class TestDialog extends EventTarget {
+    open = true;
+    close() { this.open = false; queueMicrotask(() => this.dispatchEvent(new Event('close'))); }
+  }
+  const dialog = new TestDialog();
+  dialog.addEventListener('close', () => events.push('cleanup'));
+  const select = (mode: string) => events.push(mode);
+  switchShareMode(dialog as unknown as HTMLDialogElement, 'video', select);
+  switchShareMode(dialog as unknown as HTMLDialogElement, 'video', select);
+  assert.deepEqual(events, []);
+  await Promise.resolve();
+  assert.deepEqual(events, ['cleanup', 'video']);
+  dialog.dispatchEvent(new Event('close'));
+  assert.deepEqual(events, ['cleanup', 'video', 'cleanup']);
 });

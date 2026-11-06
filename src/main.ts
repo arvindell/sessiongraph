@@ -107,7 +107,7 @@ $('#app').innerHTML = `
     <button class="icon-button" id="help" aria-label="Help" title="Help">${icon('circle-help')}</button>
     <button class="icon-button" id="mute-audio" aria-label="Mute sound" title="Mute sound" aria-pressed="false" data-sound="none">${icon('volume-2')}</button>
     <button class="icon-button" id="open-settings" aria-label="Settings" title="Settings" aria-haspopup="dialog">${icon('settings-2')}</button>
-    <button class="icon-button" id="open-publishing" aria-label="Publish and account" title="Publish and account" aria-haspopup="dialog">${icon('share-2')}</button>
+    <button class="icon-button" id="open-publishing" aria-label="Share SessionGraph" title="Share SessionGraph" aria-haspopup="dialog">${icon('share-2')}</button>
   </nav>
   <aside class="sidebar floating-panel glass" id="explorer" aria-label="Sessions">
       <div class="panel-heading"><button class="panel-handle" data-drag-panel="explorer" aria-label="Move sessions panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span>Sessions</span><span class="small-badge" id="list-count">—</span></button><button class="icon-button" id="refresh" aria-label="Refresh sessions" title="Refresh sessions">${icon('refresh-cw')}</button><button class="icon-button" id="close-explorer" aria-label="Close sessions">${icon('x')}</button></div>
@@ -730,9 +730,9 @@ document.addEventListener('visibilitychange', () => { lastPlayTime = performance
 async function exportAnimation() {
   const button = $<HTMLButtonElement>('#share-playback'); button.disabled = true;
   try {
-    if (!playbackShare) { const { createPlaybackShare } = await import('./share'); playbackShare = createPlaybackShare(modalVisibility); }
+    if (!playbackShare) { const { createPlaybackShare } = await import('./share'); playbackShare = createPlaybackShare(modalVisibility, () => void openPublishing()); }
     if (graph.nodes.length) playbackShare.open(graph, preferences);
-  } catch { showToast('Could not open GIF sharing. Please try again.'); }
+  } catch { showToast('Could not open video sharing. Please try again.'); }
   finally { button.disabled = !filtered.length || !scene; }
 }
 async function openPublishing() {

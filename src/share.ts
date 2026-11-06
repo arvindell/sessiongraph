@@ -4,7 +4,10 @@ import { BRAND_TEXT, drawBrandMark } from '@sessiongraph/core/brand';
 import { shareGraph } from './share-graph';
 import { SHARE_FPS, SHARE_FRAMES, playbackDate, playbackSessions, shareFrameProgress, shareFrameOutro, timelineBuckets } from '@sessiongraph/core/playback';
 import { playbackTokens } from './playback-tokens';
-import { SHARE_FORMATS, SHARE_CAPTION, SHARE_X_URL, saveAnimation, shareCancelled, type ShareFormat } from './share-files';
+import { SHARE_FORMATS, SHARE_CAPTION, SHARE_X_URL, saveAnimation, shareCancelled } from './share-files';
+import { shareHeader } from './share-modes';
+import { isTauri } from '@tauri-apps/api/core';
+import { openDesktopUrl } from './external-links';
 import { sessionEnd } from '@sessiongraph/core/layout';
 import type { Graph } from '@sessiongraph/core/types';
 import type { Preferences } from '@sessiongraph/core/preferences';
@@ -39,9 +42,9 @@ function overlay(context: CanvasRenderingContext2D, graph: Graph, progress: numb
   context.textAlign = 'left';
 }
 
-async function exportAnimation(safe: Graph, preferences: Preferences, format: ShareFormat, signal: AbortSignal, progress: (value: number) => void) {
+async function exportAnimation(safe: Graph, preferences: Preferences, signal: AbortSignal, progress: (value: number) => void) {
   signal.throwIfAborted();
-  const { label, mime } = SHARE_FORMATS[format], usage = playbackTokens(safe.nodes.map(node => node.session));
+  const { label, mime } = SHARE_FORMATS.mp4, usage = playbackTokens(safe.nodes.map(node => node.session));
   const sessions = playbackSessions(safe.nodes.map(node => node.session));
   const buckets = timelineBuckets(safe.nodes.map(node => sessionEnd(node.session)), safe.start, safe.end);
   const host = document.createElement('div'); host.className = 'share-render-host'; host.setAttribute('aria-hidden', 'true');
@@ -57,9 +60,7 @@ async function exportAnimation(safe: Graph, preferences: Preferences, format: Sh
     scene.setGraph(safe, true); scene.prepareCapture();
     await document.fonts.ready;
     signal.throwIfAborted();
-    worker = format === 'mp4'
-      ? new Worker(new URL('./mp4-worker.ts', import.meta.url), { type: 'module' })
-      : new Worker(new URL('./gif-worker.ts', import.meta.url), { type: 'module' });
+    worker = new Worker(new URL('./mp4-worker.ts', import.meta.url), { type: 'module' });
     const request = (message: object, transfers: Transferable[] = []) => new Promise<{ bytes?: ArrayBuffer }>((resolve, reject) => {
       signal.throwIfAborted();
       const cleanup = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); worker!.onmessage = null; worker!.onerror = null; };
@@ -70,7 +71,7 @@ async function exportAnimation(safe: Graph, preferences: Preferences, format: Sh
       worker!.onerror = () => { cleanup(); reject(new Error(`Could not start the ${label} encoder.`)); };
       worker!.postMessage(message, transfers);
     });
-    if (format === 'mp4') await request({ init: true, width: WIDTH, height: HEIGHT });
+    await request({ init: true, width: WIDTH, height: HEIGHT });
     // One frame in flight: no full-movie RGBA buffer and no dependence on rendering speed.
     for (let frame = 0; frame < SHARE_FRAMES; frame++) {
       signal.throwIfAborted();
@@ -85,62 +86,63 @@ async function exportAnimation(safe: Graph, preferences: Preferences, format: Sh
   } finally { worker?.terminate(); scene?.dispose(); host.remove(); }
 }
 
-export function createPlaybackShare(visibility: () => void) {
+export function createPlaybackShare(visibility: () => void, publish: () => void) {
   const dialog = document.createElement('dialog'); dialog.className = 'share-dialog'; dialog.setAttribute('aria-labelledby', 'share-title');
-  dialog.innerHTML = `<h2 id="share-title">SessionGraph</h2><p>Project and sessions names are hidden</p>
-    <div class="share-formats" role="group" aria-label="Animation format"><button data-format="gif" aria-pressed="true">GIF</button><button data-format="mp4" aria-pressed="false">MP4 video</button></div>
-    <div class="share-preview"><img alt="SessionGraph playback with hidden project and session names" hidden/><video aria-label="SessionGraph playback with hidden project and session names" muted loop playsinline controls hidden></video><div class="share-progress"><progress max="100" value="0" aria-label="Creating GIF"></progress><span role="status">Creating GIF… 0%</span></div></div>
+  dialog.innerHTML = `<p>Create a private MP4 video. Project and session names are hidden, and nothing is uploaded.</p>
+    <div class="share-preview"><video aria-label="SessionGraph playback with hidden project and session names" muted loop playsinline controls hidden></video><div class="share-progress"><progress max="100" value="0" aria-label="Creating video"></progress><span role="status">Creating video… 0%</span></div></div>
     <p class="share-notice" role="status" hidden></p>
-    <div class="share-actions"><button class="text-button share-close">Cancel</button><button class="secondary-button share-retry" hidden>Try again</button><a class="secondary-button share-x" target="_blank" rel="noopener noreferrer" hidden>Share in X</a><button class="secondary-button share-system" aria-label="Open share tray" aria-controls="playback-share-tray" aria-expanded="false" hidden>Share…</button><button class="primary-button share-save" hidden>Save GIF</button></div>
-    <section id="playback-share-tray" class="share-tray" aria-label="Share options" hidden><p>Save the animation to attach it in any app.</p><textarea class="share-caption" aria-label="Share caption" readonly rows="3"></textarea><div><button class="secondary-button share-copy">Copy caption</button><a class="secondary-button share-x" target="_blank" rel="noopener noreferrer">Share in X</a><button class="secondary-button share-tray-save">Save GIF</button></div></section>`;
+    <div class="share-actions"><button class="text-button share-close">Cancel</button><button class="secondary-button share-retry" hidden>Try again</button><a class="secondary-button share-x" target="_blank" rel="noopener noreferrer" hidden>Share in X</a><button class="secondary-button share-system" aria-label="Open share tray" aria-controls="playback-share-tray" aria-expanded="false" hidden>Share…</button><button class="primary-button share-save" hidden>Save MP4</button></div>
+    <section id="playback-share-tray" class="share-tray" aria-label="Share options" hidden><p>Save the video to attach it in any app.</p><textarea class="share-caption" aria-label="Share caption" readonly rows="3"></textarea><div><button class="secondary-button share-copy">Copy caption</button><a class="secondary-button share-x" target="_blank" rel="noopener noreferrer">Share in X</a><button class="secondary-button share-tray-save">Save MP4</button></div></section>`;
+  dialog.prepend(shareHeader(dialog, 'video', () => publish()));
   document.body.append(dialog);
-  const image = dialog.querySelector('img')!, video = dialog.querySelector('video')!, meter = dialog.querySelector('progress')!, status = dialog.querySelector<HTMLElement>('[role="status"]')!;
+  const video = dialog.querySelector('video')!, meter = dialog.querySelector('progress')!, status = dialog.querySelector<HTMLElement>('[role="status"]')!;
   const pending = dialog.querySelector<HTMLElement>('.share-progress')!, close = dialog.querySelector<HTMLButtonElement>('.share-close')!;
   const save = dialog.querySelector<HTMLButtonElement>('.share-save')!, retry = dialog.querySelector<HTMLButtonElement>('.share-retry')!;
   const share = dialog.querySelector<HTMLButtonElement>('.share-system')!, xButton = dialog.querySelector<HTMLAnchorElement>('.share-actions .share-x')!;
   const tray = dialog.querySelector<HTMLElement>('.share-tray')!, notice = dialog.querySelector<HTMLElement>('.share-notice')!;
   const traySave = dialog.querySelector<HTMLButtonElement>('.share-tray-save')!, copy = dialog.querySelector<HTMLButtonElement>('.share-copy')!;
   const caption = dialog.querySelector<HTMLTextAreaElement>('.share-caption')!; caption.value = SHARE_CAPTION;
-  const formats = dialog.querySelectorAll<HTMLButtonElement>('[data-format]');
   const shareIcon = createElement(Share2); shareIcon.setAttribute('aria-hidden', 'true'); shareIcon.setAttribute('stroke-width', '1.5'); share.prepend(shareIcon);
   let controller: AbortController | undefined, blob: Blob | undefined, file: File | undefined, url: string | undefined, graph: Graph | undefined, preferences: Preferences | undefined;
-  let format: ShareFormat = 'gif', generation = Promise.resolve();
-  const outputs = new Map<ShareFormat, Blob>();
+  let generation = Promise.resolve();
   const showNotice = (text: string) => { notice.textContent = text; notice.hidden = !text; };
   const toggleTray = (open: boolean) => { tray.hidden = !open; share.setAttribute('aria-expanded', String(open)); if (open) copy.focus(); };
   const cleanup = () => {
     controller?.abort(); controller = undefined;
-    image.removeAttribute('src'); video.pause(); video.removeAttribute('src'); video.load();
+    video.pause(); video.removeAttribute('src'); video.load();
     if (url) URL.revokeObjectURL(url);
     url = undefined; blob = undefined; file = undefined; toggleTray(false); showNotice(''); dialog.setAttribute('aria-busy', 'false');
   };
   for (const link of dialog.querySelectorAll<HTMLAnchorElement>('.share-x')) {
     link.href = SHARE_X_URL; link.title = 'Open an X draft, then attach your saved animation';
-    link.onclick = () => showNotice(`Attach your saved ${SHARE_FORMATS[format].label} in X to include the animation.`);
+    link.onclick = event => {
+      showNotice('Attach your saved MP4 in X to include the video.');
+      if (isTauri()) {
+        event.preventDefault();
+        void openDesktopUrl(link.href).catch(() => showNotice('Could not open your browser. Copy the caption and attach your saved video manually.'));
+      }
+    };
   }
   close.onclick = () => dialog.close();
   dialog.addEventListener('cancel', event => { if (!tray.hidden) { event.preventDefault(); toggleTray(false); share.focus(); } });
-  dialog.addEventListener('close', () => { cleanup(); outputs.clear(); graph = undefined; preferences = undefined; visibility(); });
+  dialog.addEventListener('close', () => { if (dialog.open) return; cleanup(); graph = undefined; preferences = undefined; visibility(); });
   function generate() {
     cleanup(); const job = new AbortController(); controller = job;
-    const selected = format, { label, mime, filename } = SHARE_FORMATS[selected];
-    for (const button of formats) button.setAttribute('aria-pressed', String(button.dataset.format === selected));
+    const { label, mime, filename } = SHARE_FORMATS.mp4;
     save.textContent = traySave.textContent = `Save ${label}`;
-    image.hidden = true; video.hidden = true; pending.hidden = false; save.hidden = true; share.hidden = true; xButton.hidden = true; retry.hidden = true; close.textContent = 'Cancel';
+    video.hidden = true; pending.hidden = false; save.hidden = true; share.hidden = true; xButton.hidden = true; retry.hidden = true; close.textContent = 'Cancel';
     meter.hidden = false; meter.value = 0; meter.setAttribute('aria-label', `Creating ${label}`); status.textContent = `Creating ${label}… 0%`; dialog.setAttribute('aria-busy', 'true');
-    // Finish cancellation before allocating another renderer/encoder when formats switch.
+    // Finish cancellation before allocating another renderer/encoder on retry or reopen.
     generation = generation.then(async () => {
       if (job.signal.aborted) return;
       try {
-        const output = outputs.get(selected) ?? await exportAnimation(graph!, preferences!, selected, job.signal, value => {
+        const output = await exportAnimation(graph!, preferences!, job.signal, value => {
           if (job.signal.aborted) return;
           const percent = Math.round(value * 100); meter.value = percent; status.textContent = `Creating ${label}… ${percent}%`;
         });
         if (job.signal.aborted) return;
-        outputs.set(selected, output);
         blob = output; file = new File([output], filename, { type: mime }); url = URL.createObjectURL(output);
-        if (selected === 'mp4') { video.src = url; video.hidden = false; void video.play().catch(() => {}); }
-        else { image.src = url; image.hidden = false; }
+        video.src = url; video.hidden = false; void video.play().catch(() => {});
         pending.hidden = true; save.hidden = false; share.hidden = false; xButton.hidden = false; close.textContent = 'Done';
       } catch (error) {
         if (job.signal.aborted) return;
@@ -149,13 +151,12 @@ export function createPlaybackShare(visibility: () => void) {
     });
   }
   retry.onclick = generate;
-  for (const button of formats) button.onclick = () => { const next = button.dataset.format as ShareFormat; if (next !== format) { format = next; generate(); } };
   const saveOutput = async () => {
     if (!blob || !url || save.disabled) return;
-    const output = blob, selected = format, { label } = SHARE_FORMATS[selected];
+    const output = blob, { label } = SHARE_FORMATS.mp4;
     save.disabled = true; traySave.disabled = true; showNotice(`Choose where to save your ${label}…`);
     try {
-      const result = await saveAnimation(output, url, selected);
+      const result = await saveAnimation(output, url, 'mp4');
       if (blob === output) showNotice(result === 'saved' ? `${label} saved.` : result === 'downloaded' ? `${label} download started. Check your downloads.` : `Save cancelled. Your ${label} is still ready.`);
     } catch { if (blob === output) showNotice(`Could not save the ${label}. Try choosing another location.`); }
     finally { save.disabled = false; traySave.disabled = false; }
@@ -178,10 +179,9 @@ export function createPlaybackShare(visibility: () => void) {
   return {
     open(value: Graph, values: Preferences) {
       if (dialog.open) return;
-      // Only this allowlisted graph enters either encoder or its label layer.
-      // Both formats keep the same aliases for the lifetime of this dialog.
+      // Only this allowlisted graph enters the video encoder or its label layer.
       graph = shareGraph(value); preferences = { ...values }; dialog.showModal(); visibility(); generate();
     },
-    dispose() { cleanup(); outputs.clear(); graph = undefined; preferences = undefined; dialog.remove(); },
+    dispose() { cleanup(); graph = undefined; preferences = undefined; dialog.close(); dialog.remove(); },
   };
 }

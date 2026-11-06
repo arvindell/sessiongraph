@@ -1140,8 +1140,8 @@ export class TimelineScene {
   prepareCapture() {
     this.setPlaying(false);
     this.time = 0; this.graphBorn = 0;
-    // Wide HDR bloom and overlapping halos wash out dense libraries and become
-    // concentric bands in GIF's 256-color palette. Keep export glow small and local.
+    // Wide HDR bloom and overlapping halos wash out dense libraries.
+    // Keep video-export glow small and local.
     this.bloom.strength = Math.min(this.bloom.strength, .08);
     this.bloom.radius = 0; this.bloom.threshold = 1.2;
     this.trailUniforms.uTrailOpacity.value = Math.min(this.trailUniforms.uTrailOpacity.value, .5);

@@ -69,11 +69,12 @@ export class PublishingClient {
   }
   private async call(path: string, method = 'GET', value?: unknown, credential?: Credential | null) {
     const response = await this.fetcher(`${SITE}/api/${path}`, { method, redirect: 'error', signal: AbortSignal.timeout(25_000), headers: { 'Content-Type': 'application/json', 'x-sessiongraph-action': '1', ...(credential ? { Authorization: `Bearer ${credential.token}` } : {}) }, ...(value === undefined ? {} : { body: JSON.stringify(value) }) });
-    const data = await response.json().catch(() => ({}));
+    const data = await response.json().catch(() => null);
     if (!response.ok) {
       if (response.status === 401) await rm(this.credentialPath, { force: true });
-      throw new PublishingError(typeof data.error === 'string' ? data.error : 'The publishing service is unavailable.', response.status);
+      throw new PublishingError(typeof data?.error === 'string' ? data.error : 'The publishing service is unavailable.', response.status);
     }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new PublishingError('The publishing service returned an unexpected response. Please try again.', 502);
     return data;
   }
   async status() {
@@ -85,7 +86,7 @@ export class PublishingClient {
     if (this.busy) throw new PublishingError('Wait for the current account operation to finish.', 409);
     const verifier = token(), challenge = hash(verifier);
     this.pending = { verifier, expires: Date.now() + 600_000, nextPoll: 0 };
-    return { url: `${SITE}/account?device=${challenge}`, code: challenge.slice(0, 8).toUpperCase() };
+    return { url: `${SITE}/api/auth/github?device=${challenge}`, code: challenge.slice(0, 8).toUpperCase() };
   }
   async poll() {
     const pending = this.pending;
@@ -94,8 +95,8 @@ export class PublishingClient {
     pending.nextPoll = Date.now() + 3000;
     return this.exclusive(async () => {
       const result = await this.call('auth/device', 'POST', { verifier: pending.verifier });
-      if (this.pending !== pending || result.pending) return { pending: true };
-      if (typeof result.token !== 'string' || !/^[\w-]{43}$/.test(result.token) || typeof result.username !== 'string' || !Number.isFinite(Date.parse(result.expiresAt))) throw new PublishingError('Invalid login response.');
+      if (this.pending !== pending || result.pending === true) return { pending: true };
+      if (typeof result.token !== 'string' || !/^[\w-]{43}$/.test(result.token) || typeof result.username !== 'string' || !Number.isFinite(Date.parse(result.expiresAt)) || Date.parse(result.expiresAt) <= Date.now()) throw new PublishingError('The publishing service returned an invalid login response. Please try again.', 502);
       await this.save(result); this.pending = undefined;
       return { username: result.username };
     });

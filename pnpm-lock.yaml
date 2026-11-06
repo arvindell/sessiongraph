@@ -35,6 +35,9 @@ importers:
       '@tauri-apps/plugin-fs':
         specifier: ^2.7.1
         version: 2.7.1
+      '@tauri-apps/plugin-opener':
+        specifier: ^2.7.2
+        version: 2.7.2
       '@tauri-apps/plugin-process':
         specifier: ^2.4.0
         version: 2.4.0
@@ -59,9 +62,6 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
-      gifenc:
-        specifier: 1.0.3
-        version: 1.0.3
       lucide:
         specifier: ^0.468.0
         version: 0.468.0
@@ -913,6 +913,9 @@ packages:
   '@tauri-apps/plugin-fs@2.7.1':
     resolution: {integrity: sha512-4TBVjpi/q8PuNzjpkAc2iBGXMTLjOrAyfTiiOL8ORaJCZJRG3tjzmQ4sqs2CMG75FvLyRkOkERfP7AyY4iBNwQ==}
 
+  '@tauri-apps/plugin-opener@2.7.2':
+    resolution: {integrity: sha512-LyybP1VSzTMQiaFYcsbAse47KpivlyXdLZMQzGLEnkgQacGESnpjAfFoQ6h5sqWgAdZDH9szYjPzHMpv0Sz+TQ==}
+
   '@tauri-apps/plugin-process@2.4.0':
     resolution: {integrity: sha512-GddrmsSLAYrLa/yTXlXK/YRDzUgYeeOnUXTbiyvJWkmI424RmDPD3FVLeqcon7rv6O6ZfhBilcrHWnSo7o6hIQ==}
 
@@ -1421,9 +1424,6 @@ packages:
   get-stream@6.0.1:
     resolution: {integrity: sha512-ts6Wi+2j3jQjqi70w5AlN8DFnkSwC+MqmxEzdEALB2qXZYV3X/b1CTfgPLGJNMeAWxdPfU8FO1ms3NUfaHCPYg==}
     engines: {node: '>=10'}
-
-  gifenc@1.0.3:
-    resolution: {integrity: sha512-xdr6AdrfGBcfzncONUOlXMBuc5wJDtOueE3c5rdG0oNgtINLD+f2iFZltrBRZYzACRbKr+mSVU/x98zv2u3jmw==}
 
   giget@3.3.1:
     resolution: {integrity: sha512-r+mvuDjrjMpsdw46Kmeydb8bdHm7wOKw8wNBtTndkjbPjgAp5oUJUxRE76wZFknxIPokfWvep2qSXK37aXE6zg==}
@@ -2710,6 +2710,10 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.12.4
 
+  '@tauri-apps/plugin-opener@2.7.2':
+    dependencies:
+      '@tauri-apps/api': 2.12.4
+
   '@tauri-apps/plugin-process@2.4.0':
     dependencies:
       '@tauri-apps/api': 2.12.4
@@ -3338,8 +3342,6 @@ snapshots:
       es-object-atoms: 1.1.2
 
   get-stream@6.0.1: {}
-
-  gifenc@1.0.3: {}
 
   giget@3.3.1: {}
 

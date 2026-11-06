@@ -18,7 +18,7 @@ export function brandSvg({ tile = false, rounded = true, color = BRAND_MINT } = 
 
 let route: Path2D | undefined;
 
-/** Vector-only: no image fetch or decode races in GIF/MP4 capture. */
+/** Vector-only: no image fetch or decode races in video capture. */
 export function drawBrandMark(context: CanvasRenderingContext2D, x: number, y: number, size: number, color = BRAND_MINT) {
   route ??= new Path2D(BRAND_PATH);
   context.save();

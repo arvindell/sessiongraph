@@ -162,6 +162,7 @@ test('desktop login keeps credentials out of responses; publication requires an 
   try {
     await client.status(); assert.equal(calls.length, 0);
     const login = client.login(); assert.equal(calls.length, 0);
+    assert.equal(new URL(login.url).pathname, '/api/auth/github');
     const result = await client.poll(); assert.deepEqual(result, { username: 'alice' });
     const challenge = new URL(login.url).searchParams.get('device');
     assert.equal(challenge, createHash('sha256').update(calls[0].body.verifier).digest('hex'));
@@ -180,4 +181,28 @@ test('desktop login keeps credentials out of responses; publication requires an 
     await client.unpublish(); await client.logout();
     await assert.rejects(readFile(join(directory, 'account.json')));
   } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('desktop login distinguishes pending approval from malformed or expired service responses and can retry', async t => {
+  let now = Date.now(); t.mock.method(Date, 'now', () => now);
+  const directory = await mkdtemp(join(tmpdir(), 'sessiongraph-login-retry-'));
+  const path = join(directory, 'account.json');
+  const responses = [
+    new Response('<html>Not the API</html>'),
+    Response.json({ pending: true }, { status: 202 }),
+    Response.json({ token: randomBytes(32).toString('base64url'), username: 'alice', expiresAt: new Date(now - 1).toISOString() }),
+    Response.json({ token: randomBytes(32).toString('base64url'), username: 'alice', expiresAt: new Date(now + 86400_000).toISOString() }),
+  ];
+  const client = new PublishingClient(path, async () => responses.shift()!);
+  try {
+    client.login();
+    await assert.rejects(client.poll(), { status: 502 });
+    await assert.rejects(readFile(path)); now += 3000;
+    assert.deepEqual(await client.poll(), { pending: true });
+    await assert.rejects(readFile(path)); now += 3000;
+    await assert.rejects(client.poll(), { status: 502 });
+    await assert.rejects(readFile(path)); now += 3000;
+    assert.deepEqual(await client.poll(), { username: 'alice' });
+    assert.equal(responses.length, 0);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

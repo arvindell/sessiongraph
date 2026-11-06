@@ -3,7 +3,7 @@ import { SHARE_FPS, SHARE_FRAMES } from '@sessiongraph/core/playback';
 
 let output: Output<Mp4OutputFormat, BufferTarget> | undefined, source: VideoSampleSource | undefined;
 let frame = 0;
-const unsupported = 'MP4 encoding is unavailable here. Choose GIF or try an up-to-date browser.';
+const unsupported = 'Video encoding is unavailable here. Update SessionGraph or try an up-to-date browser.';
 
 self.onmessage = async (event: MessageEvent<{ init?: boolean; rgba?: ArrayBuffer; width: number; height: number; finish?: boolean }>) => {
   try {
@@ -34,7 +34,7 @@ self.onmessage = async (event: MessageEvent<{ init?: boolean; rgba?: ArrayBuffer
       self.postMessage({ ready: true });
     }
   } catch (error) {
-    self.postMessage({ error: error instanceof Error && error.message === unsupported ? unsupported : 'MP4 encoding failed. Try again or choose GIF.' });
+    self.postMessage({ error: error instanceof Error && error.message === unsupported ? unsupported : 'MP4 encoding failed. Please try again.' });
     await output?.cancel().catch(() => {});
   }
 };

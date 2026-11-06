@@ -20,9 +20,6 @@ const monthDate = new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric
 const dayDate = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' });
 export const playbackDate = (time: number, span: number) => (span >= 90 * 86_400_000 ? monthDate : dayDate).format(time);
 
-// GIF delays are centiseconds. Distribute rounding instead of drifting to 16.7 fps or 13.5 seconds.
-export const gifFrameDelay = (frame: number) => (Math.round((frame + 1) * 100 / SHARE_FPS) - Math.round(frame * 100 / SHARE_FPS)) * 10;
-
 export function timelineBuckets(endpoints: number[], start: number, end: number, count = 70) {
   const buckets = new Array<number>(count).fill(0), span = Math.max(1, end - start);
   for (const time of endpoints) buckets[Math.max(0, Math.min(count - 1, Math.floor((time - start) / span * count)))]++;

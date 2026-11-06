@@ -148,15 +148,17 @@ select option { background: #14211e; color: #e1e8ea; }
 #app.playback-mode .playback-summary > span { display: flex; flex-direction: column; gap: 4px; }
 #app.playback-mode .playback-summary strong { font-size: clamp(36px, 6vw, 48px); line-height: 1; margin: 0; letter-spacing: -1.8px; }
 #app.playback-mode .timeline-cursor { box-shadow: none; }
-.share-dialog { width: min(900px, calc(100% - 32px)); max-width: none; }
+.share-dialog { width: min(1000px, calc(100% - 32px)); max-width: none; }
 .share-dialog h2 { margin-bottom: 8px; }
 .share-dialog > p { margin: 0 0 20px; }
-.share-formats { display: flex; gap: 4px; width: fit-content; margin-bottom: 18px; padding: 4px; border: 1px solid var(--control-border); border-radius: 10px; background: #070f1380; }
-.share-formats button { min-width: 100px; min-height: 38px; padding: 9px 18px; border-radius: 7px; color: #8ea99b; font-size: 12px; }
-.share-formats button:hover { color: #e1f2eb; background: var(--control-hover); }
-.share-formats button[aria-pressed='true'] { background: #b0e9d6; color: #182e29; font-weight: 550; }
+.sharing-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+.sharing-header h2 { margin: 0; }
+.sharing-modes { display: flex; gap: 4px; width: fit-content; margin-bottom: 22px; padding: 4px; border: 1px solid var(--control-border); border-radius: 10px; background: #070f1380; }
+.sharing-modes button { min-width: 100px; min-height: 38px; padding: 9px 18px; border-radius: 7px; color: #8ea99b; font-size: 12px; }
+.sharing-modes button:hover { color: #e1f2eb; background: var(--control-hover); }
+.sharing-modes button[aria-pressed='true'] { background: #b0e9d6; color: #182e29; font-weight: 550; }
 .share-preview { aspect-ratio: 8 / 5; display: grid; place-items: center; background: #030609; border-radius: 9px; overflow: hidden; }
-.share-preview img, .share-preview video { display: block; width: 100%; height: auto; }
+.share-preview video { display: block; width: 100%; height: auto; }
 .share-progress { display: grid; gap: 18px; justify-items: center; color: #a0bfaf; font-size: 12px; }
 .share-progress progress { width: min(260px, 50vw); height: 4px; accent-color: var(--mint); }
 .share-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 20px; }

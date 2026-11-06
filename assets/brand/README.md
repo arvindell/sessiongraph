@@ -16,7 +16,7 @@ native assets are checked in; builds need no additional tools or font loading.
 Use `mark.svg` next to live text, `lockup.svg` on dark backgrounds,
 `lockup-light.svg` on light backgrounds, and `icon.svg` for a square app tile.
 `mark-mono.svg` is for single-color/inline uses. Keep the mark's clear space;
-do not add glow or stretch it. GIF/MP4 exports draw the same geometry directly
+do not add glow or stretch it. MP4 exports draw the same geometry directly
 on their canvas so the watermark never depends on an asynchronous image load.
 
 Only when changing typography, run `python3 scripts/outline-brand-wordmark.py`
