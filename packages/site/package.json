@@ -4,14 +4,14 @@
   "type": "module",
   "scripts": {
     "generate": "prisma generate",
-    "build": "pnpm generate && vite build",
+    "build": "pnpm generate && vite build && node ../../scripts/build-site-api.mjs",
     "dev": "vite --host 127.0.0.1 --port 5190",
     "typecheck": "pnpm generate && tsc --noEmit",
     "test": "pnpm generate && tsx --test tests/*.test.ts",
     "db:migrate": "PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=1 prisma migrate deploy"
   },
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   },
   "dependencies": {
     "@sessiongraph/core": "workspace:*",
