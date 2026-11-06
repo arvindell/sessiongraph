@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "generate": "prisma generate",
-    "build": "pnpm generate && vite build",
+    "build": "pnpm generate && vite build && node ../../scripts/build-site-api.mjs",
     "dev": "vite --host 127.0.0.1 --port 5190",
     "dev:setup": "pnpm generate && tsx dev/setup.ts",
     "typecheck": "pnpm generate && tsc --noEmit",
@@ -12,7 +12,7 @@
     "db:migrate": "PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=1 prisma migrate deploy"
   },
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   },
   "dependencies": {
     "@sessiongraph/core": "workspace:*",
