@@ -3,31 +3,40 @@ import type { ImportStatus, SourceStatus } from '@sessiongraph/core/types';
 import type { ImportedMessage, SessionAdapter } from './adapters/types';
 import { SessionGraphStore } from './store';
 import { boundEventPayloads } from './events';
+import { withSourcePaths } from './source-paths';
 
 export class Importer {
   status: ImportStatus = { running: false, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [] };
   private job?: Promise<void>;
-  constructor(readonly store: SessionGraphStore, readonly adapters: SessionAdapter[]) {}
+  readonly adapters: SessionAdapter[];
+  constructor(readonly store: SessionGraphStore, adapters: SessionAdapter[]) {
+    this.adapters = adapters.map(adapter => withSourcePaths(adapter, () => this.store.setting<Record<string, string>>('sourcePaths') || {}));
+  }
   async sources(): Promise<SourceStatus[]> {
     return Promise.all(this.adapters.map(async (adapter) => ({ id: adapter.id, name: adapter.name, description: adapter.description, capabilities: adapter.capabilities, available: await adapter.detect().catch(() => false), selected: this.store.selected().includes(adapter.id), ...this.store.sourceInfo(adapter.id) })));
   }
   start(ids?: string[], automatic = false) {
+    return this.begin(ids, automatic, true);
+  }
+  /** A one-off subset refresh never replaces the saved source selection. */
+  sync(ids?: string[]) { return this.begin(ids, false, false); }
+  private begin(ids: string[] | undefined, automatic: boolean, save: boolean) {
     if (this.job) return this.status;
     // Recheck the saved choice for every automatic request, including other windows.
     if (automatic && (!this.store.autoImportEnabled() || !this.store.selected().length)) return this.status;
     if (ids?.some((id) => !this.adapters.some((a) => a.id === id))) throw new Error('Unknown session source.');
     if (!this.store.acquireImport()) throw new Error('Another SessionGraph window is importing this library.');
-    if (ids) {
+    if (ids && save) {
       this.store.setting('selected', [...new Set(ids)]);
     }
     this.status = { running: true, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [] };
     const heartbeat = setInterval(() => this.store.heartbeat(), 5000);
-    this.job = this.run().catch(() => { this.status.failed++; this.status.errors.push('Import interrupted. Re-import to resume remaining sessions.'); }).finally(() => { clearInterval(heartbeat); this.store.releaseImport(); this.status.running = false; this.status.source = undefined; this.job = undefined; });
+    this.job = this.run(ids || this.store.selected()).catch(() => { this.status.failed++; this.status.errors.push('Import interrupted. Re-import to resume remaining sessions.'); }).finally(() => { clearInterval(heartbeat); this.store.releaseImport(); this.status.running = false; this.status.source = undefined; this.job = undefined; });
     return this.status;
   }
   async settled() { await this.job; }
-  private async run() {
-    for (const adapter of this.adapters.filter((a) => this.store.selected().includes(a.id))) {
+  private async run(ids: string[]) {
+    for (const adapter of this.adapters.filter((a) => ids.includes(a.id))) {
       this.status.source = adapter.id;
       try {
         if (!await adapter.detect()) throw new Error(`${adapter.name} is unavailable. Saved imports remain available.`);

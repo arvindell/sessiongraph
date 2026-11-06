@@ -1,6 +1,7 @@
 import { SessionSearchIndex } from './engine';
 import type { Session } from '@sessiongraph/core/types';
-import type { ContentPage, Fragment, SearchRequest, SearchResponse } from './types';
+import type { ContentPage, SearchRequest, SearchResponse } from './types';
+import { sampleContent } from './sampling';
 import { contentVersion, MAX_CHARACTERS, SESSION_CHARACTERS } from './persistence';
 import { SQLiteSearchCache } from './sqlite-cache';
 
@@ -62,24 +63,12 @@ function pump() {
         // Reserve a fair share for older sessions instead of spending the entire
         // memory budget on a few recent, tool-heavy conversations.
         const quota = Math.min(SESSION_CHARACTERS, Math.floor(MAX_CHARACTERS / Math.max(1, states.size)));
-        let remaining = Math.min(quota - state.characters, MAX_CHARACTERS - characters);
-        const fragments: Fragment[] = [];
-        const ordered = [...page.fragments].sort((a, b) => Number(b.kind === 'File' || b.kind === 'You') - Number(a.kind === 'File' || a.kind === 'You'));
-        const perFragment = Math.max(160, Math.min(2_000, Math.floor(remaining / Math.max(1, ordered.length))));
-        let sampled = false;
-        for (const fragment of ordered) {
-          if (remaining <= 0) { sampled = true; break; }
-          const text = fragment.text.slice(0, Math.min(remaining, perFragment));
-          sampled ||= text.length < fragment.text.length;
-          fragments.push({ ...fragment, text });
-          remaining -= text.length;
-          state.characters += text.length;
-          characters += text.length;
-        }
-        index.addContent(state.session.id, fragments);
+        const sampled = sampleContent(page, Math.min(quota - state.characters, MAX_CHARACTERS - characters));
+        state.characters += sampled.characters; characters += sampled.characters;
+        index.addContent(state.session.id, sampled.fragments);
         state.pages++;
         // Coverage is cumulative: a small final page cannot repair earlier gaps.
-        state.partial ||= page.truncated || sampled;
+        state.partial ||= sampled.partial;
         state.complete = !page.nextCursor && !state.partial;
         state.capped = !state.complete && (!page.nextCursor || state.characters >= quota || state.pages >= 8);
         state.cursor = page.nextCursor || undefined;

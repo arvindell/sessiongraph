@@ -9,8 +9,9 @@ import { claudeRevision as revision, claudeSessionID, claudeTranscript, claudeTr
 import { localFileAdapter } from './local-files';
 import { envelopeHistory } from './harness-formats';
 import { combineAdapters } from './sqlite-histories';
+import { sourcePath } from '../source-paths';
 
-const root = () => join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
+const root = () => join(sourcePath('claude-code') || process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
 
 export function claudeMessages(rows: SessionMessage[], candidate: Candidate, times?: Map<string, number>): ImportedMessage[] {
   // Match tool results explicitly; a requested edit alone is not file evidence.
@@ -49,7 +50,9 @@ const sdkClaudeAdapter: SessionAdapter = {
   async discover() {
     const sessions: Candidate[] = [], warnings: string[] = [];
     // The SDK deduplicates native session IDs across projects and worktrees.
-    const infos = await listSessions({ limit: 20_000, includeProgrammatic: true });
+    // A library-specific archive must not inherit metadata from the SDK's default
+    // home when the same native session also exists there. Read its own headers.
+    const infos = sourcePath('claude-code') ? [] : await listSessions({ limit: 20_000, includeProgrammatic: true });
     if (infos.length === 20_000) warnings.push('Claude Code listing is limited to 20,000 sessions.');
     const files = new Map<string, { path: string; children: string }>();
     let unreadable = 0;
@@ -121,7 +124,7 @@ const sdkClaudeAdapter: SessionAdapter = {
 const exportedClaudeAdapter = localFileAdapter({
   id: 'claude-code', name: 'Claude Code', description: 'Legacy local transcript exports',
   capabilities: { history: true, forks: false, children: false, files: false },
-  roots: () => [join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'transcripts')],
+  roots: () => [join(sourcePath('claude-code') || process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'transcripts')],
   match: p => p.endsWith('.jsonl'),
   parse: (path, files) => envelopeHistory(path, files.get(path)!),
 });

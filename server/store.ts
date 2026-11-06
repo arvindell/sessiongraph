@@ -12,6 +12,7 @@ import { EVENT_SCHEMA, writeEvents, readEvents, readEventMarkers } from './event
 import { normalizePreferences, type Preferences } from '@sessiongraph/core/preferences';
 import { normalizeViewState } from '@sessiongraph/core/view-state';
 import { visibleSessions } from '../src/session-links';
+import { fingerprint, pageLimit, pageOffset, nextCursor, type PageOptions } from './library-query';
 
 /** SessionGraph owns this database. No adapter opens or modifies a harness database. */
 export class SessionGraphStore {
@@ -198,6 +199,27 @@ export class SessionGraphStore {
     });
     truncated ||= this.getSession(id)?.coverage?.history !== 'complete';
     return { id, fragments, messages: page.messages.length, nextCursor: page.next, truncated };
+  }
+  messages(id: string, options: PageOptions = {}) {
+    return this.readSnapshot(id, session => {
+      const key = fingerprint(['messages', id, session.revision, session.coverage]);
+      const offset = pageOffset(options.cursor, key), limit = pageLimit(options.limit);
+      const rows = this.messagePage(id, offset, limit);
+      let remaining = 64_000, truncated = false;
+      const messages = rows.messages.map(message => {
+        const fragments = message.fragments.slice(0, 200).map(fragment => {
+          const text = fragment.text.slice(0, remaining); remaining -= text.length;
+          truncated ||= text.length < fragment.text.length;
+          return { ...fragment, text, truncated: text.length < fragment.text.length };
+        });
+        truncated ||= !!message.partial;
+        return { id: message.id, time: messageTime(message.time), role: message.role, fragments,
+          files: message.files.slice(0, 200), tools: message.tools.slice(0, 200), partial: !!message.partial || message.fragments.length > 200 || message.files.length > 200 || message.tools.length > 200 || fragments.some(f => f.truncated) };
+      });
+      return { sessionID: id, revision: session.revision, messages, order: 'newest-first',
+        nextCursor: rows.next ? nextCursor(key, Number(rows.next)) : null,
+        partial: truncated || messages.some(m => m.partial) || session.coverage?.history !== 'complete', coverage: session.coverage };
+    });
   }
   detail(id: string, cursor?: string): SessionDetail {
     return this.readSnapshot(id, (session) => {

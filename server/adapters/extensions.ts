@@ -4,6 +4,7 @@ import { eventFor, eventText } from '../events';
 import { json, localFileAdapter, object, text, time } from './local-files';
 import { conversationMessage, successfulEdits } from './local-messages';
 import { sumRecordedTokens } from '../../src/playback-tokens';
+import { sourcePath } from '../source-paths';
 
 function editorTaskRoots(extension: string) {
   const home = homedir();
@@ -13,7 +14,8 @@ function editorTaskRoots(extension: string) {
 }
 
 function taskAdapter(id: string, name: string, extension: string, env: string) {
-  const roots = () => process.env[env] ? [join(process.env[env]!, 'tasks'), ...(id === 'cline' ? [join(process.env[env]!, 'data', 'sessions')] : [])]
+  const home = () => sourcePath(id) || process.env[env];
+  const roots = () => home() ? [join(home()!, 'tasks'), ...(id === 'cline' ? [join(home()!, 'data', 'sessions')] : [])]
     : [...editorTaskRoots(extension), ...(id === 'cline' ? [process.env.CLINE_SESSION_DATA_DIR || join(process.env.CLINE_DATA_DIR || join(process.env.CLINE_DIR || join(homedir(), '.cline'), 'data'), 'sessions')] : [])];
   return localFileAdapter({
     id, name, description: id === 'kilo-code' ? 'VS Code extension task histories · choose Kilo CLI separately' : id === 'cline' ? 'Local extension tasks and CLI/SDK message snapshots' : 'Local VS Code extension task histories',
@@ -56,7 +58,7 @@ export const kiloAdapter = taskAdapter('kilo-code', 'Kilo Code', 'kilocode.kilo-
 export const continueAdapter = localFileAdapter({
   id: 'continue', name: 'Continue', description: 'Local IDE and CLI session JSON · recorded conversation and tool history',
   capabilities: { history: true, forks: false, children: false, files: false },
-  roots: () => [join(process.env.SESSIONGRAPH_CONTINUE_HOME || process.env.CONTINUE_GLOBAL_DIR || join(homedir(), '.continue'), 'sessions')],
+  roots: () => [join(sourcePath('continue') || process.env.SESSIONGRAPH_CONTINUE_HOME || process.env.CONTINUE_GLOBAL_DIR || join(homedir(), '.continue'), 'sessions')],
   match: path => /^[^/]+\.json$/.test(path) && path !== 'sessions.json',
   extras: path => [join(dirname(path), 'sessions.json')],
   revisionExtras: false,

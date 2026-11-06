@@ -9,6 +9,7 @@ import { normalizePreferences } from '@sessiongraph/core/preferences';
 import { normalizeViewState } from '@sessiongraph/core/view-state';
 import { PublishingClient, PublishingError } from './publishing';
 import { publishingSettings } from '@sessiongraph/core/public-graph';
+import { withSourcePaths } from './source-paths';
 
 const publishing = new PublishingClient();
 
@@ -18,7 +19,7 @@ export function library() {
   if (runtime.sessionGraphRuntime?.importer.status.running && runtime.sessionGraphRuntime.generation !== generation) {
     // HMR can fix an adapter while a long import is in progress. Keep the job
     // and connection, but replace the methods it calls for subsequent pages.
-    for (const live of runtime.sessionGraphRuntime.importer.adapters) { const updated = adapters.find((adapter) => adapter.id === live.id); if (updated) Object.assign(live, updated); }
+    for (const live of runtime.sessionGraphRuntime.importer.adapters) { const updated = adapters.find((adapter) => adapter.id === live.id); if (updated) Object.assign(live, withSourcePaths(updated, () => runtime.sessionGraphRuntime!.store.setting<Record<string, string>>('sourcePaths') || {})); }
   }
   if (runtime.sessionGraphRuntime && runtime.sessionGraphRuntime.generation !== generation && !runtime.sessionGraphRuntime.importer.status.running) { runtime.sessionGraphRuntime.store.close(); runtime.sessionGraphRuntime = undefined; }
   if (!runtime.sessionGraphRuntime) { const store = new SessionGraphStore(); runtime.sessionGraphRuntime = { store, importer: new Importer(store, adapters), generation }; }

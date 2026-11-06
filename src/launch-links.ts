@@ -35,6 +35,7 @@ export function cliCommand(value: string | Session): string {
 }
 
 export function resumeArgs(value: string | Session): string[] {
+  if (typeof value !== 'string' && value.nativeResume === false) throw new Error('This saved history requires a context handoff.');
   const source = typeof value === 'string' ? 'opencode' : value.source || 'opencode';
   const id = typeof value === 'string' ? value : value.nativeID || value.id;
   if (source !== 'opencode') {

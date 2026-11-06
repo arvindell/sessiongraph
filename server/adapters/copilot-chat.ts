@@ -7,12 +7,14 @@ import { historyFiles, localFileAdapter, object, text, time, type Raw } from './
 import type { ImportedMessage } from './types';
 import type { TimelineEvent } from '@sessiongraph/core/timeline';
 import { vscodeChatLog } from './vscode-chat-log';
+import { sourcePath } from '../source-paths';
 
 /** These are VS Code's own chat stores, rather than the extension's globalStorage. */
 export function copilotChatRoots(platform: NodeJS.Platform = process.platform, home = homedir(), env: NodeJS.ProcessEnv = process.env): string[] {
   const path = platform === 'win32' ? win32 : posix;
   const base = platform === 'darwin' ? path.join(home, 'Library', 'Application Support') : platform === 'win32' ? env.APPDATA || path.join(home, 'AppData', 'Roaming') : env.XDG_CONFIG_HOME || path.join(home, '.config');
-  const users = env.SESSIONGRAPH_COPILOT_CHAT_USER_DATA_DIR ? [path.join(env.SESSIONGRAPH_COPILOT_CHAT_USER_DATA_DIR, 'User')]
+  const override = sourcePath('copilot-chat') || env.SESSIONGRAPH_COPILOT_CHAT_USER_DATA_DIR;
+  const users = override ? [path.join(override, 'User')]
     : [...['Code', 'Code - Insiders'].map(app => path.join(base, app, 'User')), ...['.vscode-server', '.vscode-server-insiders'].map(app => path.join(home, app, 'data', 'User'))];
   return users.flatMap(user => [path.join(user, 'workspaceStorage'), path.join(user, 'globalStorage', 'emptyWindowChatSessions')]);
 }

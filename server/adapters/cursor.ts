@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Dirent } from 'node:fs';
 import { lstat, opendir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { sourcePath } from '../source-paths';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { blankSession, digest, identity, project } from './common';
@@ -68,7 +69,7 @@ async function workspacePaths(root: string, warnings: string[]) {
 }
 
 export function createCursorAdapter(options: { home?: string; userData?: string } = {}): SessionAdapter {
-  const root = () => options.home || process.env.SESSIONGRAPH_CURSOR_HOME || process.env.SESSION_ATLAS_CURSOR_HOME || join(homedir(), '.cursor');
+  const root = () => options.home || sourcePath('cursor') || process.env.SESSIONGRAPH_CURSOR_HOME || process.env.SESSION_ATLAS_CURSOR_HOME || join(homedir(), '.cursor');
   const editor = () => options.userData || process.env.SESSIONGRAPH_CURSOR_USER_DATA_DIR || process.env.SESSION_ATLAS_CURSOR_USER_DATA_DIR || userData();
   return {
     id: 'cursor', name: 'Cursor', description: 'Local IDE transcripts, legacy Composer, subagents, and CLI / ACP stores · read-only',

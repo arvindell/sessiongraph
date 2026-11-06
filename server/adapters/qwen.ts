@@ -1,4 +1,5 @@
 import { homedir } from 'node:os';
+import { sourcePath } from '../source-paths';
 import { join } from 'node:path';
 import { blankMessage } from './common';
 import { eventFor, eventText } from '../events';
@@ -8,7 +9,7 @@ import { googleMessage, successfulEdits } from './local-messages';
 export const qwenAdapter = localFileAdapter({
   id: 'qwen-code', name: 'Qwen Code', description: 'Local project chat records · tool results, forks, and child sessions',
   capabilities: { history: true, forks: true, children: true, files: true },
-  roots: () => [join(process.env.SESSIONGRAPH_QWEN_HOME || process.env.QWEN_RUNTIME_DIR || process.env.QWEN_HOME || join(homedir(), '.qwen'), 'projects')],
+  roots: () => [join(sourcePath('qwen-code') || process.env.SESSIONGRAPH_QWEN_HOME || process.env.QWEN_RUNTIME_DIR || process.env.QWEN_HOME || join(homedir(), '.qwen'), 'projects')],
   match: path => /^[^/]+\/chats\/[^/]+\.jsonl$/.test(path),
   parse(path, files) {
     const { rows, partial } = jsonLines(files.get(path)!);
@@ -30,7 +31,7 @@ export const qwenAdapter = localFileAdapter({
     const latest = [...rows].reverse(), parent = rows.find(r => r.subtype === 'parent_session')?.systemPayload?.parentSessionId;
     const title = latest.find(r => r.subtype === 'custom_title')?.systemPayload?.customTitle;
     return { nativeID: first.sessionId, messages, partial, parent: text(parent) || undefined, fork: text(rows.find(r => r.forkedFrom?.sessionId)?.forkedFrom?.sessionId) || undefined,
-      session: { directory: text(first.cwd), created: time(first.timestamp), title: text(title), model: text(latest.find(r => r.model)?.model) || text(latest.find(r => r.subtype === 'session_model')?.systemPayload?.modelId) || 'Unknown model', nativeResume: Boolean(first.cwd) && !process.env.SESSIONGRAPH_QWEN_HOME },
+      session: { directory: text(first.cwd), created: time(first.timestamp), title: text(title), model: text(latest.find(r => r.model)?.model) || text(latest.find(r => r.subtype === 'session_model')?.systemPayload?.modelId) || 'Unknown model', nativeResume: Boolean(first.cwd) && !sourcePath('qwen-code') && !process.env.SESSIONGRAPH_QWEN_HOME },
       note: 'Local Qwen chat records, including compaction and branch events in source order. Parent and fork links use recorded session IDs. Managed-daemon-only and binary history may be unavailable.' };
   },
 });

@@ -7,12 +7,13 @@ import { existingDatabases, optionalJSON, rows, sqliteHistoryAdapter, sqliteJSON
 import { hasTable } from './sqlite-snapshot';
 import { appPath, dataPath, envHome, harnessRoots, homePath } from './harness-paths';
 import { openclawRoots } from './harness-files';
+import { sourcePath } from '../source-paths';
 
 const parsedContent = (v: unknown) => typeof v === 'string' && /^[\[{]/.test(v.trim()) ? optionalJSON(v) : v;
 const millisOrSeconds = (v: unknown) => typeof v === 'number' && v > 0 && v < 10_000_000_000 ? seconds(v) : time(v);
 function dbPaths(id: string, defaults: () => string[], match: (path: string) => boolean) {
   return async () => {
-    const override = process.env[`SESSIONGRAPH_${id.replace(/-/g, '_').toUpperCase()}_HISTORY_DIR`];
+    const override = sourcePath(id) || process.env[`SESSIONGRAPH_${id.replace(/-/g, '_').toUpperCase()}_HISTORY_DIR`];
     return override ? (await historyFiles([override], match)).files : existingDatabases(defaults());
   };
 }
@@ -126,7 +127,7 @@ const crushDirectories = new Map<string, string>();
 const crush: DatabaseHarness = {
   id: 'crush', name: 'Crush', table: 'sessions', key: 'id', fields: ['id', 'title', 'created_at', 'updated_at', 'cost'],
   paths: async () => {
-    const override = process.env.SESSIONGRAPH_CRUSH_HISTORY_DIR;
+    const override = sourcePath('crush') || process.env.SESSIONGRAPH_CRUSH_HISTORY_DIR;
     if (override) return (await historyFiles([override], p => p.endsWith('crush.db'))).files;
     const registry = join(process.env.CRUSH_GLOBAL_DATA || dataPath('crush'), 'projects.json');
     try {

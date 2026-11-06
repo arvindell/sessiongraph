@@ -1,5 +1,6 @@
 import { lstat } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { sourcePath } from '../source-paths';
 import { isAbsolute, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { addText, blankMessage, blankSession, digest, identity, project } from './common';
@@ -31,7 +32,7 @@ function status(value: unknown): TimelineEvent['status'] {
 }
 
 async function databasePath(): Promise<string | undefined> {
-  const root = process.env.SESSIONGRAPH_T3_CODE_HISTORY_DIR || process.env.T3CODE_HOME || join(homedir(), '.t3');
+  const root = sourcePath('t3-code') || process.env.SESSIONGRAPH_T3_CODE_HISTORY_DIR || process.env.T3CODE_HOME || join(homedir(), '.t3');
   const paths = /\.sqlite$/.test(root) ? [root] : [
     join(root, 'userdata', 'statev2.sqlite'), join(root, 'statev2.sqlite'),
     join(root, 'userdata', 'state.sqlite'), join(root, 'state.sqlite'),

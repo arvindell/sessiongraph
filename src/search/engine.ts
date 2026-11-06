@@ -88,8 +88,8 @@ export class SessionSearchIndex {
     entry.doc = doc;
     this.cache.clear();
   }
-  search(input: string, viewOnly = false, limit = 80): { hits: SearchHit[]; total: number; error?: string } {
-    const key = `${input}\0${viewOnly}\0${limit}`;
+  search(input: string, viewOnly = false, limit = 80, offset = 0): { hits: SearchHit[]; total: number; error?: string } {
+    const key = `${input}\0${viewOnly}\0${limit}\0${offset}`;
     const cached = this.cache.get(key);
     if (cached) return cached;
     const plan = parseQuery(input);
@@ -129,7 +129,7 @@ export class SessionSearchIndex {
       const tier = !plan.text ? 0 : title.includes(plan.text) && (!plan.fields || plan.fields.includes('title')) ? 5 : fields.has('title') ? 4 : fields.has('sessionID') ? 4 : fields.has('files') ? 3 : fields.has('body') ? 2 : 1;
       return { match, entry, tier };
     }).sort((a, b) => b.tier - a.tier || b.match.score - a.match.score || b.entry.session.updated - a.entry.session.updated || a.entry.session.id.localeCompare(b.entry.session.id));
-    const hits = ranked.slice(0, Math.min(250, Math.max(1, limit))).map(({ match, entry, tier }) => {
+    const hits = ranked.slice(offset, offset + Math.min(250, Math.max(1, limit))).map(({ match, entry, tier }) => {
       const terms = match.terms.length ? match.terms : plan.terms;
       const candidates = entry.fragments.filter((f) => !plan.fields || plan.fields.includes(f.kind === 'File' ? 'files' : f.kind === 'Tool' ? 'tools' : 'body'));
       let best: Fragment | undefined, bestCount = 0;

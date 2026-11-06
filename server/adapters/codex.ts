@@ -5,8 +5,9 @@ import { addText, blankMessage, blankSession, digest, identity, project, toolTex
 import { readJSONL, transcriptFiles } from './jsonl';
 import type { Candidate, SessionAdapter } from './types';
 import { blockEvents, eventFor, eventText } from '../events';
+import { sourcePath } from '../source-paths';
 
-const root = () => process.env.CODEX_HOME || join(homedir(), '.codex');
+const root = () => sourcePath('codex') || process.env.CODEX_HOME || join(homedir(), '.codex');
 const revision = async (path: string) => { const s = await stat(path); return digest([8, s.mtimeMs, s.size]); };
 function changedPaths(value: unknown): string[] {
   if (!value || typeof value !== 'object') return [];
