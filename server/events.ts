@@ -65,6 +65,17 @@ export function blockEvents(message: ImportedMessage, content: unknown, transfor
   });
 }
 
+/** Normalize before truncation, retaining context-only blocks as source events. */
+export function userBlockEvents(message: ImportedMessage, content: unknown, normalize: (value: string) => string): TimelineEvent[] {
+  const context: boolean[] = [];
+  return blockEvents(message, content, value => {
+    const text = normalize(value);
+    context.push(Boolean(value && !text));
+    return text || value;
+  }).map(event => event.kind === 'message' && context.shift()
+    ? { ...event, kind: 'event', role: 'system', name: 'Session context', nativeType: 'user-context' } : event);
+}
+
 export function normalizedEvents(message: ImportedMessage, sessionID: string): Omit<TimelineItem, 'ordinal'>[] {
   let events = message.events;
   if (!events) {

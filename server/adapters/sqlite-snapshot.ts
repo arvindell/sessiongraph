@@ -7,6 +7,7 @@ import { digest } from './common';
 // Opening a live WAL database read-only can still create or update its SHM.
 // Query a private copy instead. Keep only two copies, never a connection to the source.
 const copies = new Map<string, { revision: string; directory: string; db: DatabaseSync }>();
+export class SqliteSnapshotChangedError extends Error {}
 const close = (path: string) => {
   const copy = copies.get(path); if (!copy) return;
   copies.delete(path);
@@ -30,7 +31,7 @@ export function withSqliteSnapshot<T>(path: string, read: (db: DatabaseSync) => 
   const retained = copies.get(path);
   if (pinned && expected && retained?.revision === expected) return read(retained.db);
   const revision = sqliteRevision(path);
-  if (expected && revision !== expected) throw new Error('History database changed during import; import again.');
+  if (expected && revision !== expected) throw new SqliteSnapshotChangedError('History database changed during import; import again.');
   let copy = copies.get(path);
   if (copy?.revision !== revision) {
     close(path);
@@ -46,7 +47,7 @@ export function withSqliteSnapshot<T>(path: string, read: (db: DatabaseSync) => 
           chmodSync(destination + suffix, 0o600);
         } catch (error) { if (suffix && (error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
       }
-      if (sqliteRevision(path) !== revision) throw new Error('History database changed while copying; import again.');
+      if (sqliteRevision(path) !== revision) throw new SqliteSnapshotChangedError('History database changed while copying; import again.');
       db = new DatabaseSync(destination, { readOnly: true, enableDoubleQuotedStringLiterals: false, allowExtension: false });
       db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; PRAGMA busy_timeout=1000; BEGIN;');
       copy = { revision, directory, db }; copies.set(path, copy);
@@ -56,7 +57,7 @@ export function withSqliteSnapshot<T>(path: string, read: (db: DatabaseSync) => 
     }
   }
   const result = read(copy.db);
-  if (!pinned && sqliteRevision(path) !== revision) throw new Error('History database changed during reading; import again.');
+  if (!pinned && sqliteRevision(path) !== revision) throw new SqliteSnapshotChangedError('History database changed during reading; import again.');
   return result;
 }
 

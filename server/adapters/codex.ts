@@ -4,11 +4,11 @@ import { join, sep } from 'node:path';
 import { addText, blankMessage, blankSession, digest, identity, project, toolText } from './common';
 import { readJSONL, transcriptFiles } from './jsonl';
 import type { Candidate, SessionAdapter } from './types';
-import { blockEvents, eventFor, eventText } from '../events';
+import { blockEvents, eventFor, eventText, userBlockEvents } from '../events';
 import { sourcePath } from '../source-paths';
 
 const root = () => sourcePath('codex') || process.env.CODEX_HOME || join(homedir(), '.codex');
-const revision = async (path: string) => { const s = await stat(path); return digest([8, s.mtimeMs, s.size]); };
+const revision = async (path: string) => { const s = await stat(path); return digest([9, s.mtimeMs, s.size]); };
 function changedPaths(value: unknown): string[] {
   if (!value || typeof value !== 'object') return [];
   const changes = Array.isArray(value) ? value : Object.entries(value).map(([path, change]) => ({ ...(change && typeof change === 'object' ? change : {}), path }));
@@ -18,11 +18,16 @@ function changedPaths(value: unknown): string[] {
 export function codexUserText(value: unknown): string {
   if (typeof value !== 'string') return '';
   let text = value.trim();
-  if (/^# (?:AGENTS\.md|Instructions for)/i.test(text)) return '';
   // Desktop app context arrives in user-role messages too. These wrappers are
   // protocol scaffolding, not the user's prompt or a useful session title.
-  text = text.replace(/<(environment_context|permissions|user_instructions|turn_aborted|external_codex_[\w-]+)>[\s\S]*?<\/\1>/g, '').trim();
-  if (/^<(?:environment_context|permissions|user_instructions|turn_aborted|external_codex_[\w-]+)(?:>|\s)/.test(text)) return '';
+  for (;;) {
+    const context = text.match(/^<(environment_context|permissions|user_instructions|turn_aborted|system_instruction|recommended_plugins|external_codex_[\w-]+)(?:\s[^>]*)?>/i);
+    if (!context) break;
+    const end = text.toLowerCase().indexOf(`</${context[1].toLowerCase()}>`, context[0].length);
+    if (end < 0) return ''; // An incomplete context block is not a human prompt.
+    text = text.slice(end + context[1].length + 3).trim();
+  }
+  if (/^# (?:AGENTS\.md|Instructions for)/i.test(text)) return '';
   return text;
 }
 
@@ -74,11 +79,10 @@ export function codexRecord(raw: any, offset: number, candidate: Candidate) {
   // Reused call_id across request/response isn't a unique message ID.
   const msg = blankMessage(`item:${raw.ordinal ?? offset}`, Date.parse(raw.timestamp) || 0, role);
   const fields = { nativeID: p.id, nativeType: p.type, callID: p.call_id };
-  msg.events = p.type === 'message' ? blockEvents(msg, p.content)
+  msg.events = p.type === 'message' ? role === 'user' ? userBlockEvents(msg, p.content, codexUserText) : blockEvents(msg, p.content)
     : ['function_call', 'custom_tool_call'].includes(p.type) ? [eventFor(msg, 'call', 'tool_call', p.name || 'Tool call', '', { ...fields, role: 'assistant', input: eventText(p.arguments ?? p.input), status: 'unknown' })]
     : ['function_call_output', 'custom_tool_call_output'].includes(p.type) ? [eventFor(msg, 'result', 'tool_result', 'Tool result', '', { ...fields, output: eventText(p.output, 64_000), status: 'unknown' })]
     : [eventFor(msg, 'event', p.type === 'reasoning' ? 'reasoning' : 'event', p.type === 'reasoning' ? 'Recorded reasoning summary' : p.type || 'Unknown event', eventText(p.type === 'reasoning' ? p.summary : p), { ...fields, partial: p.type === 'reasoning' })];
-  if (role === 'user') msg.events = msg.events.map((event) => event.kind === 'message' && event.text && !codexUserText(event.text) ? { ...event, kind: 'event', role: 'system', name: 'Session context', nativeType: 'user-context' } : event);
   if (p.type === 'message') {
     for (const part of Array.isArray(p.content) ? p.content : []) if (['input_text', 'output_text', 'text'].includes(part.type)) addText(msg, role === 'user' ? codexUserText(part.text) : part.text, role === 'user' ? 'You' : 'Assistant');
   } else if (['function_call', 'custom_tool_call'].includes(p.type)) {

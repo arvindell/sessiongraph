@@ -1,13 +1,18 @@
 import type { Session } from '@sessiongraph/core/types';
 
-/** An app thread owns its explicitly bound provider conversation in the map. */
+/** One map entry per unambiguous app/provider binding; saved histories stay separate. */
 export function visibleSessions(sessions: Session[]): Session[] {
-  const owners = new Map<string, string[]>();
+  const owners = new Map<string, Session[]>();
   for (const session of sessions) {
-    if (session.source !== 't3-code' || session.coverage?.history !== 'complete' || !session.activity?.userMessages) continue;
-    for (const id of session.linkedSessionIDs || []) owners.set(id, [...(owners.get(id) || []), session.id]);
+    if (session.source !== 't3-code') continue;
+    // Count every claimant, including empty/pending ones, before deciding ownership.
+    for (const id of new Set(session.linkedSessionIDs || [])) owners.set(id, [...(owners.get(id) || []), session]);
   }
-  const unique = new Map([...owners].flatMap(([native, ids]) => ids.length === 1 ? [[native, ids[0]] as const] : []));
+  const unique = new Map([...owners].flatMap(([native, claims]) => {
+    const owner = claims[0];
+    return claims.length === 1 && ['complete', 'partial'].includes(owner.coverage?.history || '') && owner.activity?.userMessages
+      ? [[native, owner.id] as const] : [];
+  }));
   return sessions.filter((session) => !unique.has(session.id)).map((session) => ({
     ...session,
     parentID: session.parentID ? unique.get(session.parentID) || session.parentID : undefined,

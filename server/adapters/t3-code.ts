@@ -5,7 +5,7 @@ import { isAbsolute, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { addText, blankMessage, blankSession, digest, identity, project } from './common';
 import type { Candidate, ImportedMessage, SessionAdapter } from './types';
-import { hasTable, sqliteRevision, withSqliteSnapshot } from './sqlite-snapshot';
+import { hasTable, sqliteRevision, withSqliteSnapshot, SqliteSnapshotChangedError } from './sqlite-snapshot';
 import { eventFor, eventText, messageEvent } from '../events';
 import type { TimelineEvent } from '@sessiongraph/core/timeline';
 
@@ -244,9 +244,15 @@ export const t3CodeAdapter: SessionAdapter = {
   async discover() {
     const path = await databasePath();
     if (!path) return { sessions: [], projects: [], warnings: ['T3 Code database is unavailable. Saved history is retained.'] };
-    const databaseRevision = sqliteRevision(path);
-    return withSqliteSnapshot(path, (db) => hasTable(db, 'orchestration_v2_projection_threads')
-      ? discoverV2(db, path, databaseRevision) : discoverV1(db, path, databaseRevision), databaseRevision);
+    for (let attempt = 0; ; attempt++) {
+      const databaseRevision = sqliteRevision(path);
+      try {
+        return withSqliteSnapshot(path, (db) => hasTable(db, 'orchestration_v2_projection_threads')
+          ? discoverV2(db, path, databaseRevision) : discoverV1(db, path, databaseRevision), databaseRevision);
+      } catch (error) {
+        if (!(error instanceof SqliteSnapshotChangedError) || attempt >= 2) throw error;
+      }
+    }
   },
   async read(candidate, cursor) {
     return withSqliteSnapshot(candidate.locator.path, (db) => candidate.locator.format === 'v2'

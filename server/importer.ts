@@ -85,6 +85,9 @@ export class Importer {
             // adapter order. OpenCode lists newest first and needs reversal.
             const values = [...messages.values()];
             if (adapter.id === 'opencode') values.reverse();
+            // A lifecycle-only export can describe an initially failed turn,
+            // but must never erase a previously imported conversation.
+            if (saved?.activity?.userMessages && values.every(message => message.role === 'system')) throw new Error('Source has no readable conversation. Previous imports are retained.');
             this.store.replace(candidate, values, partial, note);
             this.status.imported++;
           } catch (error) {

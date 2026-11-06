@@ -1,16 +1,31 @@
 import { addText, blankMessage, toolText } from './common';
 import type { ImportedMessage } from './types';
-import { blockEvents, eventFor, eventText } from '../events';
+import { blockEvents, eventFor, eventText, userBlockEvents } from '../events';
 
 export function cursorTime(value: unknown): number {
   const time = typeof value === 'number' ? value : typeof value === 'string' && /(?:Z|[+-]\d\d:\d\d)$/.test(value) ? Date.parse(value) : 0;
   return Number.isFinite(time) && time > 0 && time <= 8.64e15 ? time : 0;
 }
 
+function cursorEnvelope(text: string): { text: string; timestamp?: string } {
+  let value = text.trim(), timestamp: string | undefined;
+  for (;;) {
+    value = value.replace(/^(?:\[Image\]\s*)+(?=<image_files>)/, '');
+    const clock = value.match(/^<timestamp>([^<]+)<\/timestamp>\s*/);
+    if (clock) { timestamp ??= clock[1]; value = value.slice(clock[0].length); continue; }
+    const context = value.match(/^<(user_info|environment_context|system_reminder|external_links|attached_files|image_files)(?:\s[^>]*)?>/);
+    if (!context) break;
+    const end = value.indexOf(`</${context[1]}>`, context[0].length);
+    if (end < 0) return { text: '', timestamp };
+    value = value.slice(end + context[1].length + 3).trim();
+  }
+  return { text: value, timestamp };
+}
+
 // Only Cursor's leading, timezone-qualified envelope is a timestamp. Dates
 // mentioned in ordinary conversation and filesystem mtimes are not turn times.
 export function cursorEnvelopeTime(text: string): number {
-  const value = text.match(/^\s*<timestamp>([^<]+)<\/timestamp>/)?.[1];
+  const value = cursorEnvelope(text).timestamp;
   if (!value) return 0;
   const iso = cursorTime(value);
   if (iso) return iso;
@@ -20,12 +35,7 @@ export function cursorEnvelopeTime(text: string): number {
 }
 
 export function cursorUserText(text: string): string {
-  let value = text.trim().replace(/^<timestamp>[^<]+<\/timestamp>\s*/, '');
-  for (;;) {
-    const stripped = value.replace(/^<(user_info|environment_context|system_reminder)>[\s\S]*?<\/\1>\s*/, '');
-    if (stripped === value) break;
-    value = stripped;
-  }
+  const value = cursorEnvelope(text).text;
   // Wrappers mentioned inside an ordinary prompt are part of the prompt.
   const query = value.match(/^<user_query>([\s\S]*?)<\/user_query>(?:\s*<system_reminder>[\s\S]*?<\/system_reminder>)*\s*$/);
   return (query ? query[1] : value).trim();
@@ -34,6 +44,14 @@ export function cursorUserText(text: string): string {
 /** The IDE uses message.content; Store leaves use content directly. */
 export function cursorMessage(raw: any, fallbackID: string): ImportedMessage | undefined {
   if (!raw || typeof raw !== 'object') return;
+  if (raw.type === 'turn_ended') {
+    const message = blankMessage(typeof raw.id === 'string' && raw.id.length <= 512 ? raw.id : fallbackID, cursorTime(raw.timestamp), 'system');
+    const failed = raw.status === 'error' || raw.status === 'failed';
+    message.events = [eventFor(message, 'turn-ended', failed ? 'error' : 'event', failed ? 'Cursor turn failed' : 'Cursor turn ended', eventText(raw.error), {
+      nativeType: 'turn_ended', status: failed ? 'failed' : raw.status === 'completed' || raw.status === 'success' ? 'completed' : 'unknown',
+    })];
+    return message;
+  }
   const body = raw.message && typeof raw.message === 'object' ? raw.message : raw;
   const role = raw.role || body.role;
   if (!['user', 'assistant', 'tool', 'system'].includes(role)) return;
@@ -42,7 +60,8 @@ export function cursorMessage(raw: any, fallbackID: string): ImportedMessage | u
   const time = cursorTime(raw.timestamp) || cursorTime(body.timestamp) || cursorTime(body.createdAt) || (role === 'user' && typeof firstText === 'string' ? cursorEnvelopeTime(firstText) : 0);
   const native = [raw.uuid, raw.id, body.uuid, body.id].find((id) => typeof id === 'string' && id.length && id.length <= 512);
   const msg = blankMessage(native || fallbackID, time, role);
-  msg.events = role === 'tool' ? [eventFor(msg, 'result', 'tool_result', body.name || 'Tool result', '', { callID: body.tool_call_id, output: eventText(content, 64_000), status: 'unknown' })] : blockEvents(msg, content);
+  msg.events = role === 'tool' ? [eventFor(msg, 'result', 'tool_result', body.name || 'Tool result', '', { callID: body.tool_call_id, output: eventText(content, 64_000), status: 'unknown' })]
+    : role === 'user' ? userBlockEvents(msg, content, cursorUserText) : blockEvents(msg, content);
   const kind = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'Tool';
   const text = (value: unknown) => addText(msg, role === 'user' && typeof value === 'string' ? cursorUserText(value) : value, kind);
   if (typeof content === 'string') text(content);

@@ -164,7 +164,7 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
             session.projectID = project('cursor', session.directory).id;
             if (session.directory) delete locator.directoryNote;
           }
-          const candidate = { session, locator, revision: digest([4, kind, path, before, session.created, session.directory, session.parentID]) };
+          const candidate = { session, locator, revision: digest([5, kind, path, before, session.created, session.directory, session.parentID]) };
           if (!previous || rank(candidate) > rank(previous) || (rank(candidate) === rank(previous) && session.updated > previous.session.updated)) found.set(session.id, candidate);
         } catch {
           unreadable++;
@@ -238,7 +238,7 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
       const messages = page.rows.flatMap((row) => {
         const message = cursorMessage(row.value, `offset:${row.offset}`);
         if (!message) page.partial = true;
-        return message && message.role !== 'system' ? [message] : [];
+        return message && (message.role !== 'system' || row.value?.type === 'turn_ended') ? [message] : [];
       });
       await verify();
       if (!offset && page.cursor === undefined && !messages.length) throw new Error('Cursor transcript has no readable conversation. Previous imports are retained.');

@@ -145,9 +145,10 @@ const modalVisibility = () => { const open = Boolean(document.querySelector('dia
 const timelineClient = new TimelineClient();
 const eventHover = createEventHover($('#tooltip'), $('#scene'), timelineClient);
 const eventExplorer = createEventExplorer($('#inspector'), timelineClient, { select: (item) => {
-  eventHover.clear(); scene?.selectEvent(item?.id || null);
+  const onMap = item?.sessionID === selectedID ? item : null;
+  eventHover.clear(); scene?.selectEvent(onMap?.id || null);
   // A message request started before playback may finish while its panel is hidden.
-  if (item && !playing) { playback = 1; updateScrubber(); scene?.focusEvent(item); }
+  if (onMap && !playing) { playback = 1; updateScrubber(); scene?.focusEvent(onMap); }
 } });
 function openEvents(item?: string) {
   const session = data?.sessions.find((s) => s.id === selectedID);
@@ -565,6 +566,7 @@ function renderInspector(session: Session, reveal = true) {
       <div class="detail-title"><span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><h2>${escape(session.title)}</h2><span class="detail-date">${timestamp(session.created)}</span></div>
       <div class="detail-actions"><button id="open-session" class="secondary-button">${icon('arrow-up-right')}Open session</button><button id="focus-session" class="icon-button" title="Focus node" aria-label="Focus node">${icon('crosshair')}</button><button id="copy-id" class="icon-button" title="Copy session ID" aria-label="Copy session ID">${icon('copy')}</button></div>
       <section id="message-detail" class="detail-section"></section>
+      ${session.linkedSessionIDs?.length ? `<section class="detail-section"><div class="section-label">Linked provider history</div><p class="coverage-note">One conversation on the map. Each source keeps its own saved history${session.coverage?.history === 'partial' ? '; the T3 copy is partial' : ''}.</p>${session.linkedSessionIDs.map(id => `<button class="relation" data-history="${escape(id)}">${sourceIcon(id.split(':')[0])}<span><small>Saved provider copy</small><strong>${escape(sourceName(id.split(':')[0]))}</strong></span>${icon('arrow-up-right')}</button>`).join('')}</section>` : ''}
       <div id="file-detail"><section class="detail-section"><div class="section-label">Changed files</div><div class="detail-loading">${icon('loader-circle', 'spinning')}Loading changes…</div></section></div>
       ${relationHTML(session)}
       <details class="more-details detail-section"><summary>Session info ${icon('chevron-down')}</summary><dl class="metadata"><div><dt>Project</dt><dd>${escape(project?.name || 'Unknown')}</dd></div><div><dt>Model</dt><dd>${escape(session.model)}</dd></div><div><dt>Agent</dt><dd>${escape(session.agent || 'Unknown')}</dd></div><div><dt>Tokens incl. cache</dt><dd>${session.tokens === null ? 'Not recorded' : compact(session.tokens)}</dd></div><div><dt>Recorded cost</dt><dd>${session.cost === null ? 'Not recorded' : `$${session.cost.toFixed(2)}`}</dd></div><div><dt>Updated</dt><dd>${date(session.updated)}</dd></div><div><dt>Imported</dt><dd>${session.coverage?.importedAt ? date(session.coverage.importedAt) : 'Pending'}</dd></div></dl><div class="directory-card"><span>${isWorktree ? 'Worktree' : 'Directory'}</span><code>${escape(session.directory)}</code></div></details>
@@ -696,6 +698,12 @@ $('#session-list').addEventListener('click', (event) => {
   if (button?.dataset.session) selectSession(button.dataset.session);
 });
 $('#inspector').addEventListener('click', (event) => {
+  const history = (event.target as HTMLElement).closest<HTMLElement>('[data-history]')?.dataset.history;
+  if (history) {
+    eventHover.clear(); stopPlayback(); setPanel('inspector', true);
+    eventExplorer.open({ id: history, source: history.split(':')[0] });
+    return;
+  }
   const button = (event.target as HTMLElement).closest<HTMLElement>('[data-related]');
   if (button?.dataset.related) selectSession(button.dataset.related);
 });

@@ -9,7 +9,12 @@ import { appPath, dataPath, envHome, harnessRoots, homePath } from './harness-pa
 import { openclawRoots } from './harness-files';
 import { sourcePath } from '../source-paths';
 
-const parsedContent = (v: unknown) => typeof v === 'string' && /^[\[{]/.test(v.trim()) ? optionalJSON(v) : v;
+// Hermes encodes structured content with a reserved marker. Ordinary strings,
+// including valid JSON examples and bracket-prefixed notices, stay verbatim.
+function hermesContent(value: unknown) {
+  if (typeof value !== 'string' || !value.startsWith('\0json:')) return value;
+  try { return JSON.parse(value.slice(6)); } catch { return value; }
+}
 const millisOrSeconds = (v: unknown) => typeof v === 'number' && v > 0 && v < 10_000_000_000 ? seconds(v) : time(v);
 function dbPaths(id: string, defaults: () => string[], match: (path: string) => boolean) {
   return async () => {
@@ -23,13 +28,13 @@ function sessionHistory(r: Raw, messages: LocalHistory['messages'], note: string
 }
 
 const hermes: DatabaseHarness = {
-  id: 'hermes', name: 'Hermes Agent',
+  id: 'hermes', name: 'Hermes Agent', version: 3,
   paths: async () => (await historyFiles(harnessRoots('hermes', () => [envHome('HERMES_HOME', '.hermes')])(), p => p === 'state.db' || /^profiles\/[^/]+\/state\.db$/.test(p))).files,
   table: 'sessions', key: 'id', fields: ['id', 'title', 'cwd', 'model', 'billing_provider', 'started_at', 'last_activity_at', 'parent_session_id', 'source', 'model_config', 'archived'],
   parse(db, r) {
     const messages = rows(db, 'messages', ['id', 'message_uid', 'role', 'content', 'timestamp', 'tool_call_id', 'tool_calls', 'tool_name', '_compressed_summary'], ['session_id', r.id], 'id').map(m => {
       if (m._compressed_summary) return recordEvent(m, text(m.message_uid) || nativeText(m.id), 'Context summary', seconds(m.timestamp), m.content);
-      return conversationMessage({ role: m.role, content: parsedContent(m.content), timestamp: seconds(m.timestamp), tool_call_id: m.tool_call_id, toolCalls: optionalJSON(m.tool_calls), toolName: m.tool_name }, text(m.message_uid) || nativeText(m.id));
+      return conversationMessage({ role: m.role, content: hermesContent(m.content), timestamp: seconds(m.timestamp), tool_call_id: m.tool_call_id, toolCalls: optionalJSON(m.tool_calls), toolName: m.tool_name }, text(m.message_uid) || nativeText(m.id));
     });
     const h = sessionHistory({ ...r, created_at: seconds(r.started_at), updated_at: seconds(r.last_activity_at), provider: r.billing_provider }, messages, 'Hermes saved message rows, including retained summaries. Compression/reset parent links are not subagent ancestry. Session usage aggregates are not used as message times.');
     if (r.source === 'subagent') h.parent = text(r.parent_session_id) || undefined;

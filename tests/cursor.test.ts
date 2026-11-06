@@ -84,6 +84,53 @@ test('Cursor discovers IDE layouts, explicit subagents, unique workspace mapping
   } finally { await rm(f.dir, { recursive: true }); }
 });
 
+test('Cursor titles and message text skip context envelopes but preserve literal markup', async () => {
+  const f = await fixture();
+  try {
+    const prompts = [
+      '<external_links>Web context</external_links><user_query>Research this issue</user_query>',
+      '<attached_files><code_selection>Code context</code_selection></attached_files><user_query>Fix this file</user_query>',
+      '[Image]\n<image_files>Image context</image_files><user_query>Explain the screenshot</user_query>',
+      'Explain <attached_files>literal markup</attached_files>',
+      '<external_links>Context</external_links><timestamp>2026-08-31T02:51:00Z</timestamp><user_query>Timestamp after context</user_query>',
+      '<user_query><attached_files>literal user XML</attached_files></user_query>',
+    ];
+    const expected = ['Research this issue', 'Fix this file', 'Explain the screenshot', prompts[3], 'Timestamp after context', '<attached_files>literal user XML</attached_files>'];
+    for (const [i, prompt] of prompts.entries()) await write(join(f.transcripts, `s${i}.jsonl`), lines(user(prompt)));
+    const found = await f.adapter.discover();
+    assert.equal(found.sessions.length, expected.length);
+    for (const c of found.sessions) {
+      const title = expected[Number(c.session.nativeID!.slice(1))];
+      assert.equal(c.session.title, title);
+      const message = (await f.adapter.read(c)).messages[0];
+      assert.equal(message.fragments[0].text, title); assert.equal(message.events![0].text, title);
+      if (c.session.nativeID === 's4') assert.equal(message.time, at);
+    }
+    const context = cursorMessage(user('<attached_files>Context only</attached_files>'), 'ctx')!;
+    assert.deepEqual(context.fragments, []); assert.equal(context.events![0].kind, 'event');
+    const large = cursorMessage(user(`<attached_files>${'x'.repeat(70_000)}</attached_files><user_query>Real prompt</user_query>`), 'large')!;
+    assert.equal(large.events![0].text, 'Real prompt');
+  } finally { await rm(f.dir, { recursive: true }); }
+});
+
+test('Cursor imports a recorded turn failure without inventing conversation messages', async () => {
+  const f = await fixture(), store = new SessionGraphStore(':memory:');
+  try {
+    await write(join(f.transcripts, 'failed.jsonl'), lines({ type: 'turn_ended', status: 'error', error: 'Provider unavailable' }));
+    const importer = new Importer(store, [f.adapter]); importer.start(['cursor']); await importer.settled();
+    assert.equal(importer.status.failed, 0); assert.equal(importer.status.imported, 1);
+    assert.equal(store.getSession('cursor:failed')!.activity!.userMessages, 0);
+    const events = store.events('cursor:failed', { filter: 'all' });
+    assert.equal(events.items.length, 1); assert.equal(events.items[0].kind, 'error');
+    assert.equal(events.items[0].time, null);
+    await write(join(f.transcripts, 'failed.jsonl'), lines(user('Now the conversation works')));
+    importer.start(); await importer.settled(); assert.equal(importer.status.imported, 1);
+    await write(join(f.transcripts, 'failed.jsonl'), lines({ type: 'turn_ended', status: 'error', error: 'Provider unavailable' }));
+    importer.start(); await importer.settled(); assert.equal(importer.status.failed, 1);
+    assert.equal(store.content('cursor:failed').fragments[0].text, 'Now the conversation works');
+  } finally { store.close(); await rm(f.dir, { recursive: true }); }
+});
+
 test('Cursor transcript pagination preserves identical turns, deduplicates native IDs and rejects changed snapshots', async () => {
   const f = await fixture(), store = new SessionGraphStore(':memory:');
   try {

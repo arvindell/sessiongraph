@@ -21,7 +21,7 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
   container.append(panel);
   const $ = <T extends HTMLElement = HTMLElement>(selector: string) => panel.querySelector<T>(selector)!;
   const listeners = new AbortController();
-  let pending: AbortController | undefined, session: Session | undefined, page: TimelinePage | undefined;
+  let pending: AbortController | undefined, session: Pick<Session, 'id' | 'source'> | undefined, page: TimelinePage | undefined;
   let revision: string | undefined;
   const filter = 'messages';
   let busy = false;
@@ -107,10 +107,11 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
       if (!['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) return false;
       event.preventDefault(); step(event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? 'previous' : 'next'); return true;
     },
-    open(value: Session, item?: string, snapshot?: string) {
+    open(value: Pick<Session, 'id' | 'source'>, item?: string, snapshot?: string) {
       clearTimeout(prefetchTimer); prefetch?.abort();
       const sameSession = session?.id === value.id;
       session = value; revision = snapshot; page = undefined;
+      $('#event-title').textContent = `${sourceName(value.source)} messages`;
       $('.event-list').replaceChildren(); $('.event-content').innerHTML = '<p class="event-empty">Loading saved history…</p>';
       $('.event-coverage').textContent = 'Loading coverage…';
       if (!sameSession) $<HTMLDetailsElement>('.event-browser').open = false;

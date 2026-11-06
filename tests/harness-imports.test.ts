@@ -154,6 +154,28 @@ test('SQLite import failures retain saved messages and coverage instead of repla
   } finally { store.close(); closeSqliteSnapshots(); db.close(); }
 }));
 
+test('Hermes preserves plain JSON-looking text and decodes only native marked structured content', async () => fixture('hermes', async (root, adapter) => {
+  const db = new DatabaseSync(join(root, 'state.db')), store = new SessionGraphStore(':memory:');
+  try {
+    db.exec('CREATE TABLE sessions(id TEXT, started_at REAL); CREATE TABLE messages(id INTEGER, session_id TEXT, role TEXT, content TEXT, timestamp REAL)');
+    const values = ['[IMPORTANT: recorded notice]', '{not JSON', '{"example":true}\n\nExplain this', '[1,2,3]', '{"example":true}',
+      '\0json:' + JSON.stringify([{ type: 'text', text: 'Multimodal prompt' }, { type: 'image_url', image_url: { url: 'omitted' } }]),
+      '\0json:' + JSON.stringify('\0json:literal marker'), '\0json:malformed'];
+    for (const [i, content] of values.entries()) {
+      db.prepare('INSERT INTO sessions VALUES (?,?)').run(`s${i}`, at / 1000);
+      db.prepare('INSERT INTO messages VALUES (?,?,?,?,?)').run(i, `s${i}`, 'user', content, at / 1000);
+    }
+    const importer = new Importer(store, [adapter]); importer.start([adapter.id]); await importer.settled();
+    assert.equal(importer.status.failed, 0); assert.equal(importer.status.imported, values.length);
+    for (let i = 0; i < 5; i++) assert.equal(store.content(`hermes:s${i}`).fragments[0].text, values[i]);
+    assert.equal(store.content('hermes:s5').fragments[0].text, 'Multimodal prompt');
+    assert.equal(store.getSession('hermes:s5')?.coverage?.history, 'partial');
+    assert.equal(store.content('hermes:s6').fragments[0].text, '\0json:literal marker');
+    assert.equal(store.content('hermes:s7').fragments[0].text, '\0json:malformed');
+    importer.start(); await importer.settled(); assert.equal(importer.status.unchanged, values.length);
+  } finally { store.close(); closeSqliteSnapshots(); db.close(); }
+}));
+
 test('oversized SQLite content preserves saved history rather than becoming an empty message', async () => fixture('hermes', async (root, adapter) => {
   const db = new DatabaseSync(join(root, 'state.db')), store = new SessionGraphStore(':memory:');
   try {
@@ -204,6 +226,40 @@ test('legacy Cursor inline, mapped and separate bubbles retain original dates an
   const candidates = await adapter.discover(), modern = candidates.sessions.find(c => c.session.nativeID === 'inline')!;
   assert.equal(candidates.sessions.length, 3); assert.equal(modern.session.created, at); assert.equal(modern.locator.kind, 'transcript');
   assert.deepEqual(await readFile(path), before);
+}));
+
+test('Cursor NULL Composer markers are ignored while oversized payloads remain bounded', async () => fixture('cursor', async root => {
+  const path = join(root, 'state.vscdb'), db = new DatabaseSync(path);
+  try {
+    db.exec("CREATE TABLE cursorDiskKV(key TEXT PRIMARY KEY, value TEXT); INSERT INTO cursorDiskKV VALUES ('composerData:marker', NULL)");
+    db.prepare('INSERT INTO cursorDiskKV VALUES (?,?)').run('composerData:large', 'x'.repeat(32_000_001));
+    db.prepare('INSERT INTO cursorDiskKV VALUES (?,?)').run('composerData:good', JSON.stringify({ composerId: 'good', createdAt: at, conversation: [{ bubbleId: 'u', type: 1, text: 'Keep this conversation' }] }));
+    const found = discoverComposers(path);
+    assert.deepEqual(found.sessions.map(c => c.session.nativeID), ['good']);
+    assert.deepEqual(found.warnings, ['1 legacy Cursor Composer records were unreadable or oversized; saved imports are retained.']);
+    assert.equal(readComposer(found.sessions[0]).messages[0].fragments[0].text, 'Keep this conversation');
+  } finally { closeSqliteSnapshots(); db.close(); }
+}));
+
+test('Codex titles prefer native names and fall back past injected app context', async () => fixture('codex', async root => {
+  const old = process.env.CODEX_HOME; process.env.CODEX_HOME = root;
+  try {
+    const user = (text: string) => ({ type: 'response_item', timestamp: iso, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } });
+    for (const id of ['fallback', 'named', 'indexed', 'context-only']) {
+      await put(root, `sessions/${id}.jsonl`, lines(
+        { type: 'session_meta', payload: { id, timestamp: iso, name: id === 'named' || id === 'indexed' ? 'Native title' : undefined } },
+        user('<system_instruction>Conductor setup</system_instruction>'), user('<recommended_plugins>Plugin setup</recommended_plugins>'),
+        ...(id === 'context-only' ? [] : [user('Fix the real problem')]),
+      ));
+    }
+    await put(root, 'session_index.jsonl', lines({ id: 'indexed', thread_name: 'Renamed by user' }));
+    const found = await codexAdapter.discover();
+    const titles = Object.fromEntries(found.sessions.map(c => [c.session.nativeID, c.session.title]));
+    assert.deepEqual(titles, { 'context-only': 'Codex session', fallback: 'Fix the real problem', indexed: 'Renamed by user', named: 'Native title' });
+    const page = await codexAdapter.read(found.sessions.find(c => c.session.nativeID === 'fallback')!);
+    assert.deepEqual(page.messages.flatMap(m => m.fragments.map(f => f.text)), ['Fix the real problem']);
+    assert.equal(page.messages.filter(m => m.events?.some(e => e.nativeType === 'user-context')).length, 2);
+  } finally { if (old === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = old; }
 }));
 
 test('Codex compressed archives deduplicate by native session identity', async () => fixture('codex', async root => {

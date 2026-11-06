@@ -8,7 +8,7 @@ import { t3CodeAdapter } from '../server/adapters/t3-code';
 import { closeSqliteSnapshots } from '../server/adapters/sqlite-snapshot';
 import { Importer } from '../server/importer';
 import { SessionGraphStore } from '../server/store';
-import { blankSession } from '../server/adapters/common';
+import { addText, blankMessage, blankSession } from '../server/adapters/common';
 import { sessionMatchesSource, visibleSessions } from '../src/session-links';
 
 const at = '2026-11-03T12:00:00.000Z';
@@ -83,7 +83,9 @@ test('T3 app threads replace only uniquely linked native sessions in the visible
   try {
     const native = blankSession('codex', 'native', '/fixture'); native.created = Date.parse(at);
     store.upsert({ session: native, revision: 'native', locator: { path: 'fixture' } });
-    store.replace({ session: native, revision: 'native', locator: { path: 'fixture' } }, [], false);
+    const nativeMessage = blankMessage('native-user', Date.parse(at), 'user');
+    addText(nativeMessage, 'Provider-only detail', 'You');
+    store.replace({ session: native, revision: 'native', locator: { path: 'fixture' } }, [nativeMessage], false);
     const child = blankSession('codex', 'child', '/fixture'); child.created = Date.parse(at); child.parentID = native.id;
     store.upsert({ session: child, revision: 'child', locator: { path: 'fixture' } });
     const importer = new Importer(store, [t3CodeAdapter]); importer.start(['t3-code']); await importer.settled();
@@ -94,7 +96,10 @@ test('T3 app threads replace only uniquely linked native sessions in the visible
     assert.ok(sessionMatchesSource(library.sessions.find(s => s.id === 't3-code:app')!, 'codex'));
     assert.equal(store.getSession(native.id)?.id, native.id);
     const incomplete = { ...library.sessions.find(s => s.id === 't3-code:app')!, coverage: { history: 'partial' as const } };
-    assert.equal(visibleSessions([native, incomplete]).length, 2);
+    assert.deepEqual(visibleSessions([native, incomplete]).map(s => s.id), ['t3-code:app']);
+    assert.equal(store.getSession(native.id)?.id, native.id, 'provider history stays directly accessible');
+    assert.equal(store.events(native.id, { filter: 'messages' }).selected?.text, 'Provider-only detail');
+    assert.equal(visibleSessions([native, incomplete, child]).find(s => s.id === child.id)?.parentID, 't3-code:app');
   } finally { store.close(); }
 }));
 
@@ -143,5 +148,9 @@ test('ambiguous or empty T3 bindings do not hide provider history', () => {
   const first = { ...blankSession('t3-code', 'first'), linkedSessionIDs: [native.id], coverage: { history: 'complete' as const }, activity: { firstMessageAt: 1, lastMessageAt: 1, userMessages: 1, untimedUserMessages: 0 } };
   const second = { ...first, id: 't3-code:second', nativeID: 'second' };
   assert.equal(visibleSessions([native, first, second]).length, 3);
+  assert.equal(visibleSessions([native, first, { ...second, coverage: { history: 'partial' } }]).length, 3);
+  assert.equal(visibleSessions([native, first, { ...second, coverage: { history: 'pending' } }]).length, 3);
   assert.equal(visibleSessions([native, { ...first, activity: { ...first.activity, userMessages: 0 } }]).length, 2);
+  assert.equal(visibleSessions([native, { ...first, coverage: { history: 'pending' } }]).length, 2);
+  assert.equal(visibleSessions([native, { ...first, linkedSessionIDs: [native.id, native.id], coverage: { history: 'partial' } }]).length, 1);
 });

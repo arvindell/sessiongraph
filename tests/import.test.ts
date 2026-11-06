@@ -119,10 +119,21 @@ test('Codex desktop scaffolding is excluded from human prompts and titles withou
   assert.equal(codexUserText('<environment_context><cwd>/work</cwd></environment_context>\nFix the app'), 'Fix the app');
   assert.equal(codexUserText('# AGENTS.md instructions for /work\nBuild notes'), '');
   assert.equal(codexUserText('Explain <div>hello</div>'), 'Explain <div>hello</div>');
+  for (const tag of ['system_instruction', 'recommended_plugins']) {
+    assert.equal(codexUserText(`<${tag}>Injected setup</${tag}>\nFix the app`), 'Fix the app');
+    assert.equal(codexUserText(`<${tag}>Injected setup`), '');
+    assert.equal(codexUserText(`Explain <${tag}>literal example</${tag}>`), `Explain <${tag}>literal example</${tag}>`);
+  }
+  assert.equal(codexUserText('[@codex-security](plugin://codex-security) Review this'), '[@codex-security](plugin://codex-security) Review this');
   const c = { session: blankSession('codex', 'test'), revision: 'r', locator: {} };
   const context = codexRecord({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<external_codex_apps_open_page>{}</external_codex_apps_open_page>' }] } }, 0, c)!;
   assert.deepEqual(context.fragments, []);
   assert.equal(context.events![0].kind, 'event'); assert.equal(context.events![0].role, 'system');
+  const mixed = codexRecord({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<system_instruction>Injected</system_instruction>\n<recommended_plugins>Setup</recommended_plugins>\nActual prompt' }] } }, 1, c)!;
+  assert.equal(mixed.fragments[0].text, 'Actual prompt');
+  assert.equal(mixed.events![0].text, 'Actual prompt');
+  const longContext = codexRecord({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: `<system_instruction>${'x'.repeat(70_000)}</system_instruction>\nActual prompt` }] } }, 2, c)!;
+  assert.equal(longContext.events![0].text, 'Actual prompt', 'context stripping happens before event payload limits');
 });
 
 test('JSONL skips an oversized record without returning a repeated cursor or losing the next line', async () => {
