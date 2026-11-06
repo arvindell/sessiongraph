@@ -1,5 +1,6 @@
 import { createElement, Share2 } from 'lucide';
 import { TimelineScene } from '@sessiongraph/core/scene';
+import { BRAND_TEXT, drawBrandMark } from '@sessiongraph/core/brand';
 import { shareGraph } from './share-graph';
 import { SHARE_FPS, SHARE_FRAMES, playbackDate, playbackSessions, shareFrameProgress, shareFrameOutro, timelineBuckets } from '@sessiongraph/core/playback';
 import { playbackTokens } from './playback-tokens';
@@ -13,8 +14,12 @@ const compact = (value: number) => Intl.NumberFormat('en', { notation: 'compact'
 
 function overlay(context: CanvasRenderingContext2D, graph: Graph, progress: number, buckets: number[], usage: ReturnType<typeof playbackTokens>, sessions: ReturnType<typeof playbackSessions>) {
   const x = 260, width = 440, y = HEIGHT - 122, peak = Math.max(1, ...buckets);
-  context.fillStyle = '#91afa2'; context.font = '12px "Geist Variable", sans-serif';
-  context.fillText('SessionGraph', 28, 32);
+  context.save();
+  drawBrandMark(context, 24, 14, 28);
+  context.fillStyle = BRAND_TEXT; context.font = '600 14px "Geist Variable", sans-serif';
+  context.textAlign = 'left'; context.textBaseline = 'middle';
+  context.fillText('SessionGraph', 58, 28);
+  context.restore();
   for (let index = 0; index < buckets.length; index++) {
     const h = Math.max(2, buckets[index] / peak * 22);
     context.fillStyle = index / buckets.length <= progress ? '#91bfae' : '#253d39';

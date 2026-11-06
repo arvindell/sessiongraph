@@ -15,7 +15,7 @@ pnpm --filter sessiongraph-site typecheck
 pnpm --filter sessiongraph-site build
 ```
 
-Vite serves the UI at `http://127.0.0.1:5190`, including `/account` and `/@username` rewrites. It does not emulate the serverless API. UI fixtures or a separately configured API are needed for authenticated flows.
+Vite serves the UI at `http://127.0.0.1:5190`, including `/explore`, `/account`, and `/@username`. The gallery and public graph read API use the local PostgreSQL database below. Authenticated flows still require a separately configured API; Vite does not mount account or publication mutations.
 
 ### Local PostgreSQL
 
@@ -23,6 +23,7 @@ From the repository root, start the database dependency with Docker Compose:
 
 ```sh
 docker compose up -d --wait
+pnpm --filter sessiongraph-site dev:setup
 ```
 
 This runs PostgreSQL 17 on `127.0.0.1:55439` with two databases:
@@ -33,6 +34,8 @@ This runs PostgreSQL 17 on `127.0.0.1:55439` with two databases:
 | API tests | `postgresql://sessiongraph@127.0.0.1:55439/sessiongraph_test` |
 
 The local-only stack uses passwordless authentication and binds its published port to loopback. Set `SESSIONGRAPH_POSTGRES_PORT` to use a different host port, and update your connection URLs accordingly. Data lives in a Docker-managed named volume; `docker compose down` stops the stack and retains it. The initialization SQL creates the test database when the volume is first initialized.
+
+`dev:setup` initializes an empty development database without replacing existing data. The website defaults to the development URL above; `SESSIONGRAPH_DEV_DATABASE_URL` can override the local port. A new database shows an empty public gallery. Synthetic test fixtures are never presented as real community publications. The gallery reads only publications, not local imported histories.
 
 Run the API integration tests against the test database:
 

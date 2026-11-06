@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" fill="none">
+  <defs>
+    <linearGradient id="mint" x1="0" y1="0" x2="1600" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#83c9c0"/><stop offset=".5" stop-color="#a8b6df"/><stop offset="1" stop-color="#b9e9c8"/>
+    </linearGradient>
+    <linearGradient id="lilac" x1="200" y1="200" x2="1400" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d4b2ce"/><stop offset="1" stop-color="#d6c7a3"/>
+    </linearGradient>
+    <radialGradient id="fade">
+      <stop offset=".15" stop-color="white" stop-opacity=".12"/><stop offset=".65" stop-color="white"/><stop offset="1" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="field"><ellipse cx="800" cy="460" rx="1000" ry="650" fill="url(#fade)"/></mask>
+    <filter id="glow" x="-300%" y="-300%" width="700%" height="700%"><feGaussianBlur stdDeviation="3"/></filter>
+    <g id="nodes">
+      <g fill="#a9dfce"><circle cx="363" cy="203" r="2.5"/><circle cx="290" cy="369" r="2.5"/><circle cx="477" cy="478" r="2"/><circle cx="210" cy="594" r="2.5"/><circle cx="1230" cy="176" r="2.5"/><circle cx="1320" cy="315" r="2.5"/><circle cx="1165" cy="449" r="2"/><circle cx="1430" cy="565" r="2.5"/></g>
+      <g fill="#d2b5d4"><circle cx="210" cy="268" r="2"/><circle cx="387" cy="552" r="2.5"/><circle cx="1445" cy="244" r="2"/><circle cx="1275" cy="524" r="2.5"/></g>
+    </g>
+  </defs>
+  <g mask="url(#field)">
+    <g stroke="url(#mint)" stroke-width="1" opacity=".3">
+      <path d="M-40 146H126C172 146 156 203 202 203H363"/>
+      <path d="M-30 325H92C156 325 130 369 194 369H290"/>
+      <path d="M-50 429H192C265 429 228 478 301 478H477"/>
+      <path d="M-10 640H90C150 640 150 594 210 594"/>
+      <path d="M155 203V294C155 325 179 337 212 337H352" opacity=".65"/>
+      <path d="M128 429V525C128 562 164 578 227 578H300" opacity=".65"/>
+      <path d="M1640 110H1430C1350 110 1380 176 1300 176H1230"/>
+      <path d="M1640 350H1505C1420 350 1430 315 1360 315H1320"/>
+      <path d="M1640 410H1410C1335 410 1370 449 1295 449H1165"/>
+      <path d="M1640 625H1550C1470 625 1500 565 1430 565"/>
+      <path d="M1450 350V230C1450 205 1425 193 1395 193H1355" opacity=".65"/>
+      <path d="M1530 410V495C1530 545 1495 560 1465 560H1350" opacity=".65"/>
+    </g>
+    <g stroke="url(#lilac)" stroke-width="1" opacity=".25">
+      <path d="M-20 229H90C155 229 145 268 210 268"/>
+      <path d="M-30 515H198C260 515 263 552 325 552H387"/>
+      <path d="M1640 208H1530C1490 208 1485 244 1445 244"/>
+      <path d="M1640 493H1430C1360 493 1380 524 1310 524H1275"/>
+    </g>
+    <use href="#nodes" filter="url(#glow)" opacity=".7"/>
+    <use href="#nodes" opacity=".8"/>
+  </g>
+</svg>

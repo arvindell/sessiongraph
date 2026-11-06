@@ -1,17 +1,19 @@
-import { gzipSync, gunzipSync } from 'node:zlib';
+import { gzipSync } from 'node:zlib';
 import { database, transaction, type DB } from './db';
 import { authenticate, authRoute } from './auth';
 import { organizationRoute } from './organizations';
-import { HttpError, digest, json, readBody, validUsername } from './security';
+import { HttpError, digest, json, readBody } from './security';
 import { PUBLIC_GRAPH_MAX_BYTES, validatePublicGraph } from '@sessiongraph/core/public-graph';
+import { publicRoute } from './publications';
 
 async function limit(request: Request, db: DB, path: string) {
   // Vercel overwrites x-real-ip. Locally all callers intentionally share a bucket.
   const ip = request.headers.get('x-real-ip') || 'local';
   const bucket = Math.floor(Date.now() / 60_000);
-  const key = digest(`${ip}:${bucket}:${path.startsWith('/api/profiles/') ? 'read' : 'write'}`);
+  const reading = path.startsWith('/api/profiles/') || path === '/api/graphs';
+  const key = digest(`${ip}:${bucket}:${reading ? 'read' : 'write'}`);
   const count = await transaction(db, tx => tx.rateLimit.upsert({ where: { key }, create: { key, count: 1, expiresAt: new Date((bucket + 2) * 60_000) }, update: { count: { increment: 1 } } }));
-  if (count.count > (path.startsWith('/api/profiles/') ? 120 : 60)) throw new HttpError(429, 'Too many requests. Please try again in a minute.');
+  if (count.count > (reading ? 120 : 60)) throw new HttpError(429, 'Too many requests. Please try again in a minute.');
 }
 export async function handle(request: Request, provided?: DB): Promise<Response> {
   try {
@@ -37,17 +39,9 @@ export async function handle(request: Request, provided?: DB): Promise<Response>
       return json({ removed });
     }
     await limit(request, db, path);
+    const publicResponse = await publicRoute(request, db, path); if (publicResponse) return publicResponse;
     const auth = await authRoute(request, db, path); if (auth) return auth;
     const org = await organizationRoute(request, db, path); if (org) return org;
-    const profile = /^\/api\/profiles\/([^/]+)$/.exec(path);
-    if (profile && request.method === 'GET') {
-      if (!validUsername(profile[1])) throw new HttpError(404, 'Profile not found.');
-      const account = await db.account.findUnique({ where: { username: profile[1].toLowerCase() } });
-      const publication = account && await db.publication.findUnique({ where: { accountId: account.id } });
-      if (!publication) throw new HttpError(404, 'This profile has no published graph.');
-      const graph = validatePublicGraph(JSON.parse(gunzipSync(publication.graph, { maxOutputLength: PUBLIC_GRAPH_MAX_BYTES }).toString()));
-      return json({ username: account!.username, graph, updatedAt: publication.updatedAt });
-    }
     if (path === '/api/account' && request.method === 'GET') {
       const { account } = await authenticate(request, db);
       const publication = await db.publication.findUnique({ where: { accountId: account.id }, select: { updatedAt: true } });

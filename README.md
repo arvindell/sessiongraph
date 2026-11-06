@@ -1,4 +1,4 @@
-<h1 align="center">SessionGraph</h1>
+<h1 align="center"><picture><source media="(prefers-color-scheme: light)" srcset="public/brand/lockup-light.svg"><img src="public/brand/lockup.svg" width="420" alt="SessionGraph"></picture></h1>
 <p align="center">Explore &amp; visualize all your LLM sessions</p>
 <p align="center">
   <a href="https://github.com/arvindell/sessiongraph/releases/latest">Download</a> ·

@@ -1,21 +1,67 @@
-.public-viewer { position: relative; min-width: 0; border: 1px solid #c9e3db1a; border-radius: 10px; background: #080e13; overflow: hidden; color: #dbe7e3; }
-.public-canvas { position: relative; height: min(62vh, 620px); min-height: 320px; }
+.public-viewer { position: relative; height: min(80vh, 760px); min-height: 520px; min-width: 0; border: 1px solid #c9e3db1a; border-radius: 12px; background: #080e13; overflow: hidden; color: #dbe7e3; font: 13px/1.5 Geist, sans-serif; isolation: isolate; }
+.public-viewer-full { height: 100%; min-height: 0; border: 0; border-radius: 0; }
+.public-viewer [hidden] { display: none !important; }
+.public-canvas { position: absolute; inset: 0; display: grid; place-items: center; }
 .public-canvas canvas { display: block; }
-.public-view-controls { position: absolute; top: 14px; left: 14px; display: flex; gap: 5px; }
-.public-viewer button, .public-session-picker select { border: 1px solid #c9e3db30; border-radius: 5px; background: #101c21; color: #dbe7e3; padding: 8px 12px; font: inherit; font-size: 12px; cursor: pointer; }
-.public-viewer button[aria-pressed=true] { color: #b0e9d6; border-color: #b0e9d680; }
-.public-session { position: absolute; right: 12px; top: 12px; max-width: min(280px, 50%); max-height: calc(100% - 125px); overflow: auto; padding: 14px; background: #0b141ae8; border: 1px solid #c9e3db1a; border-radius: 6px; font-size: 12px; }
-.public-session h3 { margin: 0 0 10px; font-size: 15px; font-weight: 500; }
-.public-session p { margin: 5px 0; line-height: 1.6; color: #a1b6ad; overflow-wrap: anywhere; }
+.public-toolbar, .public-view-controls { position: absolute; top: 16px; display: flex; gap: 5px; align-items: center; padding: 5px; border: 1px solid #c9e3db24; background: #0c171de8; border-radius: 10px; backdrop-filter: blur(14px); }
+.public-toolbar { left: 16px; }
+.public-view-controls { right: 16px; }
+.public-view-switch { display: flex; }
+.public-badge { padding: 0 8px; color: #91afa2; font-size: 11px; }
+.public-viewer button, .public-viewer select, .public-viewer input[type=search] { box-sizing: border-box; font: inherit; color: inherit; border: 1px solid #c9e3db24; border-radius: 6px; background: #0e1b22; padding: 7px 10px; min-width: 0; }
+.public-viewer button { cursor: pointer; }
+.public-viewer button:hover { background: #b0e9d615; }
+.public-viewer button:disabled { opacity: .5; cursor: default; }
+.public-viewer :is(button, input, select):focus-visible { outline: 2px solid #b0e9d6; outline-offset: 2px; }
+.public-viewer button[aria-pressed=true] { color: #b0e9d6; background: #b0e9d614; border-color: #b0e9d64d; }
+.public-panel { position: absolute; background: #0b141aeb; border: 1px solid #c9e3db24; border-radius: 12px; backdrop-filter: blur(16px); box-shadow: 0 12px 40px #0002; }
+.public-browser { top: 76px; left: 16px; width: 265px; max-height: calc(100% - 212px); display: flex; flex-direction: column; }
+.public-panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; }
+.public-panel-heading h2 { margin: 0; font-size: 13px; font-weight: 500; }
+.public-panel-heading [data-count] { margin-left: 7px; font-size: 11px; color: #8da89d; }
+.public-panel-heading button { border: 0; background: none; font-size: 20px; line-height: 1; padding: 3px 6px; }
+.public-search { margin: 0 12px 10px; }
+.public-search span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.public-search input { width: 100%; }
+.public-filters { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 0 12px 12px; border-bottom: 1px solid #c9e3db1a; }
+.public-list { overflow: auto; min-height: 60px; padding: 6px; }
+.public-list button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 10px 12px; }
+.public-list button > span { display: flex; align-items: center; gap: 8px; }
+.public-list button > span::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--session-color); flex-shrink: 0; }
+.public-list small { display: block; color: #94a69f; font-size: 10px; margin: 5px 0 0 13px; overflow-wrap: anywhere; }
+.public-browser > [data-more] { margin: 6px 12px 12px; flex-shrink: 0; }
+.public-session { right: 16px; top: 76px; width: 280px; max-height: calc(100% - 212px); overflow: auto; }
+.public-session-data { padding: 0 14px 14px; }
+.public-session p { margin: 7px 0; line-height: 1.7; color: #a1b6ad; overflow-wrap: anywhere; font-size: 12px; }
 .public-session strong { font-weight: 500; color: #dbe7e3; }
-.public-session pre { white-space: pre-wrap; font-size: 10px; }
-.public-session details { margin-top: 8px; }
-.public-playback { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-top: 1px solid #c9e3db1a; }
-.public-playback input { flex: 1; min-width: 40px; accent-color: #b0e9d6; }
-.public-playback output { font-size: 12px; min-width: 105px; text-align: right; }
-.public-session-picker { display: flex; align-items: center; gap: 12px; padding: 0 16px 14px; font-size: 12px; }
-.public-session-picker select { flex: 1; min-width: 0; }
+.public-session pre { white-space: pre-wrap; font-size: 10px; max-height: 160px; overflow: auto; }
+.public-session details { margin-top: 12px; }
+.public-session .public-detail-note { margin-top: 16px; padding-top: 12px; border-top: 1px solid #c9e3db1a; font-size: 11px; }
+.public-playback { bottom: 30px; left: 50%; transform: translateX(-50%); width: min(600px, calc(100% - 32px)); padding: 12px 16px; }
+.public-timeline-heading, .public-timeline-track { display: flex; align-items: center; gap: 12px; }
+.public-timeline-heading { justify-content: space-between; font-size: 11px; color: #94a69f; margin-bottom: 10px; }
+.public-timeline-heading select { padding: 2px 6px; }
+.public-histogram-wrap { position: relative; height: 30px; flex: 1; min-width: 40px; }
+.public-histogram { position: absolute; inset: 0; display: flex; align-items: end; gap: 3px; pointer-events: none; }
+.public-histogram span { flex: 1; background: #b0e9d652; border-radius: 2px 2px 0 0; }
+.public-histogram-wrap::after { content: ''; position: absolute; left: var(--progress); top: 0; bottom: 0; width: 1px; background: #b0e9d6; pointer-events: none; }
+.public-playback input { position: absolute; inset: 0; width: 100%; margin: 0; height: 100%; opacity: .01; cursor: pointer; }
+.public-playback input:focus-visible { opacity: 1; }
+.public-playback output { font-size: 11px; text-align: right; min-width: 80px; max-width: 135px; }
+.public-playback p { color: #91afa2; font-size: 10px; margin: 10px 0 0; }
+.public-hints { position: absolute; bottom: 6px; left: 16px; margin: 0; color: #6e8980; font-size: 9px; pointer-events: none; }
+.public-tooltip { position: absolute; padding: 6px 10px; background: #0b141aee; border: 1px solid #c9e3db24; border-radius: 6px; pointer-events: none; font-size: 11px; }
+.public-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .public-viewer .scene-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .public-viewer .scene-label { position: absolute; left: 0; top: 0; max-width: 155px; padding: 5px 8px; font: 10px monospace; color: var(--label-color); opacity: 0; background: #080f1266; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .public-viewer .scene-label.visible { opacity: .55; }
-@media(max-width:600px) { .public-session { position: static; max-width: none; max-height: 180px; border-radius: 0; border-inline: 0; } .public-playback { gap: 8px; padding-inline: 10px; } .public-playback output { min-width: 85px; font-size: 10px; } }
+@media(max-width:760px) {
+  .public-toolbar { left: 10px; top: 10px; }
+  .public-view-controls { right: 10px; top: 10px; }
+  .public-badge, .public-view-controls [data-timeline] { display: none; }
+  .public-viewer button, .public-viewer select { font-size: 11px; padding: 7px; }
+  .public-browser { top: 64px; left: 10px; width: 220px; max-height: calc(100% - 225px); }
+  .public-session { top: 64px; right: 10px; width: min(280px, calc(100% - 20px)); max-height: calc(100% - 225px); }
+  .public-playback { padding: 10px; bottom: 26px; width: calc(100% - 20px); }
+  .public-playback output { min-width: 64px; max-width: 100px; font-size: 10px; }
+}

@@ -8,6 +8,8 @@ import { DEFAULT_PUBLISHING, PUBLIC_FIELDS, publishableGraph, publishingSettings
 import { PublishingClient, preparePublicGraph } from '../server/publishing';
 import { SessionGraphStore } from '../server/store';
 import { blankSession, blankMessage } from '../server/adapters/common';
+import { publicGraphStats, publicSummary } from '@sessiongraph/core/public-stats';
+import { publicGraphThumbnail } from '@sessiongraph/core/public-thumbnail';
 
 const secretSession = (id = 'native-secret') => ({ ...blankSession('opencode', id), title: 'Secret client', directory: '/private/customer/code', projectID: 'private-project', nativeID: id, model: 'openai/gpt-6-astra', created: 1700000000000, tokens: 123, activity: { firstMessageAt: 1700000000100, lastMessageAt: 1700000000900, userMessages: 1, untimedUserMessages: 0 }, coverage: { history: 'complete' as const } });
 
@@ -34,6 +36,41 @@ test('public ancestry is remapped only within the selected graph; unknown usage 
   assert.equal(only.sessions[0].parent, null);
   assert.equal(only.sessions[0].tokens, null);
   assert.equal(only.sessions[0].messages?.count, null);
+});
+
+test('public gallery statistics distinguish hidden, unknown, partial and zero usage', () => {
+  const sessions = [secretSession('a'), { ...secretSession('b'), tokens: null }];
+  const partial = publishableGraph(sessions, DEFAULT_PUBLISHING);
+  assert.deepEqual(publicGraphStats(partial), { sessionCount: 2, tokenCount: 123, tokensPartial: true });
+  assert.match(publicSummary(partial), /partial coverage/);
+  for (const graph of [publishableGraph(sessions, { ...DEFAULT_PUBLISHING, tokens: false }), publishableGraph(sessions.map(s => ({ ...s, tokens: null })), DEFAULT_PUBLISHING)]) {
+    assert.equal(publicGraphStats(graph).tokenCount, null);
+    assert.doesNotMatch(publicSummary(graph), /0 recorded tokens/);
+  }
+  assert.equal(publicGraphStats(publishableGraph([{ ...secretSession(), tokens: 0 }], DEFAULT_PUBLISHING)).tokenCount, 0);
+  assert.equal(publicGraphStats(publishableGraph(sessions.map(s => ({ ...s, tokens: Number.MAX_SAFE_INTEGER })), DEFAULT_PUBLISHING)).tokenCount, null);
+});
+
+test('public filtering preserves anonymous IDs, original groups across harnesses and recorded relationships', () => {
+  const parent = secretSession('a'), child = { ...secretSession('b'), source: 'codex', created: parent.created + 100, parentID: parent.id };
+  const graph = publishableGraph([parent, child], DEFAULT_PUBLISHING);
+  assert.equal(publicGraphLayout(graph).lanes.length, 1);
+  const filtered = publicGraphLayout(graph, new Set([1]));
+  assert.equal(filtered.nodes[0].session.id, '1'); assert.equal(filtered.nodes[0].session.source, 'codex');
+  assert.equal(filtered.edges.length, 0);
+  assert.equal(publicGraphLayout(graph, new Set()).nodes.length, 0);
+});
+
+test('public thumbnails use only validated metadata and remain bounded for large graphs', () => {
+  for (let mask = 0; mask < 64; mask++) {
+    const settings = publishingSettings(Object.fromEntries(Object.keys(PUBLIC_FIELDS).map((key, index) => [key, !!(mask & 1 << index)])));
+    const svg = publicGraphThumbnail(publishableGraph([secretSession()], settings));
+    assert.match(svg, /^<svg/);
+    assert.doesNotMatch(svg, /Secret client|private|native-secret|gpt-6|NaN|Infinity|<script|<image|foreignObject/);
+  }
+  const graph = publishableGraph(Array.from({ length: 2000 }, (_, index) => ({ ...secretSession(String(index)), created: 1700000000000 + index * 1000 })), DEFAULT_PUBLISHING);
+  assert.ok(publicGraphThumbnail(graph).length < 250_000);
+  assert.throws(() => publicGraphThumbnail({ ...graph, secret: '/private' } as any));
 });
 
 test('public validator rejects hidden fields, arbitrary model/harness strings, cycles and nonnumeric usage', () => {

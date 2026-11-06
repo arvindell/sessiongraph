@@ -36,7 +36,7 @@ export interface PublicGraph { version: 1; settings: PublishingSettings; session
 export const PUBLIC_GRAPH_MAX_SESSIONS = 10_000;
 export const PUBLIC_GRAPH_MAX_BYTES = 2_000_000;
 export const PUBLIC_GRAPH_MAX_MESSAGE_TIMES = 100_000;
-export const PUBLIC_GRAPH_DISCLOSURE = 'Always excluded: project and session names, messages, code, paths, source IDs, and costs. Anonymous groups and recorded branch links are included. Your GitHub username identifies this profile. Selected timestamps and usage will be public.';
+export const PUBLIC_GRAPH_DISCLOSURE = 'Always excluded: project and session names, messages, code, paths, source IDs, and costs. Anonymous groups and recorded branch links are included. Your GitHub username identifies this profile. Your published graph will appear in Explore graphs. Selected timestamps and usage will be public.';
 
 // Only recognized public model identifiers; private deployment aliases and URLs stay local.
 const modelPattern = /^(?:gpt-[3-6](?:\.[0-9])?(?:-(?:turbo|mini|nano|pro|codex|astra|instant|thinking|chat|latest|preview|[0-9]{4,8}))*|o[1-4](?:-(?:mini|pro|preview|[0-9]{4,8}))*|claude-(?:(?:sonnet|opus|haiku)-[3-5](?:[.-][0-9])?|[3-5](?:-[0-9])?-(?:sonnet|opus|haiku))(?:-(?:latest|thinking|[0-9]{8}))*|gemini-[1-4](?:\.[0-9])?-(?:pro|flash)(?:-(?:lite|preview|exp|latest|[0-9]{2,4}))*|deepseek-(?:chat|reasoner|v[3-4](?:\.[0-9])?|r1)|grok-[2-5](?:\.[0-9])?(?:-(?:fast|code|reasoning|non-reasoning|[0-9]))*|kimi-k[1-3](?:\.[0-9])?(?:-thinking)?|minimax-m[1-3](?:\.[0-9])?)$/i;
@@ -120,9 +120,9 @@ export function validatePublicGraph(value: unknown): PublicGraph {
   return value as unknown as PublicGraph;
 }
 
-export function publicGraphLayout(value: PublicGraph): Graph {
+export function publicGraphLayout(value: PublicGraph, included?: ReadonlySet<number>): Graph {
   const graph = validatePublicGraph(value);
-  const sessions: Session[] = graph.sessions.map(s => ({
+  const sessions: Session[] = graph.sessions.filter(s => !included || included.has(s.id)).map(s => ({
     id: String(s.id), projectID: String(s.group), title: `Session ${s.id + 1}`, directory: '',
     created: s.timestamps?.created ?? s.id * 3_600_000, updated: s.timestamps?.created ?? s.id * 3_600_000,
     tokens: s.tokens ?? null, cost: null, archived: false, model: s.model ?? '', provider: '', agent: '', source: s.harness ?? undefined,
@@ -130,5 +130,9 @@ export function publicGraphLayout(value: PublicGraph): Graph {
     ...(s.parent === null ? {} : { parentID: String(s.parent) }), ...(s.fork === null ? {} : { forkID: String(s.fork) }),
   }));
   const projects = [...new Set(graph.sessions.map(s => s.group))].map(id => ({ id: String(id), name: `Group ${id + 1}`, directory: '', worktrees: [] }));
-  return makeGraph(sessions, projects);
+  // Anonymous groups already encode the publisher's grouping. A shared harness
+  // field must not split a group that originally spanned several coding agents.
+  const layout = makeGraph(sessions.map(s => ({ ...s, source: undefined })), projects);
+  for (const node of layout.nodes) node.session.source = graph.sessions[Number(node.session.id)].harness ?? undefined;
+  return layout;
 }

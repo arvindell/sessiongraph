@@ -93,7 +93,7 @@ $('#app').innerHTML = `
     <div id="tooltip" class="node-tooltip" hidden></div>
   </main>
   <header class="app-header glass">
-    <a class="brand" href="/" aria-label="SessionGraph home" title="Explore &amp; visualize all your LLM sessions"><img src="/favicon.svg" alt=""/><span>SessionGraph<span class="brand-dot">.</span></span></a>
+    <a class="brand" href="/" aria-label="SessionGraph home" title="Explore &amp; visualize all your LLM sessions"><img src="/brand/mark.svg" alt=""/><span>SessionGraph</span></a>
     <span class="connection" role="status" title="Connecting"><span class="status-dot"></span><span id="connection-label" class="sr-only">Connecting</span></span>
     <span class="toolbar-divider"></span>
     <button class="toolbar-button" id="toggle-explorer" aria-label="Toggle sessions" aria-controls="explorer" aria-expanded="true" title="Sessions">${icon('search')}<span>Sessions</span></button>

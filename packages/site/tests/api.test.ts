@@ -8,6 +8,7 @@ import { handle } from '../server/handler';
 import { digest, randomToken, unseal } from '../server/security';
 import { DEFAULT_PUBLISHING, publishableGraph } from '@sessiongraph/core/public-graph';
 import { blankSession } from '../../../server/adapters/common';
+import { gzipSync } from 'node:zlib';
 
 test('public API authentication, ownership, publication and organization lifecycle', { skip: !process.env.TEST_DATABASE_URL }, async t => {
   const connectionString = process.env.TEST_DATABASE_URL!;
@@ -59,6 +60,32 @@ test('public API authentication, ownership, publication and organization lifecyc
       const updated = (await (await request('profiles/alice')).json()).graph;
       assert.equal('tokens' in updated.sessions[0], false); assert.equal('timestamps' in updated.sessions[0], false); assert.equal('messageTimes' in updated.sessions[0], false);
       await request('publication', 'DELETE', undefined, 'alice'); assert.equal((await request('profiles/alice')).status, 404);
+    });
+    await t.test('gallery pagination and thumbnails expose only current public snapshots and honor disabled fields', async () => {
+      assert.deepEqual(await (await request('graphs')).json(), { graphs: [], nextPage: null });
+      const partial = publishableGraph([{ ...blankSession('opencode', 'secret-a'), tokens: 123 }, { ...blankSession('codex', 'secret-b'), tokens: null }], DEFAULT_PUBLISHING);
+      const hidden = publishableGraph([blankSession('opencode', 'private')], { tokens: false, timestamps: false, messageCounts: false, messageTimestamps: false, model: false, harness: false });
+      await request('publication', 'PUT', { confirmed: true, graph: partial }, 'alice');
+      await request('publication', 'PUT', { confirmed: true, graph: hidden }, 'bob');
+      for (let i = 0; i < 11; i++) {
+        await db.account.create({ data: { id: `gallery-${i}`, username: `gallery-${i}` } });
+        await db.publication.create({ data: { accountId: `gallery-${i}`, graph: gzipSync(JSON.stringify(graph)) } });
+      }
+      const first = await request('graphs'); assert.equal(first.headers.get('cache-control'), 'no-store');
+      const a = await first.json(), b = await (await request(`graphs?page=${a.nextPage}`)).json();
+      assert.equal(a.graphs.length, 12); assert.equal(a.nextPage, 1); assert.equal(b.graphs.length, 1); assert.equal(b.nextPage, null);
+      const rows = [...a.graphs, ...b.graphs]; assert.equal(new Set(rows.map(r => r.username)).size, 13);
+      for (const row of rows) assert.deepEqual(Object.keys(row).sort(), ['sessionCount', 'tokenCount', 'tokensPartial', 'updatedAt', 'username']);
+      assert.equal(rows.find(r => r.username === 'alice').tokenCount, 123); assert.equal(rows.find(r => r.username === 'alice').tokensPartial, true);
+      assert.equal(rows.find(r => r.username === 'bob').tokenCount, null);
+      assert.doesNotMatch(JSON.stringify(rows), /secret-a|secret-b|private|accountId|graph"|hash/);
+      const image = await request('profiles/alice/thumbnail.svg'); assert.equal(image.status, 200); assert.equal(image.headers.get('cache-control'), 'no-store');
+      assert.equal(image.headers.get('content-type'), 'image/svg+xml'); assert.match(await image.text(), /^<svg/);
+      for (const page of ['-1', 'abc', '1.5', '999999']) assert.equal((await request(`graphs?page=${page}`)).status, 400);
+      await request('publication', 'DELETE', undefined, 'alice');
+      assert.equal((await request('profiles/alice/thumbnail.svg')).status, 404);
+      assert.equal((await (await request('graphs')).json()).graphs.some((r: any) => r.username === 'alice'), false);
+      await db.publication.deleteMany(); await db.account.deleteMany({ where: { id: { startsWith: 'gallery-' } } });
     });
     await t.test('desktop exchange requires browser approval, consumes grants once and persists only token hashes', async () => {
       const verifier = randomToken(), challenge = digest(verifier);
