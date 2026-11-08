@@ -112,7 +112,7 @@ export class SessionGraphStore {
       messages.forEach((message, i) => insert.run(s.id, message.id, i, JSON.stringify(message), messageTime(message.time), Number(isUserMessage(message))));
       writeEvents(this.db, s.id, this.db.prepare('SELECT data FROM messages WHERE session_id=? ORDER BY ordinal').iterate(s.id));
       const activity = this.db.prepare(activitySQL).get(s.id);
-      this.db.prepare('UPDATE sessions SET metadata=?, imported_revision=? WHERE id=?').run(JSON.stringify({ ...s, activity }), candidate.revision, s.id);
+      this.db.prepare('UPDATE sessions SET metadata=?, imported_revision=?, locator=? WHERE id=?').run(JSON.stringify({ ...s, activity }), candidate.revision, JSON.stringify(candidate.locator), s.id);
       this.db.prepare('DELETE FROM search_cache WHERE id=?').run(s.id);
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }

@@ -137,7 +137,13 @@ export function localFileAdapter(source: LocalSource): SessionAdapter {
           let candidate = metadata.get(path);
           if (!candidate || candidate.revision !== rev) {
             const history = await load(path, rev, before);
-            if (!history) continue;
+            if (!history) {
+              // An empty authoritative representation still owns its identity:
+              // never fall back to a stale migrated copy of a cleared chat.
+              const nativeID = source.authoritativeIdentity?.(path);
+              if (nativeID) blocked.add(identity(source.id, nativeID));
+              continue;
+            }
             const session = { ...blankSession(source.id, history.nativeID), ...history.session };
             session.id = identity(source.id, history.nativeID); session.nativeID = history.nativeID; session.source = source.id;
             session.directory = text(session.directory); session.projectID = project(source.id, session.directory).id;

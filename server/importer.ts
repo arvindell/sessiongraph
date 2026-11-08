@@ -38,12 +38,14 @@ export class Importer {
         this.status.errors.push(...discovery.warnings);
         for (const project of discovery.projects) this.store.db.prepare('INSERT INTO projects VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(project.id, adapter.id, JSON.stringify(project));
         for (const candidate of seen.values()) {
-          this.store.upsert(candidate);
           const saved = this.store.getSession(candidate.session.id);
           // A failed update or an older inconsistent metadata snapshot must be
           // retried, even if the source has returned to its saved revision.
           const retry = !saved?.coverage?.importedAt || saved.coverage.note?.startsWith('Latest import failed:');
-          if (!retry && saved?.revision === candidate.revision && this.store.revision(candidate.session.id) === candidate.revision) { this.status.unchanged++; continue; }
+          if (!retry && saved?.revision === candidate.revision && this.store.revision(candidate.session.id) === candidate.revision) { this.store.upsert(candidate); this.status.unchanged++; continue; }
+          // New sessions need a pending row. Existing snapshots keep their
+          // metadata and locator until replacement commits with their history.
+          if (!saved) this.store.upsert(candidate);
           try {
             const messages = new Map<string, ImportedMessage>();
             const cursors = new Set<string>();

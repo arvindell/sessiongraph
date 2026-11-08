@@ -155,6 +155,29 @@ test('Copilot Chat preserves saved imports when authoritative logs are corrupt, 
   } finally { store.close(); }
 }));
 
+test('empty authoritative Copilot Chat logs block stale migrated copies without importing drafts', async () => fixture(async root => {
+  const store = new SessionGraphStore(':memory:');
+  try {
+    const current = { ...chat(), customTitle: 'Current log' };
+    const path = await put(root, location('session', 'jsonl'), lines([{ kind: 0, v: current }]), true);
+    await put(root, 'User/globalStorage/emptyWindowChatSessions/session.json', { ...chat(), customTitle: 'Stale copy' });
+    const importer = new Importer(store, [copilotChatAdapter]);
+    importer.start(['copilot-chat']); await importer.settled();
+    const before = store.getSession('copilot-chat:session'), content = store.content('copilot-chat:session');
+    await writeFile(path, lines([{ kind: 0, v: { ...current, requests: [] } }]));
+    const discovery = await copilotChatAdapter.discover();
+    assert.deepEqual(discovery.sessions, []); assert.deepEqual(discovery.warnings, []);
+    assert.deepEqual(discovery.blocked, ['copilot-chat:session']);
+    importer.start(); await importer.settled();
+    assert.equal(importer.status.imported, 0);
+    assert.deepEqual(store.getSession('copilot-chat:session'), before);
+    assert.deepEqual(store.content('copilot-chat:session'), content);
+    await writeFile(path, lines([{ kind: 0, v: { ...current, customTitle: 'Recovered' } }]));
+    importer.start(); await importer.settled();
+    assert.equal(store.getSession('copilot-chat:session')!.title, 'Recovered');
+  } finally { store.close(); }
+}));
+
 test('VS Code log replay rejects unsafe, invalid and unbounded mutation paths', () => {
   const initial = { kind: 0, v: chat() };
   for (const operation of [

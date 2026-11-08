@@ -46,6 +46,36 @@ test('SQLite imports deduplicate native identities and messages; changed history
   } finally { store.close(); await rm(directory, { recursive: true }); }
 });
 
+test('failed imports retain saved metadata and locator until replacement succeeds', async () => {
+  const store = new SessionGraphStore(':memory:');
+  let revision = 'v1', fail = false;
+  const candidate = (): Candidate => ({ session: { ...blankSession('test', 'native', `/${revision}`), title: revision, created: 1, updated: revision === 'v1' ? 1 : 2 }, revision, locator: { path: revision } });
+  const adapter: SessionAdapter = { id: 'test', name: 'Test', description: '', capabilities: { history: true, forks: false, children: false, files: false },
+    async detect() { return true; },
+    async discover() { return { sessions: [candidate()], projects: [], warnings: [] }; },
+    async read() { if (fail) throw new Error('Interrupted'); return { messages: [{ ...blankMessage('m', 1, 'user'), fragments: [{ kind: 'You', text: revision, time: 1 }] }] }; },
+  };
+  try {
+    const importer = new Importer(store, [adapter]);
+    importer.start(['test']); await importer.settled();
+    const saved = store.getSession('test:native')!;
+    revision = 'v2'; fail = true;
+    importer.start(); await importer.settled();
+    const failed = store.getSession('test:native')!;
+    assert.deepEqual({ ...failed, coverage: saved.coverage }, saved);
+    assert.match(failed.coverage!.note!, /Latest import failed/);
+    assert.equal(store.content('test:native').fragments[0].text, 'v1');
+    assert.equal(store.db.prepare('SELECT locator FROM sessions WHERE id=?').get(saved.id)!.locator, JSON.stringify({ path: 'v1' }));
+    fail = false;
+    importer.start(); await importer.settled();
+    assert.equal(store.getSession(saved.id)!.title, 'v2');
+    assert.equal(store.getSession(saved.id)!.directory, '/v2');
+    assert.equal(store.getSession(saved.id)!.revision, 'v2');
+    assert.equal(store.content(saved.id).fragments[0].text, 'v2');
+    assert.equal(store.db.prepare('SELECT locator FROM sessions WHERE id=?').get(saved.id)!.locator, JSON.stringify({ path: 'v2' }));
+  } finally { store.close(); }
+});
+
 test('automatic imports honor persisted opt-out and source choices, discover new history and keep the library lock', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'sessiongraph-auto-')), path = join(directory, 'sessiongraph.sqlite');
   let store = new SessionGraphStore(path);
