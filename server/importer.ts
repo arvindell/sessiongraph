@@ -51,7 +51,7 @@ export class Importer {
           const saved = this.store.getSession(candidate.session.id);
           // A failed update or an older inconsistent metadata snapshot must be
           // retried, even if the source has returned to its saved revision.
-          const retry = !saved?.coverage?.importedAt || saved.coverage.note?.startsWith('Latest import failed:');
+          const retry = !saved?.coverage?.importedAt || saved.coverage.note?.startsWith('Latest import failed:') || !this.store.commitsCurrent(candidate.session.id);
           if (!retry && saved?.revision === candidate.revision && this.store.revision(candidate.session.id) === candidate.revision) { this.status.unchanged++; continue; }
           try {
             const messages = new Map<string, ImportedMessage>();

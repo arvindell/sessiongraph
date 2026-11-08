@@ -273,12 +273,7 @@ test('Codex compressed archives deduplicate by native session identity', async (
   } finally { if (old === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = old; }
 }));
 
-test('usage-only sources expose limitations without fabricating sessions', async () => {
-  for (const id of ['reasonix', 'trae', 'warp', 'lm-studio', 'hindsight']) await fixture(id, async (root, adapter) => {
-    await put(root, 'usage.jsonl', lines({ timestamp: at, total: 9999 }));
-    assert.equal(await adapter.detect(), true); assert.equal(adapter.capabilities.history, false);
-    const d = await adapter.discover(); assert.equal(d.sessions.length, 0); assert.ok(d.warnings.length);
-  });
+test('Antigravity metadata decoding rejects malformed protobuf fields', () => {
   assert.throws(() => protoFields(Uint8Array.from([0x12, 0xff])), /varint/);
   assert.throws(() => protoFields(Uint8Array.from([0x12, 0x20, 0x01])), /length/);
 });

@@ -2,6 +2,7 @@ import { eventFor, eventText, messageEvent } from '../events';
 import { messageTime } from '../activity';
 import type { ImportedMessage } from './types';
 import type { TimelineEvent } from '@sessiongraph/core/timeline';
+import { executionFields } from '../commit-extraction';
 
 /** OpenCode V2 events, obtained only through its authenticated read API. */
 export function opencodeEvents(raw: any, message: ImportedMessage): TimelineEvent[] {
@@ -22,7 +23,7 @@ export function opencodeEvents(raw: any, message: ImportedMessage): TimelineEven
     else if (part.type === 'tool') {
       const state = part.state || {}, endTime = messageTime(part.time?.completed);
       const status = state.status === 'error' ? 'failed' : state.status === 'streaming' ? 'pending' : ['running', 'completed'].includes(state.status) ? state.status : 'unknown';
-      const common = { ...native, callID: part.id, status, endTime };
+      const common = { ...native, callID: part.id, status, endTime, ...executionFields(state.input, state.metadata), partial: Boolean(state.metadata?.truncated) };
       events.push(eventFor(message, `${id}:call`, 'tool_call', part.name || 'Tool call', '', { ...common, ...timing, input: eventText(state.input) }));
       if (['completed', 'error'].includes(state.status)) events.push(eventFor(message, `${id}:result`, 'tool_result', part.name || 'Tool result', '', { ...common, role: 'tool', ...(endTime ? { time: endTime, timeSource: 'recorded' as const } : {}), output: eventText(state.error ?? state.content, 64_000) }));
     } else events.push(eventFor(message, id, 'event', `${part.type || 'Unknown'} content`, 'Unsupported content.', { ...native, ...timing, partial: true }));

@@ -2,7 +2,7 @@
 
 **Explore & visualize all your LLM sessions**
 
-A local-first galaxy of your LLM sessions. Import local agent histories, explore relationships and changed files, search conversations, and fly through their timeline. Core source coverage is listed below; the [extended format matrix](import-coverage.md) covers additional harnesses, metadata-only sources, and detection-only integrations.
+A local-first galaxy of your LLM sessions. Import local agent histories, explore relationships and changed files, search conversations, and fly through their timeline. Core source coverage is listed below; the [extended format matrix](import-coverage.md) covers additional harnesses and metadata-only sources with session identities and dates.
 
 ## Open SessionGraph
 
@@ -73,7 +73,7 @@ Time presets and custom date ranges, source/project/directory filters, the archi
 Onboarding closes automatically after a successful import and library refresh. Import failures remain visible with retry controls.
 
 - Source/native session IDs are the stable identity: importing the same session again updates its existing record. Duplicate source files and repeated message IDs do not create extra sessions/messages.
-- Unchanged source revisions skip history reads. Changed sessions are reread and their normalized messages, timeline events, file evidence, and index version are replaced in one SQLite transaction.
+- Unchanged source revisions skip history reads unless an extraction version requires refresh. Changed sessions are reread and their normalized messages, timeline events, commit links, file evidence, and index version are replaced in one SQLite transaction.
 - Failed or interrupted updates retain the previous saved history. Re-import retries unfinished sessions. Import status reports counts, failures, and coverage limitations.
 - Forks and children remain distinct even if their text overlaps. Different harnesses' sessions are not merged based on matching titles, timestamps, or similar text.
 - Deselecting a source stops future imports; saved sessions remain browsable offline. Missing source files are not treated as a request to erase SessionGraph's local copy.
@@ -128,11 +128,23 @@ These file adapters read stable snapshots bounded to 32 MB combined, 50,000 reco
 - Store reads copy the database and its WAL into a temporary private directory, verify that the source stayed stable, and open only the copy with read-only SQLite. CLI/ACP limits: 20,000 histories, 256 MB per database/WAL, 2 MB per blob, and 64 MB / 50,000 nodes / 16 million text characters per conversation. Legacy Composer permits an 8 GB database/WAL, 32 MB Composer record, 8 MB bubble, and 64 MB / 50,000 bubbles per conversation. At most two legacy/database snapshots are cached; copies are removed on eviction or process exit. Changing or unsupported stores preserve previously saved history.
 - Override discovery with `SESSIONGRAPH_CURSOR_HOME` (the `.cursor` directory) and `SESSIONGRAPH_CURSOR_USER_DATA_DIR` (Cursor's application data directory, containing `User/workspaceStorage`). These are SessionGraph settings. Custom-root histories use saved-context continuation.
 
+## Recorded commit history
+
+Select a session to see **Recorded commits**. Timed commit operations appear as gold markers on its trail; clicking a marker or commit opens the saved tool result and its related request. Untimed actions and actions outside the session's recorded lifetime remain in the list, without invented marker positions. The graph displays up to 2,000 commit markers per selected session; the list is paginated.
+
+Commit extraction runs during import for supported OpenCode, T3 V2, Codex, and Claude Code execution formats. It requires a correlated recorded execution/result, a confirmed creation outcome, and explicit repository context. The operation distinguishes creation, amendment, and cherry-pick. A successful commit followed by a failed push can still qualify; overall process success alone never qualifies. Ambiguous/unsupported syntax, missing results, inherited pre-fork events, and shortened payloads are disclosed as partial. No messages are scanned to read commit history or render commit markers.
+
+The local SQLite `session_commits` table contains `session_id`, `sha`, `repository_path`, `operation`, nullable `occurred_at`, and `evidence_event_id`. It reuses existing tool-event payloads. Paths are recorded Git execution directories, not independently verified repository roots. Short object IDs remain visibly abbreviated and are never expanded by guessing. The per-session `commits` summary stores extraction version, state, count, indexing time, and coverage notes. Unknown/unindexed coverage has a null count. Schema v5 leaves older imports pending until Refresh; missing sources retain their saved history.
+
+Read indexed history with `GET /api/sessiongraph/session/:id/commits?limit=50&cursor=…` or `sessiongraph commits <session-id> --json`. Pages include coverage, revision, evidence IDs, and a revision-bound `nextCursor`. Use the existing events endpoint/command to inspect evidence. Linked T3/provider histories retain their own indices; selecting the T3 thread does not add the provider's commits to its count. Publication remains limited to the existing public graph payload.
+
+See the [harness data matrix](import-coverage.md#imported-data-by-harness) for verified source coverage and current limitations.
+
 ## Local storage and privacy
 
 **Your session content stays on this computer during import, search, and exploration.** No account. No cloud sync. No telemetry. See [Privacy and local data](../PRIVACY.md) for the full network disclosure and ways to verify the behavior.
 
-SessionGraph's own SQLite database stores source selection, the auto-import preference, session metadata, normalized messages and timeline events, file evidence, import revisions, and bounded search checkpoints. New installations use:
+SessionGraph's own SQLite database stores source selection, the auto-import preference, session metadata, normalized messages and timeline events, evidence-linked commit history, file evidence, import revisions, and bounded search checkpoints. New installations use:
 
 - macOS: `~/Library/Application Support/SessionGraph/sessiongraph.sqlite`
 - Linux: `$XDG_DATA_HOME/sessiongraph/sessiongraph.sqlite` (default `~/.local/share/sessiongraph/sessiongraph.sqlite`)

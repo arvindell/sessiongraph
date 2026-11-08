@@ -29,8 +29,8 @@ async function load() {
     document.querySelector('#profile-name')!.textContent = `@${result.username}`;
     summary.textContent = publicSummary(graph);
     loading.hidden = true; host.hidden = false;
-    viewer = createPublicViewer(host, graph, { fullscreen: true });
-    document.querySelector('#profile-info')!.textContent = `Published snapshot · Updated ${new Date(result.updatedAt).toLocaleString()}${graph.settings.timestamps ? '' : ' · Timestamps hidden; positions show session order.'}`;
+    viewer = createPublicViewer(host, graph, { fullscreen: true, sourceIconBase: '/assets/sources' });
+    document.querySelector('#profile-info')!.textContent = `Updated ${new Date(result.updatedAt).toLocaleString()}`;
   } catch (error) { showError(error instanceof SyntaxError ? 'Public graphs are unavailable. Please try again later.' : (error as Error).message); }
   finally { loading.setAttribute('aria-busy', 'false'); }
 }

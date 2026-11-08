@@ -49,6 +49,38 @@ test('CLI help, catalog and docs are discoverable without opening a library or d
 
 async function capture(args: string[]) { let output = ''; await runCli(args, { stdout: s => output += s }); return output; }
 
+test('v5 source retirement clears obsolete configuration, preserves history, and keeps default sync working', async t => {
+  const dir = await directory(t), path = join(dir, 'library.sqlite');
+  let store = new SessionGraphStore(path);
+  try {
+    assert.equal(store.setting('selected'), undefined, 'fresh libraries still need onboarding');
+    const id = save(store, 'retained');
+    const before = store.messages(id), commits = store.commits(id);
+    const retired = ['reasonix', 'trae', 'warp', 'lm-studio', 'hindsight'];
+    store.setting('selected', ['codex', 'fx', ...retired]);
+    store.setting('sourcePaths', { codex: '/saved/codex', fx: '/saved/fx', ...Object.fromEntries(retired.map(source => [source, `/old/${source}`])) });
+    store.setting('viewState', { sourceID: 'warp', days: 30, directory: '/saved/project', includeChildren: false });
+    store.setting('autoImport', false);
+    for (const source of ['codex', 'fx', ...retired]) store.recordSource(source, 'Previous status');
+    store.db.exec('PRAGMA user_version=5'); store.close(); store = new SessionGraphStore(path);
+    assert.deepEqual(store.selected(), ['codex', 'fx']);
+    assert.deepEqual(store.setting('sourcePaths'), { codex: '/saved/codex', fx: '/saved/fx' });
+    assert.deepEqual(store.setting('viewState'), { sourceID: '', days: 30, directory: '/saved/project', includeChildren: false });
+    assert.deepEqual(store.db.prepare('SELECT id FROM sources ORDER BY id').all().map(row => row.id), ['codex', 'fx']);
+    assert.equal(store.autoImportEnabled(), false);
+    assert.deepEqual(store.messages(id), before); assert.deepEqual(store.commits(id), commits);
+    const service = new LibraryService(store, [adapter('codex'), adapter('fx')]);
+    const sync = await service.importSessions();
+    assert.deepEqual(sync.sources, ['codex', 'fx']); assert.equal(sync.failed, 0);
+    await assert.rejects(service.setupSources(['warp']), /Unknown source/);
+    store.setting('viewState', { sourceID: 'codex', days: 7 });
+    store.close(); store = new SessionGraphStore(path);
+    assert.deepEqual(store.setting('viewState'), { sourceID: 'codex', days: 7 }, 'completed migration is not rerun');
+    store.setting('selected', retired); store.db.exec('PRAGMA user_version=5'); store.close(); store = new SessionGraphStore(path);
+    assert.deepEqual(store.selected(), [], 'retired-only selections do not enable other sources');
+  } finally { store.close(); }
+});
+
 test('CLI parser rejects typo commands, unsupported flags, missing values and ambiguous arguments', async () => {
   const invalid = [['soruces'], ['sources', 'delete'], ['sessions', '--limti', '1'], ['sessions', '--limit', '-1'], ['sessions', '--limit', '0'], ['sessions', '--limit', '201'], ['sessions', '--source'], ['search', 'two', 'words'], ['show'], ['doctor', '--source', 'codex'], ['sources', 'setup', '--auto-import', 'maybe'], ['--version', 'sessions']];
   for (const args of invalid) {

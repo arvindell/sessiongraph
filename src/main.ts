@@ -10,6 +10,7 @@ import { LibrarySettingsSaver, type LibrarySettingsPatch } from './library-setti
 import { normalizeViewState, type ViewState } from '@sessiongraph/core/view-state';
 import { playbackTokens } from './playback-tokens';
 import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, playbackDate, playbackSessions, timelineBuckets } from '@sessiongraph/core/playback';
+import { playbackControls } from '@sessiongraph/core/playback-controls';
 import { sourceName, sourceIcon } from '@sessiongraph/core/sources';
 import { sessionMatchesSource } from './session-links';
 import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from '@sessiongraph/core/preferences';
@@ -17,6 +18,7 @@ import { createSettings } from './settings';
 import { InteractionAudio } from './audio';
 import { createEventExplorer } from './event-explorer';
 import { createEventHover } from './event-hover';
+import { showCommitHistory } from './commit-history';
 import { TimelineClient } from './timeline-client';
 import { createDesktopUpdater } from './updater';
 import { createDateRange } from './date-range';
@@ -123,11 +125,8 @@ $('#app').innerHTML = `
   <div class="inspector-stack floating-panel" id="inspector" hidden><aside class="inspector glass" id="session-inspector" aria-label="Session details"></aside></div>
   <div class="timeline-dock floating-panel" id="timeline">
     <div class="playback-share"><button id="share-playback" class="primary-button" disabled>${icon('share-2')}Share SessionGraph</button></div>
-    <section class="timeline-panel glass" aria-label="Timeline controls">
-    <div class="timeline-top"><button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="0" class="active">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button></div>
-    <div class="timeline-track"><button id="play" class="play-button" aria-label="Play timeline">${icon('play')}</button><div class="histogram-wrap"><div id="histogram" class="histogram"></div><input id="scrubber" type="range" min="0" max="1000" value="1000" aria-label="Timeline playback position"/><div class="timeline-cursor" id="timeline-cursor"></div></div><div class="playback-date" id="playback-date">—</div></div>
-    <div class="playback-period" id="playback-period" aria-label="Approximate playback date">—</div>
-    <div class="playback-summary" id="playback-summary" hidden><span><strong id="playback-sessions">0</strong><span>Sessions</span></span><span><strong id="playback-tokens">0</strong><span>Burnt tokens</span></span><small id="playback-token-coverage"></small></div>
+    <section class="timeline-panel glass timeline-controls" aria-label="Timeline controls">
+    ${playbackControls(`<button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="0" class="active">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button>`, { play: 'play', histogram: 'histogram', scrubber: 'scrubber', cursor: 'timeline-cursor', date: 'playback-date', period: 'playback-period', summary: 'playback-summary', sessions: 'playback-sessions', tokens: 'playback-tokens', coverage: 'playback-token-coverage' })}
     </section>
   </div>
   <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div>
@@ -144,15 +143,16 @@ const dateRange = createDateRange($('.custom-dates'), (from, to) => { fromDate =
 const modalVisibility = () => { const open = Boolean(document.querySelector('dialog[open]')); if (open && playing) stopPlayback(); scene?.setSuspended(open); };
 const timelineClient = new TimelineClient();
 const eventHover = createEventHover($('#tooltip'), $('#scene'), timelineClient);
+let disposeCommitHistory: (() => void) | undefined;
 const eventExplorer = createEventExplorer($('#inspector'), timelineClient, { select: (item) => {
   const onMap = item?.sessionID === selectedID ? item : null;
   eventHover.clear(); scene?.selectEvent(onMap?.id || null);
   // A message request started before playback may finish while its panel is hidden.
-  if (onMap && !playing) { playback = 1; updateScrubber(); scene?.focusEvent(onMap); }
+  if (onMap && !playing) { playback = 1; updateScrubber(); scene?.focusEvent(selectedTimeline?.items.find(marker => marker.id === onMap.id) || onMap); }
 } });
 function openEvents(item?: string) {
   const session = data?.sessions.find((s) => s.id === selectedID);
-  if (session) { eventHover.clear(); stopPlayback(); setPanel('inspector', true); eventExplorer.open(session, item, item ? selectedTimeline?.revision : undefined); }
+  if (session) { eventHover.clear(); stopPlayback(); setPanel('inspector', true); eventExplorer.open(session, item, item ? selectedTimeline?.revision : undefined, selectedTimeline?.items.find(marker => marker.id === item)?.kind === 'commit' ? 'tools' : 'messages'); }
 }
 const settings = createSettings({ publishing: openPublishing, change: changePreferences, getArchived: () => includeArchived, changeArchived: (value) => { includeArchived = value; updateFilters(); }, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, getSources: () => imports.sources(), importSources: (ids) => imports.select(ids), resetPanels: () => {
   document.querySelectorAll<HTMLElement>('.floating-panel').forEach((panel) => { panel.removeAttribute('style'); delete panel.dataset.positioned; });
@@ -242,6 +242,7 @@ function showToast(text: string) {
 }
 
 function emptyInspector() {
+  disposeCommitHistory?.();
   setPanel('inspector', false);
   eventExplorer.close(); eventHover.clear(); $('#session-inspector').replaceChildren();
   $('#toggle-inspector').hidden = true;
@@ -271,7 +272,7 @@ async function initializeScene() { try {
       tooltip.style.left = `${Math.min(x + 18, $('#scene').clientWidth - 280)}px`;
       tooltip.style.top = `${Math.max(8, Math.min(y - 32, $('#scene').clientHeight - 110))}px`;
     },
-  });
+  }, { panels: [$('#explorer'), $('#inspector'), $('#timeline')] });
   scene.applyPreferences(preferences);
   if (data) {
     scene.setGraph(graph, true);
@@ -566,6 +567,7 @@ function renderInspector(session: Session, reveal = true) {
       <div class="detail-title"><span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><h2>${escape(session.title)}</h2><span class="detail-date">${timestamp(session.created)}</span></div>
       <div class="detail-actions"><button id="open-session" class="secondary-button">${icon('arrow-up-right')}Open session</button><button id="focus-session" class="icon-button" title="Focus node" aria-label="Focus node">${icon('crosshair')}</button><button id="copy-id" class="icon-button" title="Copy session ID" aria-label="Copy session ID">${icon('copy')}</button></div>
       <section id="message-detail" class="detail-section"></section>
+      <section id="commit-detail" class="detail-section"></section>
       ${session.linkedSessionIDs?.length ? `<section class="detail-section"><div class="section-label">Linked provider history</div><p class="coverage-note">One conversation on the map. Each source keeps its own saved history${session.coverage?.history === 'partial' ? '; the T3 copy is partial' : ''}.</p>${session.linkedSessionIDs.map(id => `<button class="relation" data-history="${escape(id)}">${sourceIcon(id.split(':')[0])}<span><small>Saved provider copy</small><strong>${escape(sourceName(id.split(':')[0]))}</strong></span>${icon('arrow-up-right')}</button>`).join('')}</section>` : ''}
       <div id="file-detail"><section class="detail-section"><div class="section-label">Changed files</div><div class="detail-loading">${icon('loader-circle', 'spinning')}Loading changes…</div></section></div>
       ${relationHTML(session)}
@@ -579,12 +581,16 @@ function renderInspector(session: Session, reveal = true) {
   $('#open-session').addEventListener('click', () => void launcher.open(session));
   $('#copy-id').addEventListener('click', async () => { try { await navigator.clipboard.writeText(session.nativeID || session.id); showToast('Session ID copied'); } catch { showToast(session.nativeID || session.id); } });
   renderTimeline(session);
+  disposeCommitHistory?.();
+  disposeCommitHistory = showCommitHistory($('#commit-detail'), session.id, (id, revision) => {
+    eventHover.clear(); stopPlayback(); eventExplorer.open(session, id, revision, 'tools');
+  });
   refreshIcons();
 }
 
 function renderTimeline(session: Session, timeline?: TimelineMarkers) {
   const notes = timeline ? [
-    `${count(timeline.total)} messages · ${count(timeline.items.length)} on map`,
+    `${count(timeline.total)} messages · ${count(timeline.items.filter(item => item.kind === 'commit').length)} commit markers`,
     timeline.limited ? 'Map limit reached' : '',
     timeline.partial ? 'Partial history' : '',
   ].filter(Boolean) : ['Loading messages…'];

@@ -86,6 +86,12 @@ importers:
 
   packages/core:
     dependencies:
+      '@zag-js/select':
+        specifier: ^1.47.0
+        version: 1.47.0
+      '@zag-js/vanilla':
+        specifier: ^1.47.0
+        version: 1.47.0
       lucide:
         specifier: ^0.468.0
         version: 0.468.0

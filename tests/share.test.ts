@@ -7,6 +7,7 @@ import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, PLAYBACK
 import { SHARE_FORMATS } from '../src/share-files';
 import { switchShareMode } from '../src/share-modes';
 import type { Session } from '@sessiongraph/core/types';
+import { DEFAULT_PUBLISHING, publishableGraph, publicGraphLayout } from '@sessiongraph/core/public-graph';
 
 const session = (id: string, source: string, directory: string, extra: Partial<Session> = {}): Session => ({
   id, nativeID: 'private-native', source, title: 'Secret customer issue', directory, projectID: 'private-project',
@@ -41,6 +42,25 @@ test('aliases stay unique with collisions and libraries larger than the word-pai
   assert.equal(new Set(names).size, names.length);
   assert.ok(names.every(name => /^Project [A-Za-z]+ [A-Za-z]+$/.test(name)));
   assert.notDeepEqual(projectAliases(20, () => 0), projectAliases(20, () => .5));
+});
+
+test('public and video project names match chronological identity, independently of lane size and filtering', () => {
+  const sessions = [
+    session('earliest', 'opencode', '/first', { created: 1000 }),
+    session('second', 'continue', '/second', { created: 2000 }),
+    session('third', 'opencode', '/second', { created: 3000 }),
+    session('fourth', 'codex', '/third', { created: 4000 }),
+  ];
+  const original = makeGraph(sessions, []), video = shareGraph(original);
+  const published = publishableGraph([...sessions].reverse(), DEFAULT_PUBLISHING), full = publicGraphLayout(published);
+  for (const lane of original.lanes) {
+    const publicID = sessions.findIndex(s => s.id === lane.nodes[0].session.id);
+    const publicLane = full.lanes.find(l => l.nodes.some(n => n.session.id === String(publicID)))!;
+    assert.equal(video.lanes[original.lanes.indexOf(lane)].label, publicLane.label);
+    assert.equal(publicGraphLayout(published, new Set([publicID])).lanes[0].label, publicLane.label);
+  }
+  assert.deepEqual(projectAliases(4), projectAliases(4));
+  assert.deepEqual(projectAliases(6).slice(0, 4), projectAliases(4));
 });
 
 test('session counter follows creation and rewind, including unknown usage and all sources', () => {

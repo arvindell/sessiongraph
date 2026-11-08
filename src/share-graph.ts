@@ -1,24 +1,15 @@
 import type { Graph, GraphNode, Session } from '@sessiongraph/core/types';
-
-const adjectives = 'Cosmic Wobbly Disco Sneaky Bouncy Galactic Crispy Dizzy Fuzzy Noodle Groovy Sleepy Spicy Jolly Loopy Squishy Turbo Giggly Velvet Soggy Zippy Fluffy Moonwalking Wiggly Fizzy Snazzy Goofy Jazzy Tiny Chunky Dapper Wacky'.split(' ');
-const nouns = 'Wombat Pickle Pancake Badger Potato Narwhal Noodle Goblin Otter Turnip Hamster Comet Dumpling Goose Biscuit Llama Muffin Squid Raccoon Toaster Waffle Penguin Yeti Pudding Walrus Taco Jellybean Platypus Sloth Cactus Donut Mongoose'.split(' ');
-
-/** Random aliases without collision retries, even with a pathological random source. */
-export function projectAliases(count: number, random = () => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) {
-  const pairs = adjectives.flatMap(adjective => nouns.map(noun => `${adjective} ${noun}`));
-  for (let i = pairs.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1)); [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
-  }
-  return Array.from({ length: count }, (_, index) => {
-    const cycle = Math.floor(index / pairs.length);
-    // Large libraries still get two words and a unique alias.
-    return `Project ${'Mega'.repeat(cycle)}${pairs[index % pairs.length]}`;
-  });
-}
+import { laneKey } from '@sessiongraph/core/layout';
+import { projectAliases } from '@sessiongraph/core/anonymous-projects';
+export { projectAliases } from '@sessiongraph/core/anonymous-projects';
 
 /** Allowlist the export model. No names, paths, titles, native IDs, or source metadata survive. */
 export function shareGraph(graph: Graph): Graph {
   const names = projectAliases(graph.lanes.length);
+  const projectOrder = new Map<string, number>();
+  for (const session of graph.nodes.map(node => node.session).sort((a, b) => a.created - b.created || a.id.localeCompare(b.id))) {
+    const key = laneKey(session); if (!projectOrder.has(key)) projectOrder.set(key, projectOrder.size);
+  }
   const ids = new Map(graph.nodes.map((node, index) => [node.session.id, `session-${index}`]));
   const projects = new Map(graph.lanes.flatMap((lane, index) => lane.nodes.map(node => [node.session.id, `project-${index}`] as const)));
   const nodes: GraphNode[] = graph.nodes.map((node) => {
@@ -39,6 +30,6 @@ export function shareGraph(graph: Graph): Graph {
   return {
     start: graph.start, end: graph.end, timeFrame: graph.timeFrame && { ...graph.timeFrame }, nodes,
     edges: graph.edges.map(edge => ({ from: ids.get(edge.from)!, to: ids.get(edge.to)!, kind: edge.kind })),
-    lanes: graph.lanes.map((lane, index) => ({ key: `project-${index}`, label: names[index], color: lane.color, kind: 'directory', y: lane.y, z: lane.z, nodes: lane.nodes.map(node => byID.get(ids.get(node.session.id)!)!) })),
+    lanes: graph.lanes.map((lane, index) => ({ key: `project-${index}`, label: names[projectOrder.get(lane.key)!], color: lane.color, kind: 'directory', y: lane.y, z: lane.z, nodes: lane.nodes.map(node => byID.get(ids.get(node.session.id)!)!) })),
   };
 }

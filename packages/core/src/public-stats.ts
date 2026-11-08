@@ -13,10 +13,10 @@ export function publicGraphStats(graph: PublicGraph) {
 
 export function publicSummary(graph: PublicGraph) {
   const stats = publicGraphStats(graph), values = [`${stats.sessionCount.toLocaleString()} sessions`];
-  if (graph.settings.tokens) values.push(stats.tokenCount === null ? 'Tokens unavailable' : `${stats.tokenCount.toLocaleString()} recorded tokens${stats.tokensPartial ? ' (partial coverage)' : ''}`);
+  if (graph.settings.tokens) values.push(stats.tokenCount === null ? 'Tokens unknown' : `${stats.tokenCount.toLocaleString()} tokens`);
   if (graph.settings.messageCounts) {
     const known = graph.sessions.filter(s => s.messages?.count != null);
-    values.push(known.length ? `${known.reduce((sum, s) => sum + s.messages!.count!, 0).toLocaleString()} recorded messages${known.length < graph.sessions.length || graph.sessions.some(s => s.messages?.partial) ? ' (partial history)' : ''}` : 'Message counts unavailable');
+    values.push(known.length ? `${known.reduce((sum, s) => sum + s.messages!.count!, 0).toLocaleString()} messages` : 'Messages unknown');
   }
   return values.join(' · ');
 }

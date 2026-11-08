@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes, createHash } from 'node:crypto';
-import { DEFAULT_PUBLISHING, PUBLIC_FIELDS, publishableGraph, publishingSettings, validatePublicGraph, publicGraphLayout } from '@sessiongraph/core/public-graph';
+import { DEFAULT_PUBLISHING, PUBLIC_FIELDS, PUBLIC_GRAPH_MAX_BYTES, PUBLIC_GRAPH_MAX_MESSAGE_TIMES, publishableGraph, publishingSettings, validatePublicGraph, publicGraphLayout } from '@sessiongraph/core/public-graph';
 import { PublishingClient, preparePublicGraph } from '../server/publishing';
 import { SessionGraphStore } from '../server/store';
 import { blankSession, blankMessage } from '../server/adapters/common';
@@ -42,10 +42,11 @@ test('public gallery statistics distinguish hidden, unknown, partial and zero us
   const sessions = [secretSession('a'), { ...secretSession('b'), tokens: null }];
   const partial = publishableGraph(sessions, DEFAULT_PUBLISHING);
   assert.deepEqual(publicGraphStats(partial), { sessionCount: 2, tokenCount: 123, tokensPartial: true });
-  assert.match(publicSummary(partial), /partial coverage/);
+  assert.match(publicSummary(partial), /123 tokens/);
+  assert.doesNotMatch(publicSummary(partial), /partial/i);
   for (const graph of [publishableGraph(sessions, { ...DEFAULT_PUBLISHING, tokens: false }), publishableGraph(sessions.map(s => ({ ...s, tokens: null })), DEFAULT_PUBLISHING)]) {
     assert.equal(publicGraphStats(graph).tokenCount, null);
-    assert.doesNotMatch(publicSummary(graph), /0 recorded tokens/);
+    assert.doesNotMatch(publicSummary(graph), /0 tokens/);
   }
   assert.equal(publicGraphStats(publishableGraph([{ ...secretSession(), tokens: 0 }], DEFAULT_PUBLISHING)).tokenCount, 0);
   assert.equal(publicGraphStats(publishableGraph(sessions.map(s => ({ ...s, tokens: Number.MAX_SAFE_INTEGER })), DEFAULT_PUBLISHING)).tokenCount, null);
@@ -146,6 +147,46 @@ test('publishing queries conversation counts/times without tool content and disc
     assert.throws(() => preparePublicGraph(store, ['missing'], DEFAULT_PUBLISHING));
     assert.throws(() => preparePublicGraph(store, [session.id, session.id], DEFAULT_PUBLISHING));
   } finally { store.close(); }
+});
+
+test('publishing converts native fractional timestamps to integer milliseconds without changing saved history', () => {
+  const store = new SessionGraphStore(':memory:');
+  try {
+    const session = { ...secretSession(), created: 1700000000000.875 };
+    const candidate = { session, revision: '1', locator: {} };
+    const at = session.created + 1.25;
+    store.upsert(candidate);
+    store.replace(candidate, [
+      { ...blankMessage('u', at, 'user'), fragments: [{ kind: 'You', text: 'Private prompt', time: at }] },
+      { ...blankMessage('a', at + .5, 'assistant'), fragments: [{ kind: 'Assistant', text: 'Private reply', time: at + .5 }] },
+      { ...blankMessage('untimed', 0, 'assistant'), fragments: [{ kind: 'Assistant', text: 'Untimed reply', time: 0 }] },
+    ], false);
+    const before = store.getSession(session.id)!;
+    const graph = preparePublicGraph(store, [session.id], DEFAULT_PUBLISHING), published = graph.sessions[0];
+    assert.deepEqual(published.timestamps, { created: Math.trunc(session.created), lastMessageAt: Math.trunc(at + .5) });
+    assert.deepEqual(published.messageTimes, { values: [Math.trunc(at), Math.trunc(at + .5)], limited: false });
+    assert.deepEqual(published.messages, { count: 3, untimed: 1, partial: true }); // Legacy flattened events.
+    assert.deepEqual(validatePublicGraph(JSON.parse(JSON.stringify(graph))), graph);
+    assert.deepEqual(store.getSession(session.id), before);
+    assert.equal(store.db.prepare('SELECT time FROM timeline_items WHERE session_id=? ORDER BY ordinal LIMIT 1').get(session.id)?.time, at);
+    assert.equal(publishableGraph([{ ...session, activity: undefined }], DEFAULT_PUBLISHING).sessions[0].timestamps?.lastMessageAt, null);
+    const invalid = structuredClone(graph); invalid.sessions[0].timestamps!.created += .5;
+    assert.throws(() => validatePublicGraph(invalid), 'the public API still requires integer timestamps');
+  } finally { store.close(); }
+});
+
+test('large public graphs budget message timestamps by bytes while retaining all sessions and message counts', () => {
+  const sessions = Array.from({ length: 4000 }, (_, index) => secretSession(String(index)));
+  const messages = new Map(sessions.map(s => [s.id, { count: 25, untimed: 0, partial: false, times: Array.from({ length: 25 }, (_, i) => s.created + i + .25), timesLimited: false }]));
+  const graph = publishableGraph(sessions, DEFAULT_PUBLISHING, messages);
+  assert.ok(Buffer.byteLength(JSON.stringify(graph)) <= PUBLIC_GRAPH_MAX_BYTES);
+  assert.equal(graph.sessions.length, sessions.length);
+  assert.ok(graph.sessions.every(s => s.messages?.count === 25));
+  assert.ok(graph.sessions.some(s => s.messageTimes!.limited));
+  const included = graph.sessions.reduce((sum, s) => sum + s.messageTimes!.values.length, 0);
+  assert.ok(included > 0 && included < PUBLIC_GRAPH_MAX_MESSAGE_TIMES);
+  assert.deepEqual(validatePublicGraph(JSON.parse(JSON.stringify(graph))), graph);
+  assert.ok([...messages.values()].every(m => m.times.length === 25 && !m.timesLimited));
 });
 
 test('desktop login keeps credentials out of responses; publication requires an exact confirmed preview', async () => {

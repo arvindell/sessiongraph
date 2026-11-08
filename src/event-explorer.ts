@@ -23,7 +23,7 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
   const listeners = new AbortController();
   let pending: AbortController | undefined, session: Pick<Session, 'id' | 'source'> | undefined, page: TimelinePage | undefined;
   let revision: string | undefined;
-  const filter = 'messages';
+  let filter: 'messages' | 'tools' = 'messages';
   let busy = false;
   let prefetch: AbortController | undefined, prefetchTimer: ReturnType<typeof setTimeout> | undefined;
   let last: { item?: string; cursor?: string } = {};
@@ -34,7 +34,7 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
   }
   function render() {
     if (!page) return;
-    $('.event-count').textContent = `${page.total.toLocaleString()} messages${page.partial ? ' · partial coverage' : ''}`;
+    $('.event-count').textContent = `${page.total.toLocaleString()} ${filter === 'tools' ? 'tool events' : 'messages'}${page.partial ? ' · partial coverage' : ''}`;
     renderRows();
     for (const direction of ['previous', 'next'] as const) $<HTMLButtonElement>(`[data-page="${direction}"]`).disabled = !page[`${direction}Cursor`];
     $('.event-coverage').textContent = page.partial ? 'Partial history' : 'Saved locally';
@@ -45,7 +45,11 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
     callbacks.select(item);
     $('.event-content').innerHTML = `<div class="event-detail-heading">${badge(item)}<h3>${escape(item.name)}</h3><p>${time(item.time)}</p></div>
       ${item.partial ? '<p class="event-warning">Partial message</p>' : ''}
-      ${item.text ? `<section class="event-payload"><pre>${escape(item.text)}</pre></section>` : '<p class="event-empty">No message text was recorded.</p>'}
+      ${item.text ? `<section class="event-payload"><pre>${escape(item.text)}</pre></section>` : ''}
+      ${item.input ? `<section class="event-payload"><h4>Input</h4><pre>${escape(item.input)}</pre></section>` : ''}
+      ${item.output ? `<section class="event-payload"><h4>Result</h4><pre>${escape(item.output)}</pre></section>` : ''}
+      ${item.cwd ? `<p>Execution directory: <code>${escape(item.cwd)}</code></p>` : ''}${item.exitCode !== undefined ? `<p>Exit code: ${item.exitCode}</p>` : ''}
+      ${page.related.length ? `<section><h4>Related execution events</h4>${page.related.map(related => `<button class="event-row" data-event="${escape(related.id)}">${escape(related.name)} · ${escape(related.preview)}</button>`).join('')}</section>` : ''}
       <details class="event-provenance"><summary>Source details</summary><dl><dt>Source</dt><dd>${escape(sourceName(session?.source))}</dd><dt>Message ID</dt><dd>${escape(item.messageID)}</dd><dt>Timestamp source</dt><dd>${escape(item.timeSource)}</dd></dl></details>`;
   }
   async function load(options: { item?: string; cursor?: string } = {}) {
@@ -107,11 +111,12 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
       if (!['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) return false;
       event.preventDefault(); step(event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? 'previous' : 'next'); return true;
     },
-    open(value: Pick<Session, 'id' | 'source'>, item?: string, snapshot?: string) {
+    open(value: Pick<Session, 'id' | 'source'>, item?: string, snapshot?: string, category: 'messages' | 'tools' = 'messages') {
       clearTimeout(prefetchTimer); prefetch?.abort();
       const sameSession = session?.id === value.id;
-      session = value; revision = snapshot; page = undefined;
-      $('#event-title').textContent = `${sourceName(value.source)} messages`;
+      session = value; revision = snapshot; page = undefined; filter = category;
+      $('#event-title').textContent = `${sourceName(value.source)} ${filter === 'tools' ? 'execution evidence' : 'messages'}`;
+      $('.event-browser summary').firstChild!.textContent = filter === 'tools' ? 'Browse tool events ' : 'Browse messages ';
       $('.event-list').replaceChildren(); $('.event-content').innerHTML = '<p class="event-empty">Loading saved history…</p>';
       $('.event-coverage').textContent = 'Loading coverage…';
       if (!sameSession) $<HTMLDetailsElement>('.event-browser').open = false;

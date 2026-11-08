@@ -94,6 +94,7 @@ export class LibraryService {
   }
   getMessages(id: string, options: PageOptions = {}) { this.getSession(id); return this.store.messages(id, options); }
   getTimeline(id: string) { this.getSession(id); return this.store.timeline(id); }
+  getCommits(id: string, options: PageOptions = {}) { this.getSession(id); return this.store.commits(id, options); }
   getEvents(id: string, options: Parameters<SessionGraphStore['events']>[1] = {}) { this.getSession(id); return this.store.events(id, options); }
   getFileChanges(id: string, cursor?: string) {
     this.getSession(id);

@@ -1,10 +1,8 @@
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lstat } from 'node:fs/promises';
 import { localFileAdapter, historyFiles, jsonLines, text, time } from './local-files';
 import { sqliteHistoryAdapter } from './sqlite-histories';
 import { envHome, harnessRoots, tokscalePath } from './harness-paths';
-import type { SessionAdapter } from './types';
 
 /** Minimal bounded protobuf wire reader for native trajectory metadata, not conversation payloads. */
 export function protoFields(value: Uint8Array): Map<number, bigint | Uint8Array> {
@@ -60,18 +58,3 @@ export const antigravityCacheAdapter = localFileAdapter({
     return { nativeID: [...ids][0], messages: [], partial: true, session: { created, model: text(rows.find(r => r.modelId)?.modelId) || 'Unknown model' }, note: 'Previously synced Antigravity session identity; placement uses earliest recorded usage date. This cache has no conversation bodies. SessionGraph never runs sync or contacts the language server.' };
   },
 });
-
-/** Account/request aggregates cannot establish native conversation identities. */
-export const usageOnlyAdapters: SessionAdapter[] = [
-  { id: 'reasonix', name: 'Reasonix', roots: () => [envHome('REASONIX_STATE_HOME', '.reasonix', 'stats'), envHome('REASONIX_HOME', '.reasonix', 'stats')], note: 'Request statistics lack conversation identities and text. Reasonix transcript import is not yet supported.' },
-  { id: 'trae', name: 'Trae / Trae Solo', roots: () => [tokscalePath('trae-cache/sessions')], note: 'The Tokscale cache contains account usage, not local conversations.' },
-  { id: 'warp', name: 'Warp / Oz', roots: () => [tokscalePath('warp-cache')], note: 'The Tokscale cache contains aggregate requests and spend, not local conversations.' },
-  { id: 'lm-studio', name: 'LM Studio', roots: () => [envHome('LM_STUDIO_HOME', '.lmstudio', 'server-logs')], note: 'Server logs contain final-response usage, not retained prompts or responses.' },
-  { id: 'hindsight', name: 'Hindsight', roots: () => [envHome('HINDSIGHT_HOME', '.hindsight', 'usage')], note: 'Synced memory-operation usage is not agent conversation history.' },
-].map(source => ({
-  id: source.id, name: source.name, description: `Detection only · ${source.note}`,
-  capabilities: { history: false, forks: false, children: false, files: false },
-  async detect() { for (const p of harnessRoots(source.id, source.roots)()) if ((await lstat(p).catch(() => undefined))?.isDirectory()) return true; return false; },
-  async discover() { return { sessions: [], projects: [], warnings: [source.note] }; },
-  async read() { throw new Error(source.note); },
-}));

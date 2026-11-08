@@ -3,6 +3,7 @@ export interface Session {
   nativeID?: string;
   nativeResume?: boolean;
   revision?: string;
+  commits?: import('./commits').CommitIndex;
   coverage?: { history: 'complete' | 'partial' | 'pending'; note?: string; importedAt?: number };
   id: string;
   title: string;

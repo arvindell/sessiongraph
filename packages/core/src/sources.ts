@@ -59,11 +59,6 @@ const sources: Record<string, { name: string; icon: string }> = {
   antigravity: { name: 'Antigravity', icon: 'antigravity' },
   'antigravity-cli': { name: 'Antigravity CLI', icon: 'antigravity' },
   'antigravity-extension': { name: 'Antigravity IDE Extension', icon: 'antigravity' },
-  reasonix: { name: 'Reasonix', icon: 'reasonix' },
-  trae: { name: 'Trae / Trae Solo', icon: 'trae' },
-  warp: { name: 'Warp / Oz', icon: 'warp' },
-  'lm-studio': { name: 'LM Studio', icon: 'lmstudio' },
-  hindsight: { name: 'Hindsight', icon: 'hindsight' },
 };
 export const sourceName = (id?: string) => sources[id || 'opencode']?.name || id || 'Unknown';
 export const isKnownSource = (id: unknown): id is string => typeof id === 'string' && Object.hasOwn(sources, id);
@@ -72,13 +67,22 @@ export const sourceIcon = (id?: string) => {
   return `<span class="source-icon source-icon-${file}" aria-hidden="true" style="--source-icon:url('/sources/${file}.svg')"></span>`;
 };
 
+/** DOM styling also works on public pages with a self-only style CSP. */
+export function sourceIconElement(id?: string, base = '/sources') {
+  const file = sources[id || '']?.icon || 'generic';
+  const element = document.createElement('span');
+  element.className = `source-icon source-icon-${file}`; element.setAttribute('aria-hidden', 'true');
+  element.style.setProperty('--source-icon', `url('${base}/${file}.svg')`);
+  return element;
+}
+
 export const sortSources = (sources: SourceStatus[]) => [...sources].sort((a, b) => Number(b.selected || b.available || b.sessions > 0) - Number(a.selected || a.available || a.sessions > 0) || a.name.localeCompare(b.name));
 
 const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 export function sourceOption(source: SourceStatus, { checked = source.selected, disabled = false, settings = false } = {}) {
   const status = source.available ? 'Detected' : 'Not detected';
-  const coverage = source.capabilities.history ? '' : source.description.startsWith('Detection only') ? 'Detection only' : 'Metadata only';
+  const coverage = source.capabilities.history ? '' : 'Metadata only';
   const description = [source.description, source.lastImport ? `Last import ${new Date(source.lastImport).toLocaleString()}` : 'Not imported yet', source.error].filter(Boolean).join(' · ');
   return `<label class="import-source" data-source="${escape(source.id)}" title="${escape(description)}"><input ${settings ? 'class="settings-source"' : ''} type="checkbox" value="${escape(source.id)}" aria-label="${escape(source.name)}" aria-description="${escape(`${status}. ${source.sessions.toLocaleString()} saved sessions. ${description}`)}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}/><span class="source-symbol">${sourceIcon(source.id)}</span><span class="source-copy"><strong>${escape(source.name)}</strong><small class="source-meta"><span class="source-detected ${source.available ? 'detected' : ''}">${status}</span><span>${source.sessions.toLocaleString()} saved</span>${coverage ? `<span>${coverage}</span>` : ''}</small>${source.error ? `<small class="source-error">${escape(source.error)}</small>` : ''}</span></label>`;
 }

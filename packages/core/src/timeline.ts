@@ -1,6 +1,6 @@
 /** Harness-neutral event envelope. Unknown native event types use kind=event
  * and retain nativeType. IDs/relationships are scoped to one saved session. */
-export type TimelineKind = 'message' | 'tool_call' | 'tool_result' | 'reasoning' | 'compaction' | 'file_change' | 'error' | 'event';
+export type TimelineKind = 'message' | 'tool_call' | 'tool_result' | 'reasoning' | 'compaction' | 'file_change' | 'error' | 'event' | 'commit';
 export interface TimelineEvent {
   id: string;
   kind: TimelineKind;
@@ -17,6 +17,10 @@ export interface TimelineEvent {
   text: string;
   input?: string;
   output?: string;
+  /** Source-recorded execution context; absent is unknown, never the latest session cwd. */
+  cwd?: string;
+  exitCode?: number;
+  gitCommit?: { sha: string; operation: import('./commits').CommitOperation };
   partial?: boolean;
 }
 export interface TimelineItem extends TimelineEvent { sessionID: string; messageID: string; ordinal: number }
@@ -49,6 +53,7 @@ export interface TimelineMarkers {
   limited: boolean;
   partial: boolean;
   note?: string;
+  commits?: import('./commits').CommitIndex;
 }
-export const timelineColor = (item: Pick<TimelineEvent, 'kind' | 'role'>) => item.kind === 'message' ? item.role === 'user' ? '#b0e9d6' : '#9bbcff' : item.kind.startsWith('tool_') ? '#eac594' : '#d7a1f1';
-export const timelineLabel = (item: Pick<TimelineEvent, 'kind' | 'role'>) => item.kind === 'message' ? item.role === 'user' ? 'You' : item.role === 'assistant' ? 'Assistant' : 'Message' : ({ tool_call: 'Tool call', tool_result: 'Tool result', reasoning: 'Reasoning', compaction: 'Compaction', file_change: 'File change', error: 'Error', event: 'Event' })[item.kind];
+export const timelineColor = (item: Pick<TimelineEvent, 'kind' | 'role'>) => item.kind === 'commit' ? '#ffd580' : item.kind === 'message' ? item.role === 'user' ? '#b0e9d6' : '#9bbcff' : item.kind.startsWith('tool_') ? '#eac594' : '#d7a1f1';
+export const timelineLabel = (item: Pick<TimelineEvent, 'kind' | 'role'>) => item.kind === 'message' ? item.role === 'user' ? 'You' : item.role === 'assistant' ? 'Assistant' : 'Message' : ({ tool_call: 'Tool call', tool_result: 'Tool result', reasoning: 'Reasoning', compaction: 'Compaction', file_change: 'File change', error: 'Error', event: 'Event', commit: 'Commit' })[item.kind];

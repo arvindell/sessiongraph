@@ -5,6 +5,7 @@ import { normalizedEvents } from './events';
 import { randomUUID } from 'node:crypto';
 import type { TimelineFilter, TimelineMarkers, TimelinePage } from '@sessiongraph/core/timeline';
 import type { Session } from '@sessiongraph/core/types';
+import { commitMarkers } from './commit-store';
 
 export const EVENT_SCHEMA = `CREATE TABLE IF NOT EXISTS timeline_items (
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, id TEXT NOT NULL, message_id TEXT NOT NULL,
@@ -55,7 +56,8 @@ export function readEventMarkers(db: DatabaseSync, session: Session): TimelineMa
   // Lazy per-session read, bounded by the saved timeline's import limit. Fetch
   // lightweight summaries, not message bodies, so every timed message gets a dot.
   const rows = db.prepare(`SELECT ${summaryColumns} FROM timeline_items WHERE session_id=? AND (${filters.messages}) AND time>=? AND time<=? ORDER BY time DESC,ordinal DESC`).all(session.id, session.created, end);
-  return { sessionID: session.id, ...coverage(db, session), items: rows.reverse().map(eventSummary), total: Number(totals.total), untimed: Number(totals.untimed), outsideLifetime: Number(totals.outside), limited: Number(totals.total) - Number(totals.untimed) - Number(totals.outside) > rows.length };
+  const commits = commitMarkers(db, session);
+  return { sessionID: session.id, ...coverage(db, session), commits: session.commits, items: [...rows.reverse().map(eventSummary), ...commits].sort((a, b) => a.time! - b.time! || a.ordinal - b.ordinal), total: Number(totals.total), untimed: Number(totals.untimed), outsideLifetime: Number(totals.outside), limited: Number(totals.total) - Number(totals.untimed) - Number(totals.outside) > rows.length || commits.length === 2000 };
 }
 export function readEvents(db: DatabaseSync, session: Session, options: { cursor?: string; item?: string; filter?: string; revision?: string } = {}): TimelinePage {
   const state = coverage(db, session), filter = options.filter || 'all', size = 60;

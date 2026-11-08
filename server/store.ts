@@ -13,6 +13,8 @@ import { normalizePreferences, type Preferences } from '@sessiongraph/core/prefe
 import { normalizeViewState } from '@sessiongraph/core/view-state';
 import { visibleSessions } from '../src/session-links';
 import { fingerprint, pageLimit, pageOffset, nextCursor, type PageOptions } from './library-query';
+import { COMMIT_SCHEMA, writeCommits, readCommits, pendingCommits } from './commit-store';
+import { COMMIT_EXTRACTOR_VERSION } from './commit-extraction';
 
 /** SessionGraph owns this database. No adapter opens or modifies a harness database. */
 export class SessionGraphStore {
@@ -24,7 +26,7 @@ export class SessionGraphStore {
     if (path !== ':memory:') chmodSync(path, 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
-    if (version > 4) throw new Error('This SessionGraph database requires a newer version of the app.');
+    if (version > 6) throw new Error('This SessionGraph database requires a newer version of the app.');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, last_import INTEGER, error TEXT);
@@ -67,6 +69,32 @@ export class SessionGraphStore {
         this.db.exec('PRAGMA user_version=4; COMMIT;');
       } catch (error) { this.db.exec('ROLLBACK'); throw error; }
     }
+    if (version < 5) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        this.db.exec(COMMIT_SCHEMA);
+        // Older imports dropped execution context. Leave them explicitly pending
+        // until a source refresh instead of claiming a complete empty history.
+        this.db.prepare("UPDATE sessions SET metadata=json_set(metadata,'$.commits',json(?))").run(JSON.stringify(pendingCommits()));
+        this.db.exec('PRAGMA user_version=5; COMMIT');
+      } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    }
+    if (version < 6) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        // Retire detection-only integrations without touching saved history.
+        const retired = new Set(['reasonix', 'trae', 'warp', 'lm-studio', 'hindsight']);
+        const selected = this.setting<string[]>('selected');
+        if (selected) this.setting('selected', selected.filter(id => !retired.has(id)));
+        const paths = this.setting<Record<string, string>>('sourcePaths');
+        if (paths) this.setting('sourcePaths', Object.fromEntries(Object.entries(paths).filter(([id]) => !retired.has(id))));
+        const view = this.setting<Record<string, unknown>>('viewState');
+        if (view && typeof view.sourceID === 'string' && retired.has(view.sourceID)) this.setting('viewState', { ...view, sourceID: '' });
+        const remove = this.db.prepare('DELETE FROM sources WHERE id=?');
+        for (const id of retired) remove.run(id);
+        this.db.exec('PRAGMA user_version=6; COMMIT');
+      } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    }
     if (!this.setting('libraryID')) this.setting('libraryID', randomUUID());
     // An interrupted import never exposes staged/half-replaced messages.
   }
@@ -96,24 +124,26 @@ export class SessionGraphStore {
     return row ? JSON.parse(String(row.metadata)) : undefined;
   }
   revision(id: string) { return this.db.prepare('SELECT imported_revision FROM sessions WHERE id=?').get(id)?.imported_revision; }
+  commitsCurrent(id: string) { return this.getSession(id)?.commits?.version === COMMIT_EXTRACTOR_VERSION; }
   upsert(candidate: Candidate) {
     const s = candidate.session, previous = this.getSession(s.id);
     const metadata = { ...s, model: s.model === 'Unknown model' ? previous?.model || s.model : s.model,
       parentID: previous?.parentID && candidate.locator.agent ? previous.parentID : s.parentID,
-      activity: previous?.activity, revision: previous?.revision || '', coverage: previous?.coverage || { history: 'pending' } };
+      activity: previous?.activity, commits: previous?.commits || pendingCommits(), revision: previous?.revision || '', coverage: previous?.coverage || { history: 'pending' } };
     this.db.prepare(`INSERT INTO sessions (id,source,native_id,metadata,locator) VALUES (?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata,locator=excluded.locator`).run(s.id, s.source!, s.nativeID!, JSON.stringify(metadata), JSON.stringify(candidate.locator));
   }
   replace(candidate: Candidate, messages: ImportedMessage[], partial: boolean, note?: string) {
-    const s = { ...candidate.session, revision: candidate.revision, coverage: { history: partial ? 'partial' : 'complete', note, importedAt: Date.now() } };
+    const s: Session = { ...candidate.session, revision: candidate.revision, coverage: { history: partial ? 'partial' : 'complete', note, importedAt: Date.now() } };
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.db.prepare('DELETE FROM messages WHERE session_id=?').run(s.id);
       const insert = this.db.prepare('INSERT INTO messages (session_id,id,ordinal,data,time,is_user) VALUES (?,?,?,?,?,?) ON CONFLICT(session_id,id) DO UPDATE SET ordinal=excluded.ordinal,data=excluded.data,time=excluded.time,is_user=excluded.is_user');
       messages.forEach((message, i) => insert.run(s.id, message.id, i, JSON.stringify(message), messageTime(message.time), Number(isUserMessage(message))));
       writeEvents(this.db, s.id, this.db.prepare('SELECT data FROM messages WHERE session_id=? ORDER BY ordinal').iterate(s.id));
+      const commits = writeCommits(this.db, s);
       const activity = this.db.prepare(activitySQL).get(s.id);
-      this.db.prepare('UPDATE sessions SET metadata=?, imported_revision=? WHERE id=?').run(JSON.stringify({ ...s, activity }), candidate.revision, s.id);
+      this.db.prepare('UPDATE sessions SET metadata=?, imported_revision=? WHERE id=?').run(JSON.stringify({ ...s, activity, commits }), candidate.revision, s.id);
       this.db.prepare('DELETE FROM search_cache WHERE id=?').run(s.id);
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
@@ -178,6 +208,7 @@ export class SessionGraphStore {
     return this.readSnapshot(id, (session) => readEvents(this.db, session, options));
   }
   eventMarkers(id: string) { return this.readSnapshot(id, (session) => readEventMarkers(this.db, session)); }
+  commits(id: string, options: PageOptions = {}) { return this.readSnapshot(id, session => readCommits(this.db, session, options)); }
   private readSnapshot<T>(id: string, read: (session: Session) => T): T {
     this.db.exec('BEGIN');
     try {

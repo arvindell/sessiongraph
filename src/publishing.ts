@@ -1,5 +1,5 @@
 import { DEFAULT_PUBLISHING, PUBLIC_FIELDS, PUBLIC_GRAPH_DISCLOSURE, publishingSettings, type PublicGraph, type PublishingSettings } from '@sessiongraph/core/public-graph';
-import { createPublicViewer, publicSummary } from '@sessiongraph/core/public-viewer';
+import { createPublicViewer } from '@sessiongraph/core/public-viewer';
 import { isTauri } from '@tauri-apps/api/core';
 import { externalWebUrl, openDesktopUrl } from './external-links';
 import { createElement, Github } from 'lucide';
@@ -7,16 +7,15 @@ import { shareHeader } from './share-modes';
 
 export function createPublishing(visibility: () => void, exportAnimation: () => void) {
   const dialog = document.createElement('dialog'); dialog.className = 'publishing-dialog'; dialog.setAttribute('aria-labelledby', 'publishing-title');
-  dialog.innerHTML = `<div class="publishing-account"><span data-account>Not signed in</span><button class="secondary-button" data-login><span data-login-label>Sign in with GitHub</span></button><button class="text-button" data-logout hidden>Sign out</button><a class="secondary-button" href="https://sessiongraph.ai/account" target="_blank" rel="noopener noreferrer" data-manage hidden>Account &amp; organizations ↗</a></div>
+  dialog.innerHTML = `<div class="publishing-account"><span data-account>Not signed in</span><button class="secondary-button" data-login><span data-login-label>Sign in with GitHub</span></button><a class="text-button" href="https://sessiongraph.ai/account" target="_blank" rel="noopener noreferrer" data-manage hidden>Account ↗</a><button class="text-button" data-logout hidden>Sign out</button></div>
     <div class="publishing-connect" hidden><p>Confirm this code in your browser: <strong data-code></strong></p><a class="secondary-button" data-connect target="_blank" rel="noopener noreferrer">Continue in browser ↗</a><button class="text-button" data-check>Check login</button><label class="publishing-browser-link">Browser link<input type="text" data-connect-url readonly aria-label="Browser sign-in link"></label><button class="text-button" data-copy-link>Copy browser link</button></div>
+    <p class="publishing-disclosure"></p>
+    <div class="publishing-options"><span class="publishing-scope"></span><button class="text-button" data-json aria-pressed="false" aria-controls="publishing-json" disabled>View JSON</button></div>
+    <details class="publishing-settings"><summary>Shared details</summary><fieldset class="publishing-fields" aria-label="Shared details">${Object.entries(PUBLIC_FIELDS).map(([key, label]) => `<label><input type="checkbox" data-field="${key}"><span>${label}</span></label>`).join('')}</fieldset></details>
+    <div class="publishing-error" hidden><p role="alert" data-preview-error></p><button class="secondary-button" data-retry>Retry preview</button></div>
+    <div class="publishing-preview"></div><pre class="publishing-json" id="publishing-json" tabindex="0" aria-label="Public graph JSON" hidden></pre>
     <p role="status" class="publishing-status"></p>
-    <p class="publishing-disclosure"></p><p class="publishing-scope"></p>
-    <fieldset class="publishing-fields"><legend>Publishing settings</legend>${Object.entries(PUBLIC_FIELDS).map(([key, label]) => `<label><input type="checkbox" data-field="${key}"><span>${label}</span></label>`).join('')}</fieldset>
-    <p class="publishing-note">Message timestamps require session timestamps and message counts. Models show the last recorded public model ID; private aliases stay hidden. Changes apply when you publish again.</p>
-    <div class="publishing-preview"></div><p class="publishing-summary"></p>
-    <label class="publishing-confirm"><input type="checkbox" data-confirm><span>I reviewed this preview and want to make the selected data public under my GitHub username.</span></label>
-    <footer><button class="text-button" data-json disabled>View exact JSON</button><button class="secondary-button" data-remove hidden>Unpublish</button><button class="primary-button" data-publish disabled>Publish graph</button></footer>
-    <a class="publishing-link" target="_blank" rel="noopener noreferrer" hidden></a><pre class="publishing-json" hidden></pre>`;
+    <footer><a class="publishing-link text-button" target="_blank" rel="noopener noreferrer" hidden>View profile ↗</a><button class="text-button" data-remove hidden>Unpublish</button><button class="primary-button" data-publish disabled>Publish graph</button></footer>`;
   document.body.append(dialog);
   dialog.prepend(shareHeader(dialog, 'publish', () => exportAnimation()));
   const $ = <T extends HTMLElement>(selector: string) => dialog.querySelector<T>(selector)!;
@@ -24,7 +23,7 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
   const github = createElement(Github); github.setAttribute('aria-hidden', 'true'); $('[data-login]').prepend(github);
   let ids: string[] = [], settings = { ...DEFAULT_PUBLISHING }, viewer: ReturnType<typeof createPublicViewer> | undefined;
   let preview: { id: string; graph: PublicGraph } | undefined, username: string | null = null, published = false;
-  let generation = 0, busy = false, timer = 0, pollBusy = false;
+  let generation = 0, busy = false, preparing = false, submitted = false, timer = 0, pollBusy = false;
   let loginBusy = false, loginAttempt = 0, connectionUrl: string | undefined;
   const notice = (text: string) => { $('.publishing-status').textContent = text; };
   const api = async (action: string, method = 'GET', body?: unknown) => {
@@ -32,8 +31,9 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
     const data = await response.json(); if (!response.ok) throw Object.assign(new Error(data.error || 'Please try again.'), { status: response.status }); return data;
   };
   function controls() {
-    $<HTMLButtonElement>('[data-publish]').disabled = busy || !preview || !username || !$<HTMLInputElement>('[data-confirm]').checked;
-    $<HTMLButtonElement>('[data-publish]').textContent = published ? 'Update public graph' : 'Publish graph';
+    $<HTMLButtonElement>('[data-publish]').disabled = busy || !preview || !username || submitted;
+    $<HTMLButtonElement>('[data-publish]').textContent = preparing ? 'Preparing…' : submitted ? 'Published' : published ? 'Update graph' : 'Publish graph';
+    $<HTMLButtonElement>('[data-publish]').title = !username ? 'Sign in to publish' : !preview ? 'Waiting for a preview' : '';
     $<HTMLButtonElement>('[data-remove]').hidden = !published;
     $<HTMLButtonElement>('[data-remove]').disabled = busy;
     $<HTMLButtonElement>('[data-login]').hidden = !!username || !!connectionUrl;
@@ -43,29 +43,38 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
     $<HTMLButtonElement>('[data-logout]').hidden = !username;
     $<HTMLButtonElement>('[data-logout]').disabled = busy;
     $('[data-manage]').hidden = !username;
-    $('[data-account]').textContent = username ? `Signed in as @${username}` : connectionUrl ? 'Waiting for browser approval' : 'Not signed in';
+    $('[data-account]').textContent = username ? `@${username}` : connectionUrl ? 'Waiting for browser approval' : 'Not signed in';
     $<HTMLButtonElement>('[data-json]').disabled = !preview;
+    $<HTMLButtonElement>('[data-retry]').disabled = busy || preparing;
     for (const input of dialog.querySelectorAll<HTMLInputElement>('[data-field]')) {
       const key = input.dataset.field as keyof PublishingSettings; input.checked = settings[key];
       input.disabled = busy || (key === 'messageTimestamps' && (!settings.timestamps || !settings.messageCounts));
+      input.closest('label')!.title = key === 'messageTimestamps' && input.disabled && !busy ? 'Enable session times and message counts first' : '';
     }
     const link = $<HTMLAnchorElement>('.publishing-link'); link.hidden = !username || !published;
-    if (username) { link.href = `https://sessiongraph.ai/@${username}`; link.textContent = link.href; }
+    if (username) link.href = `https://sessiongraph.ai/@${username}`;
+  }
+  function showJSON(show: boolean) {
+    $('.publishing-json').hidden = !show; $('.publishing-preview').hidden = show;
+    $('[data-json]').textContent = show ? 'Back to graph' : 'View JSON';
+    $('[data-json]').setAttribute('aria-pressed', String(show));
+    if (show) { $('.publishing-json').textContent = preview ? JSON.stringify(preview.graph, null, 2) : ''; $('.publishing-json').focus(); }
+  }
+  function previewError(text: string) {
+    $('.publishing-error').hidden = !text; $('[data-preview-error]').textContent = text;
   }
   async function refreshPreview() {
-    const request = ++generation; preview = undefined; $<HTMLInputElement>('[data-confirm]').checked = false; viewer?.dispose(); viewer = undefined;
-    $('.publishing-json').hidden = true; $('.publishing-json').textContent = ''; controls();
-    if (!ids.length) { $('.publishing-preview').textContent = 'Select sessions on the map to preview a public graph.'; return; }
-    $('.publishing-preview').textContent = 'Preparing local preview…';
+    const request = ++generation; preview = undefined; submitted = false; viewer?.dispose(); viewer = undefined;
+    preparing = !!ids.length; previewError(''); showJSON(false); $('.publishing-json').textContent = ''; controls();
+    if (!ids.length) { $('.publishing-preview').textContent = 'Choose sessions on the map to share.'; return; }
+    $('.publishing-preview').textContent = 'Preparing preview…';
     try {
       const result = await api('preview', 'POST', { ids, settings });
       if (!dialog.open || request !== generation) return;
       preview = result; settings = result.graph.settings;
       viewer = createPublicViewer($('.publishing-preview'), result.graph);
-      $('.publishing-summary').textContent = publicSummary(result.graph);
-      if (!loginBusy && !connectionUrl) notice('Preview prepared locally. Nothing has been uploaded.');
-    } catch (error) { if (request === generation) { $('.publishing-preview').textContent = ''; notice((error as Error).message); } }
-    controls();
+    } catch (error) { if (dialog.open && request === generation) { $('.publishing-preview').textContent = ''; previewError((error as Error).message); } }
+    finally { if (request === generation) { preparing = false; controls(); } }
   }
   async function refreshAccount() {
     const attempt = loginAttempt;
@@ -85,7 +94,7 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
       if (result.username) {
         window.clearInterval(timer); timer = 0; connectionUrl = undefined; $('.publishing-connect').hidden = true;
         username = result.username; controls();
-        await refreshAccount(); if (dialog.open && attempt === loginAttempt) notice('Signed in. Review the preview before publishing.');
+        await refreshAccount(); if (dialog.open && attempt === loginAttempt) notice('Signed in.');
       }
     } catch (error) {
       if (!dialog.open || attempt !== loginAttempt) return;
@@ -146,28 +155,31 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
   $<HTMLButtonElement>('[data-check]').onclick = () => void poll();
   $<HTMLButtonElement>('[data-logout]').onclick = async () => {
     busy = true; controls();
-    try { await api('logout', 'POST', {}); username = null; published = false; preview = undefined; notice('Signed out. Your published graph stays online until you unpublish it.'); }
+    try { await api('logout', 'POST', {}); username = null; published = false; notice('Signed out.'); await refreshPreview(); }
     catch (error) { notice((error as Error).message); }
     finally { busy = false; controls(); }
   };
   for (const input of dialog.querySelectorAll<HTMLInputElement>('[data-field]')) input.onchange = () => {
-    settings = publishingSettings({ ...settings, [input.dataset.field!]: input.checked }); void refreshPreview();
+    settings = publishingSettings({ ...settings, [input.dataset.field!]: input.checked }); notice(''); void refreshPreview();
   };
-  $<HTMLInputElement>('[data-confirm]').onchange = controls;
+  $<HTMLButtonElement>('[data-retry]').onclick = () => { notice(''); void refreshPreview(); };
   $<HTMLButtonElement>('[data-publish]').onclick = async () => {
-    if (!preview || !$<HTMLInputElement>('[data-confirm]').checked) return;
+    if (busy || !preview || !username || submitted) return;
     busy = true; controls(); notice('Publishing…');
-    try { await api('publish', 'POST', { id: preview.id, confirmed: true }); published = true; preview = undefined; $<HTMLInputElement>('[data-confirm]').checked = false; notice('Published. Future imports stay local. Publish again to update this snapshot.'); }
-    catch (error) { notice((error as Error).message); }
+    try { await api('publish', 'POST', { id: preview.id, confirmed: true }); published = true; submitted = true; previewError(''); notice('Published.'); }
+    catch (error) {
+      notice(''); previewError((error as Error).message);
+      if ((error as { status?: number }).status === 401) { username = null; published = false; }
+    }
     finally { busy = false; controls(); }
   };
   $<HTMLButtonElement>('[data-remove]').onclick = async () => {
     busy = true; controls();
-    try { await api('unpublish', 'POST', {}); published = false; notice('Unpublished. Your public graph has been removed.'); }
+    try { await api('unpublish', 'POST', {}); published = false; notice('Unpublished.'); await refreshPreview(); }
     catch (error) { notice((error as Error).message); }
     finally { busy = false; controls(); }
   };
-  $<HTMLButtonElement>('[data-json]').onclick = () => { const pre = $('.publishing-json'); pre.hidden = !pre.hidden; pre.textContent = preview ? JSON.stringify(preview.graph, null, 2) : ''; };
+  $<HTMLButtonElement>('[data-json]').onclick = () => { if (preview) showJSON($('.publishing-json').hidden); };
   dialog.addEventListener('close', () => {
     if (dialog.open) return;
     generation++; loginAttempt++; loginBusy = false; window.clearInterval(timer); timer = 0;
@@ -177,9 +189,10 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
     async open(sessionIDs: string[]) {
       if (dialog.open) return;
       generation++; loginAttempt++; window.clearInterval(timer); timer = 0; viewer?.dispose(); viewer = undefined;
-      ids = [...sessionIDs]; username = null; published = false; preview = undefined; loginBusy = false; notice('');
+      ids = [...sessionIDs]; username = null; published = false; preview = undefined; submitted = false; preparing = true; loginBusy = false; notice(''); previewError(''); showJSON(false);
+      $('.publishing-preview').textContent = 'Preparing preview…';
       $('.publishing-connect').hidden = !connectionUrl;
-      $('.publishing-scope').textContent = `${ids.length.toLocaleString()} sessions in the current filtered view. Change filters on the map to choose what you publish.`;
+      $('.publishing-scope').textContent = `${ids.length.toLocaleString()} sessions selected`;
       dialog.showModal(); visibility(); controls();
       const attempt = loginAttempt;
       const account = refreshAccount().then(() => {
@@ -190,7 +203,7 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
         const saved = await api('settings');
         if (!dialog.open || request !== generation) return;
         settings = publishingSettings(saved); await refreshPreview();
-      } catch (error) { if (dialog.open && request === generation) notice((error as Error).message); }
+      } catch (error) { if (dialog.open && request === generation) { preparing = false; previewError((error as Error).message); controls(); } }
       await account;
     },
     dispose() { generation++; loginAttempt++; window.clearInterval(timer); viewer?.dispose(); viewer = undefined; dialog.close(); dialog.remove(); },

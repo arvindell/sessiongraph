@@ -1,10 +1,11 @@
 import { laneKey, makeGraph } from './layout.ts';
 import { isKnownSource } from './sources.ts';
+import { projectAliases } from './anonymous-projects.ts';
 import type { Graph, Session } from './types';
 
 export const PUBLIC_FIELDS = {
-  tokens: 'Token counts', timestamps: 'Session timestamps', messageCounts: 'Message counts',
-  messageTimestamps: 'Message timestamps', model: 'Model used', harness: 'Harness used',
+  tokens: 'Tokens', timestamps: 'Session times', messageCounts: 'Message counts',
+  messageTimestamps: 'Message times', model: 'Models', harness: 'Apps',
 } as const;
 export type PublishingSettings = Record<keyof typeof PUBLIC_FIELDS, boolean>;
 export const DEFAULT_PUBLISHING: PublishingSettings = { tokens: true, timestamps: true, messageCounts: true, messageTimestamps: true, model: true, harness: true };
@@ -36,7 +37,7 @@ export interface PublicGraph { version: 1; settings: PublishingSettings; session
 export const PUBLIC_GRAPH_MAX_SESSIONS = 10_000;
 export const PUBLIC_GRAPH_MAX_BYTES = 2_000_000;
 export const PUBLIC_GRAPH_MAX_MESSAGE_TIMES = 100_000;
-export const PUBLIC_GRAPH_DISCLOSURE = 'Always excluded: project and session names, messages, code, paths, source IDs, and costs. Anonymous groups and recorded branch links are included. Your GitHub username identifies this profile. Your published graph will appear in Explore graphs. Selected timestamps and usage will be public.';
+export const PUBLIC_GRAPH_DISCLOSURE = 'Visible on your profile and in Explore. Names, messages, code, paths, and costs stay private.';
 
 // Only recognized public model identifiers; private deployment aliases and URLs stay local.
 const modelPattern = /^(?:gpt-[3-6](?:\.[0-9])?(?:-(?:turbo|mini|nano|pro|codex|astra|instant|thinking|chat|latest|preview|[0-9]{4,8}))*|o[1-4](?:-(?:mini|pro|preview|[0-9]{4,8}))*|claude-(?:(?:sonnet|opus|haiku)-[3-5](?:[.-][0-9])?|[3-5](?:-[0-9])?-(?:sonnet|opus|haiku))(?:-(?:latest|thinking|[0-9]{8}))*|gemini-[1-4](?:\.[0-9])?-(?:pro|flash)(?:-(?:lite|preview|exp|latest|[0-9]{2,4}))*|deepseek-(?:chat|reasoner|v[3-4](?:\.[0-9])?|r1)|grok-[2-5](?:\.[0-9])?(?:-(?:fast|code|reasoning|non-reasoning|[0-9]))*|kimi-k[1-3](?:\.[0-9])?(?:-thinking)?|minimax-m[1-3](?:\.[0-9])?)$/i;
@@ -51,7 +52,7 @@ export function publishableGraph(sessions: readonly Session[], settings: Publish
   const ordered = [...sessions].sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
   const ids = new Map(ordered.map((session, index) => [session.id, index]));
   const groups = new Map<string, number>();
-  return validatePublicGraph({ version: 1, settings: fields, sessions: ordered.map(session => {
+  const graph: PublicGraph = { version: 1, settings: fields, sessions: ordered.map(session => {
     const key = laneKey(session);
     if (!groups.has(key)) groups.set(key, groups.size);
     const result: PublicSession = {
@@ -59,15 +60,33 @@ export function publishableGraph(sessions: readonly Session[], settings: Publish
       parent: session.parentID ? ids.get(session.parentID) ?? null : null,
       fork: session.forkID ? ids.get(session.forkID) ?? null : null,
     };
-    if (fields.timestamps) result.timestamps = { created: session.created, lastMessageAt: session.activity?.lastMessageAt ?? null };
+    // Native clocks (including SQLite seconds) can retain sub-millisecond precision.
+    // The public wire format uses integer milliseconds, just like JavaScript Dates.
+    if (fields.timestamps) result.timestamps = { created: Math.trunc(session.created), lastMessageAt: session.activity?.lastMessageAt == null ? null : Math.trunc(session.activity.lastMessageAt) };
     if (fields.tokens) result.tokens = session.tokens;
     const stats = messages.get(session.id);
     if (fields.messageCounts) result.messages = { count: stats?.count ?? null, untimed: stats?.untimed ?? null, partial: stats?.partial ?? true };
-    if (fields.messageTimestamps) result.messageTimes = { values: stats?.times ?? [], limited: stats?.timesLimited ?? true };
+    if (fields.messageTimestamps) result.messageTimes = { values: [], limited: stats?.timesLimited ?? true };
     if (fields.model) result.model = publicModel(session.model);
     if (fields.harness) result.harness = isKnownSource(session.source) ? session.source! : null;
     return result;
-  }) });
+  }) };
+  if (fields.messageTimestamps) {
+    // Reserve the metadata first. A count-only bound can still exceed the byte
+    // limit on larger libraries; timestamp omissions remain explicit on the wire.
+    let bytes = PUBLIC_GRAPH_MAX_BYTES - new TextEncoder().encode(JSON.stringify(graph)).length;
+    let remaining = PUBLIC_GRAPH_MAX_MESSAGE_TIMES;
+    for (let index = 0; index < ordered.length; index++) {
+      const times = messages.get(ordered[index].id)?.times ?? [], output = graph.sessions[index].messageTimes!;
+      for (const native of times) {
+        const time = Math.trunc(native), size = String(time).length + (output.values.length ? 1 : 0);
+        if (!remaining || output.values.length === 2000 || size > bytes) break;
+        output.values.push(time); bytes -= size; remaining--;
+      }
+      if (output.values.length < times.length) output.limited = true;
+    }
+  }
+  return validatePublicGraph(graph);
 }
 
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -129,7 +148,8 @@ export function publicGraphLayout(value: PublicGraph, included?: ReadonlySet<num
     activity: { firstMessageAt: null, lastMessageAt: s.timestamps?.lastMessageAt ?? null, userMessages: 0, untimedUserMessages: 0 },
     ...(s.parent === null ? {} : { parentID: String(s.parent) }), ...(s.fork === null ? {} : { forkID: String(s.fork) }),
   }));
-  const projects = [...new Set(graph.sessions.map(s => s.group))].map(id => ({ id: String(id), name: `Group ${id + 1}`, directory: '', worktrees: [] }));
+  const names = projectAliases(Math.max(...graph.sessions.map(s => s.group)) + 1);
+  const projects = [...new Set(graph.sessions.map(s => s.group))].map(id => ({ id: String(id), name: names[id], directory: '', worktrees: [] }));
   // Anonymous groups already encode the publisher's grouping. A shared harness
   // field must not split a group that originally spanned several coding agents.
   const layout = makeGraph(sessions.map(s => ({ ...s, source: undefined })), projects);

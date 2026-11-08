@@ -24,7 +24,7 @@ function card(entry: Entry) {
   const stats = document.createElement('p'); stats.className = 'graph-card-stats';
   const sessions = document.createElement('span'); sessions.textContent = `${entry.sessionCount.toLocaleString()} sessions`; stats.append(sessions);
   if (entry.tokenCount !== null) {
-    const tokens = document.createElement('span'); tokens.textContent = `${compact.format(entry.tokenCount)} tokens${entry.tokensPartial ? ' · partial' : ''}`;
+    const tokens = document.createElement('span'); tokens.textContent = `${compact.format(entry.tokenCount)} tokens`;
     tokens.title = `${entry.tokenCount.toLocaleString()} recorded tokens${entry.tokensPartial ? '; some sessions have unknown usage' : ''}`; stats.append(tokens);
   }
   const date = document.createElement('p'); date.className = 'graph-card-date'; date.textContent = `Updated ${new Date(entry.updatedAt).toLocaleDateString()}`;

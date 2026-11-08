@@ -71,7 +71,7 @@ npx sessiongraph --browser
 
 Import is read-only. Saved sessions remain available when a harness is offline. [Coverage and limitations →](docs/guide.md#source-coverage)
 
-Additional sources include OpenClaw, Prime Agent, Oh My Pi, Senpi, Kimchi, Gajae, Hermes, Amp, Droid, Codebuff/Freebuff, Kimi, Grok, Jcode, Cherry Studio, Command Code, ZCode, CodeBuddy, WorkBuddy, Proma, DeepSeek Harness, Aside, Vibe, Goose, Zed, Devin CLI/Desktop, Crush, Octofriend, MiMo Code/Desktop, Unsloth, and Kiro/Mux. Junie, Muse, Augment, and OpenCodeReview have partial event coverage. Fx and Antigravity expose metadata only. Usage-only integrations are labeled **Detection only**; they do not create conversations. See the [format matrix](docs/import-coverage.md) for paths and remaining gaps.
+Additional sources include OpenClaw, Prime Agent, Oh My Pi, Senpi, Kimchi, Gajae, Hermes, Amp, Droid, Codebuff/Freebuff, Kimi, Grok, Jcode, Cherry Studio, Command Code, ZCode, CodeBuddy, WorkBuddy, Proma, DeepSeek Harness, Aside, Vibe, Goose, Zed, Devin CLI/Desktop, Crush, Octofriend, MiMo Code/Desktop, Unsloth, and Kiro/Mux. Junie, Muse, Augment, and OpenCodeReview have partial event coverage. Fx and Antigravity expose session metadata and dates only. Sources that cannot provide session identities and dates are excluded. See the [format matrix](docs/import-coverage.md) for paths and remaining gaps.
 
 Choose harnesses in **Settings → Sources** or **Manage sources** next to the source filter. **Auto-import is on by default**: SessionGraph checks for new and changed sessions on startup, when you return, and every minute while visible. Turn it off in **Settings → Sources → Auto-import sessions**. **Refresh sessions** also works manually.
 

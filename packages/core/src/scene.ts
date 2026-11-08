@@ -10,6 +10,7 @@ import { cometTrails } from './comet-trails';
 import { ForkLinks } from './fork-links';
 import { orbArrivals } from './orb-arrivals';
 import { overviewTurn } from './playback';
+import { focusArea } from './focus-area';
 import { spiralPosition, spiralTangent } from './spiral';
 import { createNodeMaterial, nodeColor, nodeEmphasisShader } from './node-appearance';
 import { DEFAULT_PREFERENCES, motionEnabled, type Preferences } from './preferences';
@@ -130,7 +131,7 @@ export class TimelineScene {
     onPlaybackInterrupt: () => void;
     onEvent: (id: string) => void;
     onEventHover: (item: TimelineSummary | null, count: number, x: number, y: number) => void;
-  }, private options: { manual?: boolean } = {}) {
+  }, private options: { manual?: boolean; panels?: HTMLElement[]; focusTop?: number } = {}) {
     this.onSelect = callbacks.onSelect;
     this.onHover = callbacks.onHover;
     this.onEvent = callbacks.onEvent;
@@ -576,7 +577,7 @@ export class TimelineScene {
     const node = this.selected ? this.nodeByID.get(this.selected) : undefined;
     if (!node) return;
     const positions: number[] = [];
-    const shown = items.filter(isConversationMessage);
+    const shown = items.filter(item => isConversationMessage(item) || item.kind === 'commit');
     // A selected message may arrive before its marker snapshot finishes loading.
     if (this.focusedEvent && isConversationMessage(this.focusedEvent) && !shown.some((item) => item.id === this.focusedEvent!.id)) shown.push(this.focusedEvent);
     for (const item of shown) {
@@ -590,19 +591,20 @@ export class TimelineScene {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('markerIndex', new THREE.Float32BufferAttribute(this.eventMarkers.map((_, i) => i), 1));
+    geometry.setAttribute('isCommit', new THREE.Float32BufferAttribute(this.eventMarkers.map(marker => Number(marker.item.kind === 'commit')), 1));
     this.markerUniforms.uPixelRatio.value = this.renderer.getPixelRatio();
     this.markerUniforms.uHovered.value = -1;
     this.selectEvent(this.selectedEvent);
     const uniforms = { uCutoff: this.lineUniforms.uCutoff, uTint: { value: new THREE.Color(node.color) }, ...this.markerUniforms };
-    const vertexShader = `uniform float uPixelRatio; uniform float uPointScale; uniform float uSelected; uniform float uHovered; attribute float markerIndex; varying float vTimeX; varying float vActive;
-      void main() { vTimeX = position.x; vActive = float(abs(markerIndex-uSelected)<.1 || abs(markerIndex-uHovered)<.1); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = mix(7.5,12.0,vActive) * uPixelRatio * uPointScale; }`;
+    const vertexShader = `uniform float uPixelRatio; uniform float uPointScale; uniform float uSelected; uniform float uHovered; attribute float markerIndex; attribute float isCommit; varying float vCommit; varying float vTimeX; varying float vActive;
+      void main() { vCommit = isCommit; vTimeX = position.x; vActive = float(abs(markerIndex-uSelected)<.1 || abs(markerIndex-uHovered)<.1); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = mix(7.5,12.0,max(vActive,vCommit*.5)) * uPixelRatio * uPointScale; }`;
     const material = new THREE.ShaderMaterial({
       uniforms: { ...uniforms, uPointScale: { value: 1 } },
       transparent: true, depthWrite: false, depthTest: false,
       vertexShader,
-      fragmentShader: `uniform float uCutoff; uniform vec3 uTint; varying float vTimeX; varying float vActive;
+      fragmentShader: `uniform float uCutoff; uniform vec3 uTint; varying float vTimeX; varying float vActive; varying float vCommit;
         void main() { float d = length(gl_PointCoord - .5) * 2.0; if (d > 1.0 || vTimeX > uCutoff) discard;
-         gl_FragColor = vec4(mix(vec3(1.0), uTint, .08) * (1.5 + vActive * .3), 1.0 - smoothstep(.55, 1.0, d)); }`,
+         gl_FragColor = vec4(mix(mix(vec3(1.0), uTint, .08), vec3(1.0,.66,.2),vCommit) * (1.5 + vActive * .3), 1.0 - smoothstep(.55, 1.0, d)); }`,
     });
     const group = new THREE.Group(); group.name = 'event-markers'; group.visible = this.preferences.messageDots;
     // Draw all soft auras before the white cores so neighboring halos cannot
@@ -623,9 +625,10 @@ export class TimelineScene {
     const recent = this.eventMarkers.length - 1, chosen = new Set<number>();
     for (let i = recent; i >= Math.max(0, recent - 31); i--) chosen.add(i);
     for (let i = 0; i < 32 && recent > 31; i++) chosen.add(Math.floor(i * (recent - 32) / 31));
+    for (const marker of this.eventMarkers.map((item, index) => ({ ...item, index })).filter(marker => marker.item.kind === 'commit').slice(-32)) chosen.add(marker.index);
     for (const marker of [...chosen].sort((a, b) => b - a)) {
       const element = document.createElement('div'); element.className = 'event-marker-icon'; element.setAttribute('aria-hidden', 'true');
-      element.style.color = '#ffffff';
+      element.style.color = this.eventMarkers[marker].item.kind === 'commit' ? '#ffd580' : '#ffffff';
       element.append(eventIcon(this.eventMarkers[marker].item)); this.labelLayer.append(element);
       this.eventIcons.push({ element, marker, visible: false, transform: '' });
     }
@@ -639,7 +642,7 @@ export class TimelineScene {
   focusEvent(item: TimelineItem | TimelineSummary) {
     this.focusedSession = null;
     const node = this.selected ? this.nodeByID.get(this.selected) : undefined;
-    if (!node || item.time === null || !isConversationMessage(item)) return;
+    if (!node || item.time === null || !isConversationMessage(item) && item.kind !== 'commit') return;
     const x = timeX(item.time, this.graph);
     if (!Number.isFinite(x) || x < node.startPosition[0] || x > node.position[0]) return;
     this.focusedEvent = { ...item, preview: 'preview' in item ? item.preview : (item.text || item.input || item.output || '').slice(0, 180) };
@@ -739,20 +742,8 @@ export class TimelineScene {
   }
 
   private focusArea() {
-    const width = this.container.clientWidth, height = this.container.clientHeight;
-    let left = 16, right = width - 16, top = width >= 760 ? 92 : 72, bottom = height - 24;
-    const inspector = document.getElementById('inspector'), explorer = document.getElementById('explorer');
-    if (width >= 760) {
-      left = explorer && !explorer.hidden ? explorer.getBoundingClientRect().right + 24 : left;
-      right = inspector && !inspector.hidden ? inspector.getBoundingClientRect().left - 24 : right;
-      if (right - left < 160) { left = 16; right = width - 16; }
-    } else if (inspector && !inspector.hidden) {
-      const rect = inspector.getBoundingClientRect();
-      if (rect.top > 160) bottom = Math.min(bottom, rect.top - 20);
-    }
-    const timeline = document.getElementById('timeline');
-    if (timeline && !timeline.hidden) { const rect = timeline.getBoundingClientRect(); if (rect.top > top + 160) bottom = Math.min(bottom, rect.top - 24); }
-    return { x: (left + right) / 2, y: (top + bottom) / 2, width: right - left, height: bottom - top };
+    const panels = (this.options.panels ?? []).filter(panel => !panel.hidden && panel.getClientRects().length && getComputedStyle(panel).visibility !== 'hidden').map(panel => panel.getBoundingClientRect());
+    return focusArea(this.container.getBoundingClientRect(), panels, this.options.focusTop ?? (this.width >= 760 ? 92 : 72));
   }
 
   private frameFocus() {
@@ -833,7 +824,8 @@ export class TimelineScene {
       selectedRadius: this.selected && this.nodeByID.has(this.selected) ? this.drawnRadius(this.nodeByID.get(this.selected)!) : undefined,
       headSamples: this.graph.nodes.slice(0, 32).map((node, index) => {
         const matrix = new THREE.Matrix4(); this.nodeMesh?.getMatrixAt(index, matrix);
-        return { id: node.session.id, start: node.startPosition[0], end: node.position[0], x: matrix.elements[12], glowX: this.glowPositions?.getX(index), reveal: this.nodeReveal[index] };
+        const point = new THREE.Vector3(...this.orbCenter(node)); if (this.flat) point.z *= .001; point.project(this.camera);
+        return { id: node.session.id, start: node.startPosition[0], end: node.position[0], x: matrix.elements[12], glowX: this.glowPositions?.getX(index), reveal: this.nodeReveal[index], screen: [(point.x + 1) / 2 * this.width, (1 - point.y) / 2 * this.height] };
       }),
       focusDimming: this.focusUniforms.uFocus.value,
       nodeSegments: this.nodeMesh?.geometry.parameters.widthSegments,

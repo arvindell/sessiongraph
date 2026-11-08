@@ -10,6 +10,7 @@ import { normalizeViewState } from '@sessiongraph/core/view-state';
 import { PublishingClient, PublishingError } from './publishing';
 import { publishingSettings } from '@sessiongraph/core/public-graph';
 import { withSourcePaths } from './source-paths';
+import { LibraryError } from './library-query';
 
 const publishing = new PublishingClient();
 
@@ -91,7 +92,7 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
       const sources = adapters.map((a) => ({ id: a.id, name: a.name, description: a.description, capabilities: a.capabilities, selected: store.selected().includes(a.id), available: false, ...store.sourceInfo(a.id) }));
       return json(200, store.library(sources, importer.status.running));
     }
-    const match = /^\/api\/sessiongraph\/session\/([^/]+)(?:\/(content|timeline|events|event-markers|connection|prepare-launch|open-terminal))?$/.exec(url.pathname);
+    const match = /^\/api\/sessiongraph\/session\/([^/]+)(?:\/(content|timeline|commits|events|event-markers|connection|prepare-launch|open-terminal))?$/.exec(url.pathname);
     if (match) {
       const id = decodeURIComponent(match[1]);
       const session = store.getSession(id);
@@ -110,6 +111,7 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
       if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
       if (['prepare-launch', 'open-terminal'].includes(match[2])) return json(405, { error: 'Method not allowed.' });
       if (match[2] === 'timeline') return json(200, store.timeline(id));
+      if (match[2] === 'commits') return json(200, store.commits(id, { cursor: url.searchParams.get('cursor') || undefined, limit: url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : undefined }));
       if (match[2] === 'event-markers') return json(200, store.eventMarkers(id));
       if (match[2] === 'events') return json(200, store.events(id, Object.fromEntries(['cursor', 'item', 'filter', 'revision'].flatMap((key) => url.searchParams.has(key) ? [[key, url.searchParams.get(key)!]] : []))));
       if (match[2] === 'connection') return json(200, await getLaunchConnection(session));
@@ -121,6 +123,7 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
   } catch (error) {
     if (error instanceof PublishingError) return json(error.status, { error: error.message });
     if (error instanceof EventReadError) return json(error.status, { error: error.message });
+    if (error instanceof LibraryError) return json(error.code === 'STALE_CURSOR' ? 409 : 400, { error: error.message });
     console.error('[sessiongraph] Local operation failed:', error instanceof Error ? error.name : 'Unknown error');
     return json(500, { error: 'Local operation failed. Check the import status or retry.' });
   }

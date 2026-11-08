@@ -88,6 +88,7 @@ export async function runCli(argv: string[], io: CLIOptions = {}): Promise<numbe
       case 'show': data = library.getSession(args[0]); break;
       case 'messages': data = library.getMessages(args[0], paging); break;
       case 'timeline': data = library.getTimeline(args[0]); break;
+      case 'commits': data = library.getCommits(args[0], paging); break;
       case 'events': data = library.getEvents(args[0], { cursor: text('cursor'), item: text('item'), filter: text('filter'), revision: text('revision') }); break;
       case 'files': data = library.getFileChanges(args[0], text('cursor')); break;
       case 'relationships': data = library.getRelationships(args[0], paging); break;

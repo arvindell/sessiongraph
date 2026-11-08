@@ -37,9 +37,9 @@ export function boundEventPayloads(message: ImportedMessage, budget: number): nu
   message.events = message.events.slice(0, 200).flatMap((event) => {
     if (remaining <= 0) { message.partial = true; return []; }
     const bounded = { ...event };
-    for (const key of ['text', 'input', 'output', 'name', 'id', 'nativeID', 'nativeType', 'callID', 'parentID'] as const) {
+    for (const key of ['text', 'input', 'output', 'name', 'id', 'nativeID', 'nativeType', 'callID', 'parentID', 'cwd'] as const) {
       if (bounded[key] === undefined) continue;
-      const value = String(bounded[key]), size = key === 'text' || key === 'output' ? 64_000 : key === 'input' ? 32_000 : 512;
+      const value = String(bounded[key]), size = key === 'text' || key === 'output' ? 64_000 : key === 'input' ? 32_000 : key === 'cwd' ? 4096 : 512;
       bounded[key] = value.slice(0, Math.max(0, Math.min(remaining, size)));
       remaining -= bounded[key]!.length;
       if (bounded[key]!.length < value.length) { bounded.partial = true; message.partial = true; }

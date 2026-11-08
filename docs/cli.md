@@ -29,6 +29,22 @@ and generated command documentation. These commands do not open or create a libr
 The manifest describes aliases, argument cardinality, option types, accepted values,
 defaults, effects, examples, and result shapes. Commands never prompt on stdin.
 
+## Indexed commit history
+
+```sh
+sessiongraph commits opencode:SESSION_ID --limit 50 --json
+sessiongraph events opencode:SESSION_ID --item EVIDENCE_EVENT_ID --json
+```
+
+`commits` reads normalized SQLite links, never scans messages or runs Git. Follow
+`nextCursor` with the same session; refreshing history invalidates old cursors.
+Each item contains the recorded SHA (possibly abbreviated), execution directory,
+operation (`created`, `amended`, `cherry-picked`), nullable action time, and saved
+evidence event ID. `coverage` distinguishes pending, indexed, partial, and
+unavailable history. A zero recorded count does not prove no commits occurred.
+Run `sources sync` to index older imports; unavailable sources keep their saved
+history. See the [coverage matrix](import-coverage.md#imported-data-by-harness).
+
 ## Set up, remove, and sync sources
 
 ```sh

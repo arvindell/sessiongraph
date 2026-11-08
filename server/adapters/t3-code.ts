@@ -8,6 +8,7 @@ import type { Candidate, ImportedMessage, SessionAdapter } from './types';
 import { hasTable, sqliteRevision, withSqliteSnapshot, SqliteSnapshotChangedError } from './sqlite-snapshot';
 import { eventFor, eventText, messageEvent } from '../events';
 import type { TimelineEvent } from '@sessiongraph/core/timeline';
+import { executionFields } from '../commit-extraction';
 
 type Row = Record<string, unknown>;
 const SOURCE = 't3-code';
@@ -16,6 +17,7 @@ const MAX_THREADS = 20_000;
 // A page is at most 25.6 MB before normalized text/event limits apply.
 const MAX_ITEM_JSON = 256_000;
 const providerSource: Record<string, string> = { codex: 'codex', claudeAgent: 'claude-code', opencode: 'opencode' };
+const openCodeEditTools = new Set(['patch', 'apply_patch', 'edit', 'write', 'multiedit']);
 
 const string = (value: unknown) => typeof value === 'string' ? value : '';
 function parsedObject(value: unknown): Row | undefined {
@@ -122,7 +124,8 @@ function discoverV2(db: DatabaseSync, path: string, databaseRevision: string) {
       updated: time(row.updated_at) || created, archived: Boolean(row.archived_at),
       model: string(row.model) || 'Unknown model', provider: string(row.default_provider), agent: 'T3 Code',
       linkedSessionIDs: links.get(nativeID) || [] });
-    const revision = digest([row.updated_at, counts.get(nativeID), items.get(nativeID), links.get(nativeID)]);
+    // Reprocess saved V2 activity after fixing tool labels misread as file paths.
+    const revision = digest([3, row.updated_at, counts.get(nativeID), items.get(nativeID), links.get(nativeID)]);
     sessions.push({ session, revision, locator: { path, databaseRevision, threadID: nativeID, format: 'v2', metadataPartial: row.valid_payload ? '' : '1' } });
   }
   if (unreadableMetadata) warnings.push(`${unreadableMetadata} T3 Code threads had unreadable metadata; model or lineage may be unavailable.`);
@@ -180,6 +183,16 @@ function v2Message(row: Row, directory: string): ImportedMessage {
   }
   if (type === 'file_change') {
     const file = string(item.fileName), completed = status(row.status) === 'completed';
+    const native = item.nativeItemRef as Row | undefined;
+    // T3's OpenCode projection can put the edit tool's name in fileName without
+    // recording any changed paths. Keep the operation, never invent a file from it.
+    // Provider provenance matters: Codex can report a real file literally named patch.
+    if (native?.driver === 'opencode' && openCodeEditTools.has(file.toLowerCase())) {
+      message.tools.push(file);
+      const kind = completed || fields.status === 'failed' ? 'tool_result' : 'tool_call';
+      message.events = [eventFor(message, id, kind, file, '', { ...fields, callID: string(native.nativeId) || undefined })];
+      return message;
+    }
     if (file && completed) message.files.push({ path: isAbsolute(file) ? file : join(directory, file), source: 'file change', steps: 1 });
     message.events = [eventFor(message, id, 'file_change', file || name, '', fields)];
     return message;
@@ -191,7 +204,8 @@ function v2Message(row: Row, directory: string): ImportedMessage {
     message.tools.push(name);
     if (input) addText(message, input, 'Tool');
     if (output) addText(message, output, 'Tool');
-    message.events = [eventFor(message, id, kind, name, '', { ...fields, input, output })];
+    const native = item.nativeItemRef as Row | undefined;
+    message.events = [eventFor(message, id, kind, name, '', { ...fields, input, output, ...executionFields(parsedObject(item.input) || item.input, item), callID: string(native?.nativeId) || undefined })];
     return message;
   }
   const kind = type === 'compaction' ? 'compaction' : type === 'error' ? 'error' : 'event';

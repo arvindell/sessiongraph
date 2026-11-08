@@ -6,9 +6,10 @@ import { readJSONL, transcriptFiles } from './jsonl';
 import type { Candidate, SessionAdapter } from './types';
 import { blockEvents, eventFor, eventText, userBlockEvents } from '../events';
 import { sourcePath } from '../source-paths';
+import { executionFields } from '../commit-extraction';
 
 const root = () => sourcePath('codex') || process.env.CODEX_HOME || join(homedir(), '.codex');
-const revision = async (path: string) => { const s = await stat(path); return digest([9, s.mtimeMs, s.size]); };
+const revision = async (path: string) => { const s = await stat(path); return digest([10, s.mtimeMs, s.size]); };
 function changedPaths(value: unknown): string[] {
   if (!value || typeof value !== 'object') return [];
   const changes = Array.isArray(value) ? value : Object.entries(value).map(([path, change]) => ({ ...(change && typeof change === 'object' ? change : {}), path }));
@@ -47,6 +48,7 @@ async function sessionNames() {
 export function codexRecord(raw: any, offset: number, candidate: Candidate) {
   const p = raw.payload;
   if (!p || typeof p !== 'object') return;
+  if (raw.type === 'session_meta' || raw.type === 'turn_context') candidate.locator.executionCwd = typeof p.cwd === 'string' ? p.cwd : '';
   if (raw.type === 'turn_context' && typeof p.model === 'string') candidate.session.model = p.model;
   if (raw.type === 'event_msg' && p.type === 'item_completed' && ['FileChange', 'fileChange'].includes(p.item?.type)) {
     const msg = blankMessage(`event:${p.item.id || raw.ordinal || offset}`, p.completed_at_ms || Date.parse(raw.timestamp) || 0, 'tool');
@@ -78,7 +80,9 @@ export function codexRecord(raw: any, offset: number, candidate: Candidate) {
   const role = p.role === 'user' ? 'user' : p.role === 'assistant' ? 'assistant' : p.type === 'message' ? 'system' : 'tool';
   // Reused call_id across request/response isn't a unique message ID.
   const msg = blankMessage(`item:${raw.ordinal ?? offset}`, Date.parse(raw.timestamp) || 0, role);
-  const fields = { nativeID: p.id, nativeType: p.type, callID: p.call_id };
+  let input = p.arguments ?? p.input;
+  if (typeof input === 'string') { try { input = JSON.parse(input); } catch { /* Native plain shell input. */ } }
+  const fields = { nativeID: p.id, nativeType: p.type, callID: p.call_id, ...executionFields(input, { cwd: candidate.locator.executionCwd }) };
   msg.events = p.type === 'message' ? role === 'user' ? userBlockEvents(msg, p.content, codexUserText) : blockEvents(msg, p.content)
     : ['function_call', 'custom_tool_call'].includes(p.type) ? [eventFor(msg, 'call', 'tool_call', p.name || 'Tool call', '', { ...fields, role: 'assistant', input: eventText(p.arguments ?? p.input), status: 'unknown' })]
     : ['function_call_output', 'custom_tool_call_output'].includes(p.type) ? [eventFor(msg, 'result', 'tool_result', 'Tool result', '', { ...fields, output: eventText(p.output, 64_000), status: 'unknown' })]
@@ -136,6 +140,7 @@ export const codexAdapter: SessionAdapter = {
     return { sessions, projects: [...new Map(sessions.map((c) => { const p = project('codex', c.session.directory); return [p.id, p]; })).values()], warnings };
   },
   async read(candidate, cursor) {
+    if (!cursor) candidate.locator.executionCwd = '';
     const page = await readJSONL(candidate.locator.path, Number(cursor || 0));
     if (page.cursor === undefined && await revision(candidate.locator.path) !== candidate.revision) throw new Error('Session changed during import; import again to capture the latest messages.');
     return { messages: page.rows.flatMap((r) => { const msg = codexRecord(r.value, r.offset, candidate); return msg ? [msg] : []; }), cursor: page.cursor === undefined ? undefined : String(page.cursor), partial: page.partial, note: 'Local rollout messages, tools, and lifecycle events. Mirrored conversation events are deduplicated. Images, encrypted reasoning, and store-only history are unavailable.' };
