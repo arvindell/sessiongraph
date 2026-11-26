@@ -8,7 +8,7 @@ import { vscodeChatLog } from '../server/adapters/vscode-chat-log';
 import { Importer } from '../server/importer';
 import { SessionGraphStore } from '../server/store';
 import { adapters } from '../server/adapters';
-import { sourceName, sourceIcon } from '../src/sources';
+import { sourceName, sourceIcon } from '@sessiongraph/core/sources';
 import { prepareLaunch } from '../server/launch';
 
 // Synthetic fixtures follow VS Code's ISerializableChatData[1-3],

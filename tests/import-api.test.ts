@@ -6,6 +6,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SessionGraphStore } from '../server/store';
+import { blankMessage, blankSession } from '../server/adapters/common';
+import { eventFor } from '../server/events';
 
 test('auto-import settings API validates writes and automatic requests cannot choose sources', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'sessiongraph-import-api-'));
@@ -32,6 +34,23 @@ test('auto-import settings API validates writes and automatic requests cannot ch
     assert.equal(store.autoImportEnabled(), false);
     assert.equal((await post('settings', { preferences: { view: '2d', muted: true, panelOpacity: 75 }, viewState: { days: 30, includeChildren: false, includeArchived: false, sourceID: 'codex', projectID: 'project', directory: '/work/project', fromDate: '2026-10-01', toDate: '2026-10-20' } })).status, 200);
     for (const value of [{ preferences: [] }, { viewState: null }, { autoImport: true, viewState: false }]) assert.equal((await post('settings', value)).status, 400);
+    const candidate = { session: { ...blankSession('t3-code', 'commits'), created: 100 }, revision: 'r1', locator: {} };
+    const messages = ['abc1234', 'def5678'].map((sha, index) => {
+      const message = blankMessage(`command:${index}`, 200 + index, 'tool');
+      message.events = [eventFor(message, 'execution', 'tool_result', 'command execution', '', { nativeType: 'command_execution', input: 'git -C /recorded commit -m Save', output: `[main ${sha}] Save`, exitCode: 0, status: 'completed' })];
+      return message;
+    });
+    store.upsert(candidate); store.replace(candidate, messages, false);
+    const route = `${base}/session/${encodeURIComponent(candidate.session.id)}/commits`;
+    const commits = await (await fetch(`${route}?limit=1`)).json();
+    assert.equal(commits.total, 2); assert.equal(commits.items.length, 1); assert.ok(commits.nextCursor);
+    const evidence = await (await fetch(`${base}/session/${encodeURIComponent(candidate.session.id)}/events?filter=tools&item=${commits.items[0].evidenceEventID}`)).json();
+    assert.equal(evidence.selected.exitCode, 0);
+    assert.equal((await fetch(`${route}?limit=0`)).status, 400);
+    assert.equal((await fetch(`${route}?cursor=invalid`)).status, 400);
+    assert.equal((await fetch(`${route}?limit=1`, { method: 'POST', headers: { 'X-SessionGraph-Action': 'commits' } })).status, 405);
+    store.replace(candidate, messages.slice(0, 1), false);
+    assert.equal((await fetch(`${route}?cursor=${commits.nextCursor}`)).status, 409);
     const reopened = new SessionGraphStore(store.path);
     try {
       const saved = reopened.library([], false);

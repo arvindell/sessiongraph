@@ -1,4 +1,4 @@
-import type { Preferences } from './preferences';
+import type { Preferences } from '@sessiongraph/core/preferences';
 
 type Voice = { sources: AudioScheduledSourceNode[]; nodes: AudioNode[]; gain: GainNode };
 

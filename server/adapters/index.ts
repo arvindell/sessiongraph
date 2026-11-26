@@ -12,11 +12,11 @@ import { clineAdapter, rooAdapter, kiloAdapter, continueAdapter } from './extens
 import type { SessionAdapter } from './types';
 import { fileHarnessAdapters } from './harness-files';
 import { databaseHarnessAdapters } from './harness-databases';
-import { antigravityCacheAdapter, antigravityDatabaseAdapters, usageOnlyAdapters } from './harness-metadata';
+import { antigravityCacheAdapter, antigravityDatabaseAdapters } from './harness-metadata';
 import { combineAdapters } from './sqlite-histories';
 
 // Database snapshots take precedence over migrated transcript copies of the same harness.
-const extra = [...databaseHarnessAdapters, ...fileHarnessAdapters, antigravityCacheAdapter, ...antigravityDatabaseAdapters, ...usageOnlyAdapters];
+const extra = [...databaseHarnessAdapters, ...fileHarnessAdapters, antigravityCacheAdapter, ...antigravityDatabaseAdapters];
 const grouped = new Map<string, SessionAdapter[]>();
 for (const adapter of extra) grouped.set(adapter.id, [...(grouped.get(adapter.id) || []), adapter]);
 

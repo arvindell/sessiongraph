@@ -1,4 +1,4 @@
-import type { Session } from '../types';
+import type { Session } from '@sessiongraph/core/types';
 import type { Fragment } from './types';
 
 export const MAX_CHARACTERS = 24_000_000;

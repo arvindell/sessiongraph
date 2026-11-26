@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ScreenGrid } from '../src/screen-grid';
+import { ScreenGrid } from '@sessiongraph/core/screen-grid';
 import { TimelineClient } from '../src/timeline-client';
-import type { TimelinePage } from '../src/timeline';
+import type { TimelinePage } from '@sessiongraph/core/timeline';
 
 const page = (revision = 'a'): TimelinePage => ({ sessionID: 'session', revision, items: [], total: 0, offset: 0, nextCursor: null, previousCursor: null, related: [], relatedPartial: false, partial: false });
 

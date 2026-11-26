@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SessionSearchIndex, parseQuery } from '../src/search/engine';
 import { extractContent } from '../server/search';
-import type { Session } from '../src/types';
+import type { Session } from '@sessiongraph/core/types';
 
 const session = (id: string, title: string, extra: Partial<Session> = {}): Session => ({ id, title, projectID: 'p', directory: '/work/app', model: 'claude', provider: 'test', agent: 'build', tokens: 0, cost: 0, archived: false, created: Date.parse('2026-09-15'), updated: Date.parse('2026-09-15'), ...extra });
 const projects = [{ id: 'p', name: 'Payments', directory: '/work/app', worktrees: [] }];

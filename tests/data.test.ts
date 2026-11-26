@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeMessages, editedPaths, sessionFromResponse, type RawMessage, type RawSession } from '../server/opencode';
-import { directoryLabel, headPosition, laneKey, makeGraph, orbPosition, progressX, timeX, trailPosition } from '../src/layout';
-import type { Session } from '../src/types';
-import { spiralPosition, spiralTangent } from '../src/spiral';
+import { directoryLabel, headPosition, laneKey, makeGraph, orbPosition, progressX, timeX, trailPosition } from '@sessiongraph/core/layout';
+import type { Session } from '@sessiongraph/core/types';
+import { spiralPosition, spiralTangent } from '@sessiongraph/core/spiral';
 
 function session(id: string, created: number, extra: Partial<Session> = {}): Session {
   return { id, created, updated: created, title: id, projectID: 'project', directory: '/repo', model: 'test', provider: 'test', agent: 'build', cost: 0, tokens: 100, archived: false, ...extra };

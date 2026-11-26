@@ -1,7 +1,6 @@
 import { isTauri } from '@tauri-apps/api/core';
 
 export const SHARE_FORMATS = {
-  gif: { label: 'GIF', description: 'GIF animation', mime: 'image/gif', filename: 'sessiongraph-playback.gif' },
   mp4: { label: 'MP4', description: 'MP4 video', mime: 'video/mp4', filename: 'sessiongraph-playback.mp4' },
 } as const;
 export type ShareFormat = keyof typeof SHARE_FORMATS;

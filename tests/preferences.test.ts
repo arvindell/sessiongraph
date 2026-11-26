@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_PREFERENCES, PREFERENCES_KEY, loadPreferences, savePreferences, normalizePreferences, motionEnabled } from '../src/preferences';
+import { DEFAULT_PREFERENCES, PREFERENCES_KEY, loadPreferences, savePreferences, normalizePreferences, motionEnabled } from '@sessiongraph/core/preferences';
 
 test('preferences recover corrupt storage, reject invalid values, clamp rendering budgets and respect system motion', () => {
   assert.deepEqual(loadPreferences({ getItem: () => '{broken' }), DEFAULT_PREFERENCES);

@@ -3,7 +3,7 @@ import { lstat, open, readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { blankSession, digest, identity, project } from './common';
 import type { Candidate, ImportedMessage, SessionAdapter } from './types';
-import type { Session } from '../../src/types';
+import type { Session } from '@sessiongraph/core/types';
 import { expandHistory } from './compressed';
 
 export type Raw = Record<string, any>;

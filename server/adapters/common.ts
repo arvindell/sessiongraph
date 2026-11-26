@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
-import type { Project, Session } from '../../src/types';
+import type { Project, Session } from '@sessiongraph/core/types';
 import type { Fragment } from '../../src/search/types';
 import type { ImportedMessage } from './types';
 

@@ -64,6 +64,7 @@ export function optionalJSON(value: unknown): any { return value == null || valu
 export interface DatabaseHarness {
   id: string;
   name: string;
+  version?: number;
   paths: () => Promise<string[]>;
   table: string | ((db: DatabaseSync) => string);
   key: string;
@@ -83,17 +84,17 @@ export function sqliteHistoryAdapter(source: DatabaseHarness): SessionAdapter {
       const sessions = new Map<string, Candidate>(), warnings: string[] = [], blocked: string[] = []; let unavailable = false;
       for (const path of await source.paths()) {
         try {
-          const snapshot = sqliteRevision(path), rev = digest([2, source.id, snapshot]);
+          const snapshot = sqliteRevision(path), rev = digest([source.version || 2, source.id, snapshot]);
           let cached = metadata.get(path);
           if (!cached || cached.revision !== rev) {
             cached = withSqliteSnapshot(path, db => {
               const table = typeof source.table === 'string' ? source.table : source.table(db);
               const values = rows(db, table, source.fields, undefined, source.key, 20_000), found: Candidate[] = [];
-              const blocked: string[] = [], warnings: string[] = [];
+              const blocked: string[] = [], warnings: string[] = []; let empty = 0;
               for (const row of values) {
                 try {
                   const h = parseHistory(source, db, row, path); if (!h) continue;
-                  if (source.history !== false && !h.messages.length) throw new Error('No readable conversation.');
+                  if (source.history !== false && !h.messages.length) { blocked.push(identity(source.id, String(row[source.key]))); empty++; continue; }
                   if (!h.nativeID || h.nativeID.length > 512) throw new Error('Missing native session identity.');
                   const created = time(h.session?.created) || h.messages.map(m => time(m.time)).find(Boolean);
                   if (!created) throw new Error('Session has no recorded creation or message date.');
@@ -107,7 +108,8 @@ export function sqliteHistoryAdapter(source: DatabaseHarness): SessionAdapter {
                   found.push({ session, revision: rev, locator: { path, snapshot, table, key: String(row[source.key]) } });
                 } catch { blocked.push(identity(source.id, String(row[source.key]))); }
               }
-              if (blocked.length) warnings.push(`${blocked.length} ${source.name} sessions had unsupported, undated, missing, or oversized history; saved imports are kept.`);
+              if (blocked.length > empty) warnings.push(`${blocked.length - empty} ${source.name} sessions had unsupported, undated, missing, or oversized history; saved imports are kept.`);
+              if (empty) warnings.push(`${empty} empty ${source.name} sessions had no saved messages; previous imports are kept.`);
               return { revision: rev, candidates: found, blocked, warnings };
             }, snapshot);
             metadata.set(path, cached);

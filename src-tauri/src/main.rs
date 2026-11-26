@@ -55,6 +55,12 @@ fn main() {
                 .permission("updater:allow-check").permission("updater:allow-download")
                 .permission("updater:allow-install").permission("core:resources:allow-close")
                 .permission("process:allow-restart")
+                // The opener's injected _blank click handler uses IPC, not on_navigation.
+                // Allow web links only; do not grant file/path or custom-protocol access.
+                .permission_scoped("opener:allow-open-url", vec![
+                    serde_json::json!({ "url": "https://*" }),
+                    serde_json::json!({ "url": "http://*" }),
+                ], vec![])
                 .permission("dialog:allow-save").permission("fs:allow-write-file"))?;
             let handle = app.handle().clone();
             let external = app.handle().clone();

@@ -1,9 +1,9 @@
-import { DEFAULT_PREFERENCES, type Preferences } from './preferences';
+import { DEFAULT_PREFERENCES, type Preferences } from '@sessiongraph/core/preferences';
 import { createElement, PanelsTopLeft, Database, Volume2, Sparkles, Orbit, LockKeyhole, type IconNode } from 'lucide';
 import { refreshSelects } from './controls';
 import type { SaveState } from './library-settings';
-import type { ImportStatus, SourceStatus } from './types';
-import { sourceOption, sortSources } from './sources';
+import type { ImportStatus, SourceStatus } from '@sessiongraph/core/types';
+import { sourceOption, sortSources } from '@sessiongraph/core/sources';
 
 type Section = 'interface' | 'sources' | 'audio' | 'graphics' | 'trails' | 'privacy';
 const tabs: [Section, string, IconNode][] = [['interface', 'Interface', PanelsTopLeft], ['sources', 'Sources', Database], ['audio', 'Sound', Volume2], ['graphics', 'Graphics', Sparkles], ['trails', 'Trails & playback', Orbit], ['privacy', 'Privacy', LockKeyhole]];
@@ -11,7 +11,7 @@ const toggle = (key: keyof Preferences, label: string, hint: string) => `<label 
 const range = (key: keyof Preferences, label: string, hint: string, min: number, max: number, unit = '%', step = 1) => `<label class="setting-row setting-range"><span><strong>${label}</strong><small>${hint}</small></span><span class="setting-slider"><input type="range" data-pref="${key}" aria-label="${label}" min="${min}" max="${max}" step="${step}"/><output data-output="${key}" data-unit="${unit}"></output></span></label>`;
 const select = (key: keyof Preferences, label: string, hint: string, options: [string, string][]) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><select data-pref="${key}" aria-label="${label}">${options.map(([value, title]) => `<option value="${value}">${title}</option>`).join('')}</select></label>`;
 
-export function createSettings(callbacks: { change: (patch: Partial<Preferences>) => void; getArchived: () => boolean; changeArchived: (value: boolean) => void; visibility: () => void; previewSound: () => void; resetPanels: () => void; getSources: () => Promise<SourceStatus[]>; importSources: (ids: string[]) => Promise<void> }) {
+export function createSettings(callbacks: { publishing: () => void; change: (patch: Partial<Preferences>) => void; getArchived: () => boolean; changeArchived: (value: boolean) => void; visibility: () => void; previewSound: () => void; resetPanels: () => void; getSources: () => Promise<SourceStatus[]>; importSources: (ids: string[]) => Promise<void> }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'settings-dialog'; dialog.setAttribute('aria-labelledby', 'settings-title');
   dialog.innerHTML = `<header class="settings-heading"><div><h2 id="settings-title">Settings</h2><p>Import, appearance, and playback preferences.</p></div><button class="icon-button settings-close" aria-label="Close settings">×</button></header>
@@ -57,6 +57,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
         <p class="settings-footnote">Flow is decorative. Message dots reflect saved timestamps; visual settings never alter your history.</p>
       </section>
       <section id="settings-privacy" role="tabpanel" aria-labelledby="settings-tab-privacy" hidden><h3>Privacy</h3><p class="settings-description">Local storage and network access.</p>
+        <div class="settings-note"><span><strong>Public profile</strong><br>Choose which usage fields to share. Nothing uploads until you review a preview and publish.</span><button class="secondary-button settings-publishing">Publishing settings</button></div>
         <div class="setting-row"><span><strong>Processed on this computer</strong><small>Importing, indexing, search, and visualization run locally. Imports read your selected sources without changing them or starting an AI agent.</small></span></div>
         <div class="setting-row"><span><strong>Update checks use the internet</strong><small>Desktop update checks and downloads contact GitHub without session content. npm installation contacts its registry. These services receive ordinary connection metadata, including your public IP address.</small></span></div>
         <div class="setting-row"><span><strong>Continuing a session is your choice</strong><small>Explicitly launching another harness lets it read the selected context. It may contact its model provider under its own privacy settings.</small></span></div>
@@ -97,6 +98,7 @@ export function createSettings(callbacks: { change: (patch: Partial<Preferences>
     catch (error) { sourcesRunning = false; sourceControls(); dialog.querySelector('.settings-import-progress')!.textContent = error instanceof Error ? error.message : 'Import unavailable.'; }
   }, options);
   const close = () => dialog.close();
+  dialog.querySelector('.settings-publishing')!.addEventListener('click', () => { dialog.close(); callbacks.publishing(); }, options);
   for (const selector of ['.settings-close', '.settings-done']) dialog.querySelector(selector)!.addEventListener('click', close, options);
   dialog.addEventListener('close', () => { callbacks.visibility(); focus?.focus({ preventScroll: true }); }, options);
   dialog.addEventListener('keydown', (event) => { event.stopPropagation(); }, options);

@@ -1,29 +1,32 @@
 import { createIcons, Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2 } from 'lucide';
-import type { TimelineScene } from './scene';
-import { directoryLabel, makeGraph, sessionEnd } from './layout';
+import type { TimelineScene } from '@sessiongraph/core/scene';
+import { directoryLabel, makeGraph, sessionEnd } from '@sessiongraph/core/layout';
 import { setupPanelDragging } from './panels';
 import { createSessionSearch } from './search/ui';
 import { createSessionLauncher } from './launcher';
 import { createImports } from './imports';
 import { AutoImportScheduler, AUTO_IMPORT_INTERVAL } from './auto-import';
 import { LibrarySettingsSaver, type LibrarySettingsPatch } from './library-settings';
-import { normalizeViewState, type ViewState } from './view-state';
+import { normalizeViewState, type ViewState } from '@sessiongraph/core/view-state';
 import { playbackTokens } from './playback-tokens';
-import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, playbackDate, playbackSessions, timelineBuckets } from './playback';
-import { sourceName, sourceIcon } from './sources';
+import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, playbackDate, playbackSessions, timelineBuckets } from '@sessiongraph/core/playback';
+import { playbackControls } from '@sessiongraph/core/playback-controls';
+import { sourceName, sourceIcon } from '@sessiongraph/core/sources';
 import { sessionMatchesSource } from './session-links';
-import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from './preferences';
+import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from '@sessiongraph/core/preferences';
 import { createSettings } from './settings';
 import { InteractionAudio } from './audio';
 import { createEventExplorer } from './event-explorer';
 import { createEventHover } from './event-hover';
+import { showCommitHistory } from './commit-history';
 import { TimelineClient } from './timeline-client';
 import { createDesktopUpdater } from './updater';
 import { createDateRange } from './date-range';
 import { observeSelects, refreshSelects } from './controls';
-import type { TimelineMarkers } from './timeline';
-import type { SessionGraphData, Graph, Session, SessionDetail } from './types';
+import type { TimelineMarkers } from '@sessiongraph/core/timeline';
+import type { SessionGraphData, Graph, Session, SessionDetail } from '@sessiongraph/core/types';
 import './style.css';
+import './publishing.css';
 
 const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2 };
 const refreshIcons = () => { createIcons({ icons, attrs: { 'stroke-width': 1.5 } }); refreshSelects(); };
@@ -74,6 +77,7 @@ let tokenPlayback = playbackTokens([]), tokenDisplay = '';
 let sessionPlayback = playbackSessions([]);
 let playbackPanels: { explorer: boolean; inspector: boolean } | undefined;
 let playbackShare: ReturnType<typeof import('./share').createPlaybackShare> | undefined;
+let publishingDialog: ReturnType<typeof import('./publishing').createPublishing> | undefined;
 let shareRevealTimer = 0, shareReady = false;
 let preferences: Preferences = { ...DEFAULT_PREFERENCES }, preferencesSaved = true;
 let autoImport: AutoImportScheduler | undefined;
@@ -91,7 +95,7 @@ $('#app').innerHTML = `
     <div id="tooltip" class="node-tooltip" hidden></div>
   </main>
   <header class="app-header glass">
-    <a class="brand" href="/" aria-label="SessionGraph home" title="Explore &amp; visualize all your LLM sessions"><img src="/favicon.svg" alt=""/><span>SessionGraph<span class="brand-dot">.</span></span></a>
+    <a class="brand" href="/" aria-label="SessionGraph home" title="Explore &amp; visualize all your LLM sessions"><img src="/brand/mark.svg" alt=""/><span>SessionGraph</span></a>
     <span class="connection" role="status" title="Connecting"><span class="status-dot"></span><span id="connection-label" class="sr-only">Connecting</span></span>
     <span class="toolbar-divider"></span>
     <button class="toolbar-button" id="toggle-explorer" aria-label="Toggle sessions" aria-controls="explorer" aria-expanded="true" title="Sessions">${icon('search')}<span>Sessions</span></button>
@@ -105,6 +109,7 @@ $('#app').innerHTML = `
     <button class="icon-button" id="help" aria-label="Help" title="Help">${icon('circle-help')}</button>
     <button class="icon-button" id="mute-audio" aria-label="Mute sound" title="Mute sound" aria-pressed="false" data-sound="none">${icon('volume-2')}</button>
     <button class="icon-button" id="open-settings" aria-label="Settings" title="Settings" aria-haspopup="dialog">${icon('settings-2')}</button>
+    <button class="icon-button" id="open-publishing" aria-label="Share SessionGraph" title="Share SessionGraph" aria-haspopup="dialog">${icon('share-2')}</button>
   </nav>
   <aside class="sidebar floating-panel glass" id="explorer" aria-label="Sessions">
       <div class="panel-heading"><button class="panel-handle" data-drag-panel="explorer" aria-label="Move sessions panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span>Sessions</span><span class="small-badge" id="list-count">—</span></button><button class="icon-button" id="refresh" aria-label="Refresh sessions" title="Refresh sessions">${icon('refresh-cw')}</button><button class="icon-button" id="close-explorer" aria-label="Close sessions">${icon('x')}</button></div>
@@ -120,11 +125,8 @@ $('#app').innerHTML = `
   <div class="inspector-stack floating-panel" id="inspector" hidden><aside class="inspector glass" id="session-inspector" aria-label="Session details"></aside></div>
   <div class="timeline-dock floating-panel" id="timeline">
     <div class="playback-share"><button id="share-playback" class="primary-button" disabled>${icon('share-2')}Share SessionGraph</button></div>
-    <section class="timeline-panel glass" aria-label="Timeline controls">
-    <div class="timeline-top"><button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="0" class="active">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button></div>
-    <div class="timeline-track"><button id="play" class="play-button" aria-label="Play timeline">${icon('play')}</button><div class="histogram-wrap"><div id="histogram" class="histogram"></div><input id="scrubber" type="range" min="0" max="1000" value="1000" aria-label="Timeline playback position"/><div class="timeline-cursor" id="timeline-cursor"></div></div><div class="playback-date" id="playback-date">—</div></div>
-    <div class="playback-period" id="playback-period" aria-label="Approximate playback date">—</div>
-    <div class="playback-summary" id="playback-summary" hidden><span><strong id="playback-sessions">0</strong><span>Sessions</span></span><span><strong id="playback-tokens">0</strong><span>Burnt tokens</span></span><small id="playback-token-coverage"></small></div>
+    <section class="timeline-panel glass timeline-controls" aria-label="Timeline controls">
+    ${playbackControls(`<button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="0" class="active">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button>`, { play: 'play', histogram: 'histogram', scrubber: 'scrubber', cursor: 'timeline-cursor', date: 'playback-date', period: 'playback-period', summary: 'playback-summary', sessions: 'playback-sessions', tokens: 'playback-tokens', coverage: 'playback-token-coverage' })}
     </section>
   </div>
   <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div>
@@ -141,16 +143,18 @@ const dateRange = createDateRange($('.custom-dates'), (from, to) => { fromDate =
 const modalVisibility = () => { const open = Boolean(document.querySelector('dialog[open]')); if (open && playing) stopPlayback(); scene?.setSuspended(open); };
 const timelineClient = new TimelineClient();
 const eventHover = createEventHover($('#tooltip'), $('#scene'), timelineClient);
+let disposeCommitHistory: (() => void) | undefined;
 const eventExplorer = createEventExplorer($('#inspector'), timelineClient, { select: (item) => {
-  eventHover.clear(); scene?.selectEvent(item?.id || null);
+  const onMap = item?.sessionID === selectedID ? item : null;
+  eventHover.clear(); scene?.selectEvent(onMap?.id || null);
   // A message request started before playback may finish while its panel is hidden.
-  if (item && !playing) { playback = 1; updateScrubber(); scene?.focusEvent(item); }
+  if (onMap && !playing) { playback = 1; updateScrubber(); scene?.focusEvent(selectedTimeline?.items.find(marker => marker.id === onMap.id) || onMap); }
 } });
 function openEvents(item?: string) {
   const session = data?.sessions.find((s) => s.id === selectedID);
-  if (session) { eventHover.clear(); stopPlayback(); setPanel('inspector', true); eventExplorer.open(session, item, item ? selectedTimeline?.revision : undefined); }
+  if (session) { eventHover.clear(); stopPlayback(); setPanel('inspector', true); eventExplorer.open(session, item, item ? selectedTimeline?.revision : undefined, selectedTimeline?.items.find(marker => marker.id === item)?.kind === 'commit' ? 'tools' : 'messages'); }
 }
-const settings = createSettings({ change: changePreferences, getArchived: () => includeArchived, changeArchived: (value) => { includeArchived = value; updateFilters(); }, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, getSources: () => imports.sources(), importSources: (ids) => imports.select(ids), resetPanels: () => {
+const settings = createSettings({ publishing: openPublishing, change: changePreferences, getArchived: () => includeArchived, changeArchived: (value) => { includeArchived = value; updateFilters(); }, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, getSources: () => imports.sources(), importSources: (ids) => imports.select(ids), resetPanels: () => {
   document.querySelectorAll<HTMLElement>('.floating-panel').forEach((panel) => { panel.removeAttribute('style'); delete panel.dataset.positioned; });
 } });
 const audio = new InteractionAudio(preferences, settings.audioStatus);
@@ -201,7 +205,7 @@ document.addEventListener('visibilitychange', checkAutoImport, { signal: autoImp
 const autoImportTimer = window.setInterval(checkAutoImport, AUTO_IMPORT_INTERVAL);
 $('#manage-sources').addEventListener('click', () => void imports.open());
 document.addEventListener('sessiongraph-import-status', (event) => {
-  const status = (event as CustomEvent<import('./types').ImportStatus>).detail;
+  const status = (event as CustomEvent<import('@sessiongraph/core/types').ImportStatus>).detail;
   autoImport?.activity();
   settings.importStatus(status);
   if (data) data.importing = status.running;
@@ -238,6 +242,7 @@ function showToast(text: string) {
 }
 
 function emptyInspector() {
+  disposeCommitHistory?.();
   setPanel('inspector', false);
   eventExplorer.close(); eventHover.clear(); $('#session-inspector').replaceChildren();
   $('#toggle-inspector').hidden = true;
@@ -245,7 +250,7 @@ function emptyInspector() {
 emptyInspector();
 
 async function initializeScene() { try {
-  const { TimelineScene } = await import('./scene');
+  const { TimelineScene } = await import('@sessiongraph/core/scene');
   scene = new TimelineScene($('#scene'), {
     onSelect: (id) => { if (id) { void audio.play('select'); selectSession(id); } else clearSelection(); },
     onPlaybackInterrupt: stopPlayback,
@@ -267,7 +272,7 @@ async function initializeScene() { try {
       tooltip.style.left = `${Math.min(x + 18, $('#scene').clientWidth - 280)}px`;
       tooltip.style.top = `${Math.max(8, Math.min(y - 32, $('#scene').clientHeight - 110))}px`;
     },
-  });
+  }, { panels: [$('#explorer'), $('#inspector'), $('#timeline')] });
   scene.applyPreferences(preferences);
   if (data) {
     scene.setGraph(graph, true);
@@ -562,6 +567,8 @@ function renderInspector(session: Session, reveal = true) {
       <div class="detail-title"><span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><h2>${escape(session.title)}</h2><span class="detail-date">${timestamp(session.created)}</span></div>
       <div class="detail-actions"><button id="open-session" class="secondary-button">${icon('arrow-up-right')}Open session</button><button id="focus-session" class="icon-button" title="Focus node" aria-label="Focus node">${icon('crosshair')}</button><button id="copy-id" class="icon-button" title="Copy session ID" aria-label="Copy session ID">${icon('copy')}</button></div>
       <section id="message-detail" class="detail-section"></section>
+      <section id="commit-detail" class="detail-section"></section>
+      ${session.linkedSessionIDs?.length ? `<section class="detail-section"><div class="section-label">Linked provider history</div><p class="coverage-note">One conversation on the map. Each source keeps its own saved history${session.coverage?.history === 'partial' ? '; the T3 copy is partial' : ''}.</p>${session.linkedSessionIDs.map(id => `<button class="relation" data-history="${escape(id)}">${sourceIcon(id.split(':')[0])}<span><small>Saved provider copy</small><strong>${escape(sourceName(id.split(':')[0]))}</strong></span>${icon('arrow-up-right')}</button>`).join('')}</section>` : ''}
       <div id="file-detail"><section class="detail-section"><div class="section-label">Changed files</div><div class="detail-loading">${icon('loader-circle', 'spinning')}Loading changes…</div></section></div>
       ${relationHTML(session)}
       <details class="more-details detail-section"><summary>Session info ${icon('chevron-down')}</summary><dl class="metadata"><div><dt>Project</dt><dd>${escape(project?.name || 'Unknown')}</dd></div><div><dt>Model</dt><dd>${escape(session.model)}</dd></div><div><dt>Agent</dt><dd>${escape(session.agent || 'Unknown')}</dd></div><div><dt>Tokens incl. cache</dt><dd>${session.tokens === null ? 'Not recorded' : compact(session.tokens)}</dd></div><div><dt>Recorded cost</dt><dd>${session.cost === null ? 'Not recorded' : `$${session.cost.toFixed(2)}`}</dd></div><div><dt>Updated</dt><dd>${date(session.updated)}</dd></div><div><dt>Imported</dt><dd>${session.coverage?.importedAt ? date(session.coverage.importedAt) : 'Pending'}</dd></div></dl><div class="directory-card"><span>${isWorktree ? 'Worktree' : 'Directory'}</span><code>${escape(session.directory)}</code></div></details>
@@ -574,12 +581,16 @@ function renderInspector(session: Session, reveal = true) {
   $('#open-session').addEventListener('click', () => void launcher.open(session));
   $('#copy-id').addEventListener('click', async () => { try { await navigator.clipboard.writeText(session.nativeID || session.id); showToast('Session ID copied'); } catch { showToast(session.nativeID || session.id); } });
   renderTimeline(session);
+  disposeCommitHistory?.();
+  disposeCommitHistory = showCommitHistory($('#commit-detail'), session.id, (id, revision) => {
+    eventHover.clear(); stopPlayback(); eventExplorer.open(session, id, revision, 'tools');
+  });
   refreshIcons();
 }
 
 function renderTimeline(session: Session, timeline?: TimelineMarkers) {
   const notes = timeline ? [
-    `${count(timeline.total)} messages · ${count(timeline.items.length)} on map`,
+    `${count(timeline.total)} messages · ${count(timeline.items.filter(item => item.kind === 'commit').length)} commit markers`,
     timeline.limited ? 'Map limit reached' : '',
     timeline.partial ? 'Partial history' : '',
   ].filter(Boolean) : ['Loading messages…'];
@@ -693,6 +704,12 @@ $('#session-list').addEventListener('click', (event) => {
   if (button?.dataset.session) selectSession(button.dataset.session);
 });
 $('#inspector').addEventListener('click', (event) => {
+  const history = (event.target as HTMLElement).closest<HTMLElement>('[data-history]')?.dataset.history;
+  if (history) {
+    eventHover.clear(); stopPlayback(); setPanel('inspector', true);
+    eventExplorer.open({ id: history, source: history.split(':')[0] });
+    return;
+  }
   const button = (event.target as HTMLElement).closest<HTMLElement>('[data-related]');
   if (button?.dataset.related) selectSession(button.dataset.related);
 });
@@ -724,15 +741,23 @@ $('#play').addEventListener('click', () => {
   playFrame = requestAnimationFrame(animatePlayback);
 });
 document.addEventListener('visibilitychange', () => { lastPlayTime = performance.now(); }, { signal: autoImportEvents.signal });
-$('#share-playback').addEventListener('click', async () => {
+async function exportAnimation() {
   const button = $<HTMLButtonElement>('#share-playback'); button.disabled = true;
   try {
-    if (!playbackShare) { const { createPlaybackShare } = await import('./share'); playbackShare = createPlaybackShare(modalVisibility); }
+    if (!playbackShare) { const { createPlaybackShare } = await import('./share'); playbackShare = createPlaybackShare(modalVisibility, () => void openPublishing()); }
     if (graph.nodes.length) playbackShare.open(graph, preferences);
-  } catch { showToast('Could not open GIF sharing. Please try again.'); }
+  } catch { showToast('Could not open video sharing. Please try again.'); }
   finally { button.disabled = !filtered.length || !scene; }
-});
-if (import.meta.hot) import.meta.hot.dispose(() => { window.clearTimeout(shareRevealTimer); playbackShare?.dispose(); });
+}
+async function openPublishing() {
+  try {
+    if (!publishingDialog) { const { createPublishing } = await import('./publishing'); publishingDialog = createPublishing(modalVisibility, () => void exportAnimation()); }
+    await publishingDialog.open(filtered.map(session => session.id));
+  } catch { showToast('Could not open publishing. Please try again.'); }
+}
+$('#share-playback').addEventListener('click', openPublishing);
+$('#open-publishing').addEventListener('click', openPublishing);
+if (import.meta.hot) import.meta.hot.dispose(() => { window.clearTimeout(shareRevealTimer); playbackShare?.dispose(); publishingDialog?.dispose(); });
 for (const flat of [false, true]) $(`#view-${flat ? '2d' : '3d'}`).addEventListener('click', () => changePreferences({ view: flat ? '2d' : '3d' }));
 $('#motion').addEventListener('click', () => changePreferences({ motion: motionEnabled(preferences, reducedMotion.matches) ? 'off' : 'on' }));
 $('#help').addEventListener('click', () => { $<HTMLDialogElement>('#help-dialog').showModal(); modalVisibility(); });

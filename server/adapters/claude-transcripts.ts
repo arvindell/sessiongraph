@@ -18,7 +18,7 @@ async function metadataState(path: string) {
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
 }
 export async function claudeRevision(path: string) {
-  return digest([6, (await state(path)).signature, (await metadataState(path))?.signature]);
+  return digest([7, (await state(path)).signature, (await metadataState(path))?.signature]);
 }
 async function bytes(path: string, max: number) {
   const before = await state(path);
@@ -42,6 +42,7 @@ async function bytes(path: string, max: number) {
 export interface ClaudeTranscript {
   entries: SessionStoreEntry[];
   times: Map<string, number>;
+  byID: Map<string, SessionStoreEntry>;
   partial: boolean;
   size: number;
   modified: number;
@@ -71,7 +72,8 @@ export async function claudeTranscript(path: string, revision: string): Promise<
     catch { partial = true; }
   }
   if (await claudeRevision(path) !== revision) throw new Error('Claude transcript changed during import; import again.');
-  const { size, modified } = await state(path), transcript = { entries, times, partial, size, modified };
+  const byID = new Map(entries.filter(row => typeof row.uuid === 'string').map(row => [String(row.uuid), row]));
+  const { size, modified } = await state(path), transcript = { entries, times, byID, partial, size, modified };
   cached = { path, revision, transcript };
   return transcript;
 }

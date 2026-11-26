@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider     = "postgresql"
+  relationMode = "prisma"
+  schemas      = ["sessiongraph"]
+}
+
+// GitHub's immutable numeric ID owns the account, never the renameable username.
+model Account {
+  id        String   @id
+  username  String?  @unique
+  createdAt DateTime @default(now())
+  @@schema("sessiongraph")
+}
+
+model LoginSession {
+  hash      String   @id
+  accountId String
+  kind      String
+  expiresAt DateTime
+
+  @@index([accountId])
+  @@index([expiresAt])
+  @@schema("sessiongraph")
+}
+
+model DeviceGrant {
+  challenge String   @id
+  accountId String
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@schema("sessiongraph")
+}
+
+model Publication {
+  accountId  String   @id
+  // Only validated PublicGraph JSON, gzip compressed below the DSQL 1 MiB limit.
+  graph      Bytes
+  publishedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@schema("sessiongraph")
+}
+
+model RateLimit {
+  key       String   @id
+  count     Int
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@schema("sessiongraph")
+}
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  @@schema("sessiongraph")
+}
+
+// Roles are validated by the service: owner, admin, member.
+model Membership {
+  organizationId String @db.Uuid
+  accountId      String
+  role           String
+  createdAt      DateTime @default(now())
+
+  @@id([organizationId, accountId])
+  @@index([accountId])
+  @@schema("sessiongraph")
+}
+
+// Invitations bind to immutable GitHub IDs and must be accepted by that account.
+model Invitation {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  accountId      String
+  invitedBy      String
+  role           String
+  expiresAt      DateTime
+
+  @@unique([organizationId, accountId])
+  @@index([accountId])
+  @@schema("sessiongraph")
+}

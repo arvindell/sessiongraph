@@ -1,4 +1,4 @@
-import type { Project, Session } from '../types';
+import type { Project, Session } from '@sessiongraph/core/types';
 
 export interface Fragment { text: string; kind: 'You' | 'Assistant' | 'Tool' | 'File'; time: number }
 export interface ContentPage {

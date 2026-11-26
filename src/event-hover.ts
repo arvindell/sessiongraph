@@ -1,4 +1,4 @@
-import { timelineColor, timelineLabel, type TimelineItem, type TimelineSummary } from './timeline';
+import { timelineColor, timelineLabel, type TimelineItem, type TimelineSummary } from '@sessiongraph/core/timeline';
 import type { TimelineClient } from './timeline-client';
 
 /** Read a bounded preview only while its marker is hovered; never select it. */
@@ -51,7 +51,7 @@ export function createEventHover(tooltip: HTMLElement, container: HTMLElement, c
       timer = setTimeout(async () => {
         const request = new AbortController(); controller = request;
         try {
-          const page = await client.read(sessionID, { item: item.id, revision, filter: 'messages' }, request.signal);
+          const page = await client.read(sessionID, { item: item.id, revision, filter: item.kind === 'commit' ? 'tools' : 'messages' }, request.signal);
           if (request.signal.aborted || key !== nextKey || page.selected?.id !== item.id) return;
           const value = preview(page.selected); cache.set(nextKey, value);
           if (cache.size > 20) cache.delete(cache.keys().next().value!);

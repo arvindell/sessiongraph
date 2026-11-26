@@ -5,7 +5,7 @@ import { stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute } from 'node:path';
 import { cliCommand, HARNESSES, isHarness, resumeArgs, type HarnessID, type LaunchConnection, type PreparedLaunch } from '../src/launch-links';
 import { getSessionInfo } from './opencode';
-import type { Session } from '../src/types';
+import type { Session } from '@sessiongraph/core/types';
 import { serviceFile } from './config';
 import { harnessExecutable, launchCommand, terminalExecutable } from './harnesses';
 import { saveHandoff } from './handoff';
@@ -37,7 +37,7 @@ export async function prepareLaunch(store: SessionGraphStore, session: Session, 
   const [binary, terminal] = await Promise.all([harnessExecutable(target), terminalExecutable()]);
   let args: string[] | undefined;
   const subagent = session.source === 'claude-code' && Boolean(session.parentID) && /^[\w-]+\/agent\/[\w-]+$/.test(session.nativeID || '');
-  const localHandoff = ['cursor', 'gemini', 'qwen-code', 'pi', 'copilot'].includes(session.source || '') && (!session.nativeResume || directory !== session.directory);
+  const localHandoff = session.nativeResume === false || ['cursor', 'gemini', 'qwen-code', 'pi', 'copilot'].includes(session.source || '') && (!session.nativeResume || directory !== session.directory);
   if (target === (session.source || 'opencode') && !subagent && !localHandoff) args = resumeArgs(session);
   const mode = args ? 'resume' : 'handoff';
   if (mode === 'handoff' && store.path === ':memory:') throw new Error('Save this library before creating a context handoff.');

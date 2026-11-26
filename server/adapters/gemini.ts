@@ -1,4 +1,5 @@
 import { homedir } from 'node:os';
+import { sourcePath } from '../source-paths';
 import { basename, dirname, join, sep } from 'node:path';
 import { addText } from './common';
 import { eventFor, eventText } from '../events';
@@ -40,7 +41,7 @@ export function geminiConversation(contents: string, lines: boolean) {
 export const geminiAdapter = localFileAdapter({
   id: 'gemini', name: 'Gemini CLI', description: 'Local JSON and JSONL chats, including recorded subagent histories',
   capabilities: { history: true, forks: false, children: true, files: true },
-  roots: () => process.env.SESSIONGRAPH_GEMINI_HOME ? [join(process.env.SESSIONGRAPH_GEMINI_HOME, 'tmp')] : [join(process.env.GEMINI_CLI_HOME || homedir(), '.gemini', 'tmp'), join(process.env.GEMINI_CLI_HOME || homedir(), '.cache', '.gemini', 'tmp')],
+  roots: () => sourcePath('gemini') || process.env.SESSIONGRAPH_GEMINI_HOME ? [join((sourcePath('gemini') || process.env.SESSIONGRAPH_GEMINI_HOME)!, 'tmp')] : [join(process.env.GEMINI_CLI_HOME || homedir(), '.gemini', 'tmp'), join(process.env.GEMINI_CLI_HOME || homedir(), '.cache', '.gemini', 'tmp')],
   match: path => /^[^/]+\/chats\/(?:[^/]+\/)?[^/]+\.jsonl?$/.test(path),
   extras: path => [projectRootFile(path)],
   parse(path, files) {
@@ -65,7 +66,7 @@ export const geminiAdapter = localFileAdapter({
     successfulEdits(messages, ['write_file', 'replace']);
     const parent = meta.kind === 'subagent' && basename(dirname(dirname(path))) === 'chats' ? basename(dirname(path)) : undefined;
     return { nativeID: meta.sessionId, messages, parent, partial,
-      session: { directory, created: time(meta.startTime), title: text(meta.summary), model: text([...records].reverse().find(r => r.model)?.model) || 'Unknown model', provider: 'Google', nativeResume: !parent && Boolean(directory) && !process.env.SESSIONGRAPH_GEMINI_HOME && !path.includes(`${sep}.cache${sep}`) },
+      session: { directory, created: time(meta.startTime), title: text(meta.summary), model: text([...records].reverse().find(r => r.model)?.model) || 'Unknown model', provider: 'Google', nativeResume: !parent && Boolean(directory) && !sourcePath('gemini') && !process.env.SESSIONGRAPH_GEMINI_HOME && !path.includes(`${sep}.cache${sep}`) },
       note: 'Local Gemini chat records with rewind and patch reconstruction. Only explicit subagent directories form parent links; workspace paths come from the project-root marker. Binary content is omitted.' };
   },
 });

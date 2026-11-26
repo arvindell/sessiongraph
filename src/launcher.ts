@@ -1,6 +1,6 @@
-import type { Session } from './types';
+import type { Session } from '@sessiongraph/core/types';
 import { HARNESSES, isHarness, sessionWebUrl, validSessionID, type LaunchConnection, type PreparedLaunch } from './launch-links';
-import { sourceName } from './sources';
+import { sourceName } from '@sessiongraph/core/sources';
 import { focusSelect } from './controls';
 
 export function createSessionLauncher(onVisibility: () => void) {

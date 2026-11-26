@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SessionGraphStore } from '../server/store';
 import { blankMessage, blankSession } from '../server/adapters/common';
-import { connectionPositions, makeGraph, sessionEnd, timeX, trailPosition } from '../src/layout';
+import { connectionPositions, makeGraph, sessionEnd, timeX, trailPosition } from '@sessiongraph/core/layout';
 import type { ImportedMessage } from '../server/adapters/types';
 
 const user = (id: string, time: number): ImportedMessage => ({ ...blankMessage(id, time, 'user'), fragments: [{ kind: 'You', text: id, time }] });
@@ -67,7 +67,7 @@ test('v2 libraries gain activity from saved history without losing checkpoints o
       assert.equal(store.getSession(candidate.session.id)!.activity!.lastMessageAt, 800);
       assert.deepEqual(store.timeline(candidate.session.id).userMessages, [{ id: 'm1', time: 800 }]);
       assert.equal(store.db.prepare('SELECT data FROM search_cache').get()!.data, '{"saved":true}');
-      assert.equal(store.db.prepare('PRAGMA user_version').get()!.user_version, 4);
+      assert.equal(store.db.prepare('PRAGMA user_version').get()!.user_version, 6);
     } finally { store.close(); }
     const reopened = new SessionGraphStore(path);
     try { assert.equal(reopened.getSession(candidate.session.id)!.activity!.userMessages, 1); } finally { reopened.close(); }

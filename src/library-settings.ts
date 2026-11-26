@@ -1,5 +1,5 @@
-import type { Preferences } from './preferences';
-import type { ViewState } from './view-state';
+import type { Preferences } from '@sessiongraph/core/preferences';
+import type { ViewState } from '@sessiongraph/core/view-state';
 
 export interface LibrarySettingsPatch { autoImport?: boolean; preferences?: Preferences; viewState?: ViewState }
 export type SaveState = 'saved' | 'saving' | 'error';

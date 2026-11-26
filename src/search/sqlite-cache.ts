@@ -1,4 +1,4 @@
-import type { Session } from '../types';
+import type { Session } from '@sessiongraph/core/types';
 import { MAX_CHARACTERS, validRecord, type CachedContent } from './persistence';
 
 /** Browser worker bridge to SessionGraph's local SQLite index. No source/agent calls. */

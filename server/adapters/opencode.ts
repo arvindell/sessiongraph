@@ -12,7 +12,7 @@ export const opencodeAdapter: SessionAdapter = {
     const data = await getSessionGraph(true);
     return {
       projects: data.projects.map((p) => ({ ...p, id: identity('opencode', p.id) })), warnings: data.warnings,
-      sessions: data.sessions.map((s) => ({ locator: {}, revision: digest([3, s.updated, s.created, s.directory]), session: {
+      sessions: data.sessions.map((s) => ({ locator: {}, revision: digest([4, s.updated, s.created, s.directory]), session: {
         ...s, source: 'opencode', nativeID: s.id, id: identity('opencode', s.id), projectID: identity('opencode', s.projectID),
         parentID: s.parentID ? identity('opencode', s.parentID) : undefined, forkID: s.forkID ? identity('opencode', s.forkID) : undefined,
       } })),

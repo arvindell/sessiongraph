@@ -14,3 +14,13 @@ release/
 *.tgz
 *.sqlite*
 .vercel/
+packages/site/generated/
+packages/site/dist-api/
+# Deployment provisioning and local credentials stay outside the public repository.
+/infra/
+*.tfstate*
+*.tfvars*
+.terraform/
+*.pem
+*.key
+/account.json

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Dirent } from 'node:fs';
 import { lstat, opendir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { sourcePath } from '../source-paths';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { blankSession, digest, identity, project } from './common';
@@ -68,7 +69,7 @@ async function workspacePaths(root: string, warnings: string[]) {
 }
 
 export function createCursorAdapter(options: { home?: string; userData?: string } = {}): SessionAdapter {
-  const root = () => options.home || process.env.SESSIONGRAPH_CURSOR_HOME || process.env.SESSION_ATLAS_CURSOR_HOME || join(homedir(), '.cursor');
+  const root = () => options.home || sourcePath('cursor') || process.env.SESSIONGRAPH_CURSOR_HOME || process.env.SESSION_ATLAS_CURSOR_HOME || join(homedir(), '.cursor');
   const editor = () => options.userData || process.env.SESSIONGRAPH_CURSOR_USER_DATA_DIR || process.env.SESSION_ATLAS_CURSOR_USER_DATA_DIR || userData();
   return {
     id: 'cursor', name: 'Cursor', description: 'Local IDE transcripts, legacy Composer, subagents, and CLI / ACP stores · read-only',
@@ -163,7 +164,7 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
             session.projectID = project('cursor', session.directory).id;
             if (session.directory) delete locator.directoryNote;
           }
-          const candidate = { session, locator, revision: digest([4, kind, path, before, session.created, session.directory, session.parentID]) };
+          const candidate = { session, locator, revision: digest([5, kind, path, before, session.created, session.directory, session.parentID]) };
           if (!previous || rank(candidate) > rank(previous) || (rank(candidate) === rank(previous) && session.updated > previous.session.updated)) found.set(session.id, candidate);
         } catch {
           unreadable++;
@@ -237,7 +238,7 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
       const messages = page.rows.flatMap((row) => {
         const message = cursorMessage(row.value, `offset:${row.offset}`);
         if (!message) page.partial = true;
-        return message && message.role !== 'system' ? [message] : [];
+        return message && (message.role !== 'system' || row.value?.type === 'turn_ended') ? [message] : [];
       });
       await verify();
       if (!offset && page.cursor === undefined && !messages.length) throw new Error('Cursor transcript has no readable conversation. Previous imports are retained.');

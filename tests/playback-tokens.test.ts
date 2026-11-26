@@ -8,6 +8,14 @@ const session = (id: string, tokens: number | null, end: number | null, source =
   activity: { firstMessageAt: 10, lastMessageAt: end, userMessages: 1, untimedUserMessages: 0 },
 });
 
+test('published counters include recorded totals independently of shared harness identity and retain untimed totals for the end', () => {
+  const index = playbackTokens([session('recorded', 50, 20, 'codex'), session('untimed', 30, null, 'unknown'), session('missing', null, 40)], { allSources: true });
+  assert.deepEqual(index.at(20), { tokens: 50, sessions: 1 });
+  assert.deepEqual(index.at(0, true), { tokens: 80, sessions: 2 });
+  assert.deepEqual(index.at(19), { tokens: 0, sessions: 0 });
+  assert.equal(index.missing, 1);
+});
+
 test('playback totals follow saved endpoints and reverse scrubbing, with no prorating or unsupported usage', () => {
   const index = playbackTokens([session('long', 900, 90), session('short', 100, 20), session('simultaneous', 50, 20, 'continue'), session('unknown', null, 25), session('unsupported', 500, 15, 'codex'), session('zero', 0, 30)]);
   assert.deepEqual(index.at(10), { tokens: 0, sessions: 0 });

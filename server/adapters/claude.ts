@@ -9,10 +9,13 @@ import { claudeRevision as revision, claudeSessionID, claudeTranscript, claudeTr
 import { localFileAdapter } from './local-files';
 import { envelopeHistory } from './harness-formats';
 import { combineAdapters } from './sqlite-histories';
+import { sourcePath } from '../source-paths';
+import { executionFields, nativeCommit } from '../commit-extraction';
+import type { SessionStoreEntry } from '@anthropic-ai/claude-agent-sdk';
 
-const root = () => join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
+const root = () => join(sourcePath('claude-code') || process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
 
-export function claudeMessages(rows: SessionMessage[], candidate: Candidate, times?: Map<string, number>): ImportedMessage[] {
+export function claudeMessages(rows: SessionMessage[], candidate: Candidate, times?: Map<string, number>, entries?: Map<string, SessionStoreEntry>): ImportedMessage[] {
   // Match tool results explicitly; a requested edit alone is not file evidence.
   const calls = new Map<string, { name: string; input: any }>();
   return rows.map((row) => {
@@ -36,7 +39,17 @@ export function claudeMessages(rows: SessionMessage[], candidate: Candidate, tim
         }
       }
     }
-    msg.events = blockEvents(msg, raw?.content).map((event) => ({ ...event, parentID: row.parent_tool_use_id || undefined }));
+    const entry = entries?.get(row.uuid), structured = (entry?.tool_use_result ?? entry?.toolUseResult) as any;
+    const results = Array.isArray(raw?.content) ? raw.content.filter((p: any) => p.type === 'tool_result') : [];
+    msg.events = blockEvents(msg, raw?.content).map((event) => {
+      // An envelope's native result is only attributable when it has one result
+      // block. Never attach it to all parallel calls in an ambiguous envelope.
+      const result = event.kind === 'tool_result' && results.length === 1 ? structured : undefined;
+      return { ...event, parentID: row.parent_tool_use_id || undefined,
+        ...executionFields({}, { ...result, cwd: entry?.cwd }),
+        gitCommit: nativeCommit(result?.gitOperation?.commit),
+        partial: Boolean(event.partial || result?.interrupted || result?.backgroundTaskId || result?.backgroundedByUser || result?.timedOutAfterMs || entry?.sessionId && entry.sessionId !== (candidate.locator.parent || candidate.session.nativeID)) };
+    });
     if (!msg.events.length) msg.events = [eventFor(msg, 'event', raw?.subtype === 'compact_boundary' ? 'compaction' : 'event', raw?.subtype || `${row.type} event`, eventText(raw), { nativeType: raw?.subtype || row.type, partial: true })];
     return msg;
   });
@@ -49,7 +62,9 @@ const sdkClaudeAdapter: SessionAdapter = {
   async discover() {
     const sessions: Candidate[] = [], warnings: string[] = [];
     // The SDK deduplicates native session IDs across projects and worktrees.
-    const infos = await listSessions({ limit: 20_000, includeProgrammatic: true });
+    // A library-specific archive must not inherit metadata from the SDK's default
+    // home when the same native session also exists there. Read its own headers.
+    const infos = sourcePath('claude-code') ? [] : await listSessions({ limit: 20_000, includeProgrammatic: true });
     if (infos.length === 20_000) warnings.push('Claude Code listing is limited to 20,000 sessions.');
     const files = new Map<string, { path: string; children: string }>();
     let unreadable = 0;
@@ -109,7 +124,7 @@ const sdkClaudeAdapter: SessionAdapter = {
       ? await getSubagentMessages(candidate.locator.parent, candidate.locator.agent, options)
       : await getSessionMessages(candidate.session.nativeID!, options);
     const more = rows.length > count;
-    const messages = claudeMessages(rows.slice(0, count), candidate, transcript.times).slice(offset - start);
+    const messages = claudeMessages(rows.slice(0, count), candidate, transcript.times, transcript.byID).slice(offset - start);
     if (!offset && !messages.length && transcript.size > 100) throw new Error('SDK returned no readable conversation for this transcript.');
     if (!more && await revision(candidate.locator.path) !== candidate.revision) throw new Error('Session changed during import; import again to capture the latest messages.');
     return { messages, cursor: more ? String(offset + 120) : undefined, partial: transcript.partial, note: `SDK-visible conversation chain from the local CLI/VS Code transcript; pre-compaction text and unsupported message types may be absent. Fork ancestry is unavailable.${transcript.partial ? ' Some transcript records or subagent metadata were unreadable.' : ''}` };
@@ -121,7 +136,7 @@ const sdkClaudeAdapter: SessionAdapter = {
 const exportedClaudeAdapter = localFileAdapter({
   id: 'claude-code', name: 'Claude Code', description: 'Legacy local transcript exports',
   capabilities: { history: true, forks: false, children: false, files: false },
-  roots: () => [join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'transcripts')],
+  roots: () => [join(sourcePath('claude-code') || process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'transcripts')],
   match: p => p.endsWith('.jsonl'),
   parse: (path, files) => envelopeHistory(path, files.get(path)!),
 });

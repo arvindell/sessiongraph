@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { sourcePath } from '../source-paths';
 
 export const homePath = (...parts: string[]) => join(homedir(), ...parts);
 export const dataPath = (...parts: string[]) => join(process.env.XDG_DATA_HOME || homePath('.local/share'), ...parts);
@@ -9,6 +10,6 @@ export const tokscalePath = (...parts: string[]) => join(process.env.TOKSCALE_CO
 export const envHome = (env: string, fallback: string, ...parts: string[]) => join(process.env[env]?.trim() || homePath(fallback), ...parts);
 /** Each additional source accepts an explicit history directory, without scanning arbitrary projects. */
 export const harnessRoots = (id: string, defaults: () => string[]) => () => {
-  const override = process.env[`SESSIONGRAPH_${id.replace(/-/g, '_').toUpperCase()}_HISTORY_DIR`]?.trim();
+  const override = sourcePath(id) || process.env[`SESSIONGRAPH_${id.replace(/-/g, '_').toUpperCase()}_HISTORY_DIR`]?.trim();
   return override ? [override] : defaults();
 };

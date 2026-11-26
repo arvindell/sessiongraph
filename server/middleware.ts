@@ -5,8 +5,14 @@ import { Importer } from './importer';
 import { getLaunchConnection, prepareLaunch, launchTerminal } from './launch';
 import { isHarness } from '../src/launch-links';
 import { EventReadError } from './event-store';
-import { normalizePreferences } from '../src/preferences';
-import { normalizeViewState } from '../src/view-state';
+import { normalizePreferences } from '@sessiongraph/core/preferences';
+import { normalizeViewState } from '@sessiongraph/core/view-state';
+import { PublishingClient, PublishingError } from './publishing';
+import { publishingSettings } from '@sessiongraph/core/public-graph';
+import { withSourcePaths } from './source-paths';
+import { LibraryError } from './library-query';
+
+const publishing = new PublishingClient();
 
 const generation = Symbol('sessiongraph-backend');
 const runtime = globalThis as typeof globalThis & { sessionGraphRuntime?: { store: SessionGraphStore; importer: Importer; generation?: symbol } };
@@ -14,7 +20,7 @@ export function library() {
   if (runtime.sessionGraphRuntime?.importer.status.running && runtime.sessionGraphRuntime.generation !== generation) {
     // HMR can fix an adapter while a long import is in progress. Keep the job
     // and connection, but replace the methods it calls for subsequent pages.
-    for (const live of runtime.sessionGraphRuntime.importer.adapters) { const updated = adapters.find((adapter) => adapter.id === live.id); if (updated) Object.assign(live, updated); }
+    for (const live of runtime.sessionGraphRuntime.importer.adapters) { const updated = adapters.find((adapter) => adapter.id === live.id); if (updated) Object.assign(live, withSourcePaths(updated, () => runtime.sessionGraphRuntime!.store.setting<Record<string, string>>('sourcePaths') || {})); }
   }
   if (runtime.sessionGraphRuntime && runtime.sessionGraphRuntime.generation !== generation && !runtime.sessionGraphRuntime.importer.status.running) { runtime.sessionGraphRuntime.store.close(); runtime.sessionGraphRuntime = undefined; }
   if (!runtime.sessionGraphRuntime) { const store = new SessionGraphStore(); runtime.sessionGraphRuntime = { store, importer: new Importer(store, adapters), generation }; }
@@ -39,6 +45,18 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
   if (req.method !== 'GET' && typeof req.headers['x-sessiongraph-action'] !== 'string') return json(403, { error: 'Use the SessionGraph application.' });
   try {
     const { store, importer } = library();
+    if (url.pathname.startsWith('/api/sessiongraph/publishing')) {
+      const action = url.pathname.slice('/api/sessiongraph/publishing'.length);
+      if (action === '/settings' && req.method === 'GET') return json(200, publishingSettings(store.setting('publishing')));
+      if (action === '/status' && req.method === 'GET') return json(200, await publishing.status());
+      if (action === '/login' && req.method === 'POST') return json(200, publishing.login());
+      if (action === '/poll' && req.method === 'POST') return json(200, await publishing.poll());
+      if (action === '/logout' && req.method === 'POST') return json(200, await publishing.logout());
+      if (action === '/preview' && req.method === 'POST') { const value = await body(req); return json(200, publishing.prepare(store, value?.ids, value?.settings)); }
+      if (action === '/publish' && req.method === 'POST') { const value = await body(req); return json(200, await publishing.publish(value?.id, value?.confirmed)); }
+      if (action === '/unpublish' && req.method === 'POST') return json(200, await publishing.unpublish());
+      return json(405, { error: 'Method not allowed.' });
+    }
     if (url.pathname === '/api/sessiongraph/settings' && req.method === 'POST') {
       const value = await body(req);
       if (!value || typeof value !== 'object' || Array.isArray(value) || !['autoImport', 'preferences', 'viewState'].some((key) => value[key] !== undefined)) return json(400, { error: 'Choose valid settings.' });
@@ -74,7 +92,7 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
       const sources = adapters.map((a) => ({ id: a.id, name: a.name, description: a.description, capabilities: a.capabilities, selected: store.selected().includes(a.id), available: false, ...store.sourceInfo(a.id) }));
       return json(200, store.library(sources, importer.status.running));
     }
-    const match = /^\/api\/sessiongraph\/session\/([^/]+)(?:\/(content|timeline|events|event-markers|connection|prepare-launch|open-terminal))?$/.exec(url.pathname);
+    const match = /^\/api\/sessiongraph\/session\/([^/]+)(?:\/(content|timeline|commits|events|event-markers|connection|prepare-launch|open-terminal))?$/.exec(url.pathname);
     if (match) {
       const id = decodeURIComponent(match[1]);
       const session = store.getSession(id);
@@ -93,6 +111,7 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
       if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
       if (['prepare-launch', 'open-terminal'].includes(match[2])) return json(405, { error: 'Method not allowed.' });
       if (match[2] === 'timeline') return json(200, store.timeline(id));
+      if (match[2] === 'commits') return json(200, store.commits(id, { cursor: url.searchParams.get('cursor') || undefined, limit: url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : undefined }));
       if (match[2] === 'event-markers') return json(200, store.eventMarkers(id));
       if (match[2] === 'events') return json(200, store.events(id, Object.fromEntries(['cursor', 'item', 'filter', 'revision'].flatMap((key) => url.searchParams.has(key) ? [[key, url.searchParams.get(key)!]] : []))));
       if (match[2] === 'connection') return json(200, await getLaunchConnection(session));
@@ -102,7 +121,9 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
     }
     return json(404, { error: 'Not found.' });
   } catch (error) {
+    if (error instanceof PublishingError) return json(error.status, { error: error.message });
     if (error instanceof EventReadError) return json(error.status, { error: error.message });
+    if (error instanceof LibraryError) return json(error.code === 'STALE_CURSOR' ? 409 : 400, { error: error.message });
     console.error('[sessiongraph] Local operation failed:', error instanceof Error ? error.name : 'Unknown error');
     return json(500, { error: 'Local operation failed. Check the import status or retry.' });
   }

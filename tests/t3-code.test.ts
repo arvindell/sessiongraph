@@ -8,7 +8,7 @@ import { t3CodeAdapter } from '../server/adapters/t3-code';
 import { closeSqliteSnapshots } from '../server/adapters/sqlite-snapshot';
 import { Importer } from '../server/importer';
 import { SessionGraphStore } from '../server/store';
-import { blankSession } from '../server/adapters/common';
+import { addText, blankMessage, blankSession, digest } from '../server/adapters/common';
 import { sessionMatchesSource, visibleSessions } from '../src/session-links';
 
 const at = '2026-11-03T12:00:00.000Z';
@@ -44,7 +44,7 @@ test('T3 V2 imports app threads, ordered activity, explicit lineage, and strong 
   const item = db.prepare('INSERT INTO orchestration_v2_projection_turn_items VALUES (?,?,?,?,?,?,?)');
   const put = (id: string, ordinal: number, type: string, status: string, data: object) => item.run(id, 'parent', ordinal, type, status, at, JSON.stringify({ id, startedAt: at, completedAt: at, ...data }));
   put('u', 1, 'user_message', 'completed', { text: 'Please edit the file' });
-  put('cmd', 2, 'command_execution', 'completed', { input: 'cat file.txt', output: 'old contents' });
+  put('cmd', 2, 'command_execution', 'completed', { input: 'cat file.txt', output: 'old contents', exitCode: 7, nativeItemRef: { driver: 'codex', nativeId: 'command-native', strength: 'strong' } });
   put('edit', 3, 'file_change', 'completed', { fileName: 'file.txt' });
   put('check', 4, 'checkpoint', 'completed', { files: [{ path: 'other.txt' }] });
   put('a', 5, 'assistant_message', 'completed', { text: 'Done' });
@@ -61,6 +61,8 @@ test('T3 V2 imports app threads, ordered activity, explicit lineage, and strong 
   assert.deepEqual(page.messages.map(m => m.id), ['item:u', 'item:cmd', 'item:edit', 'item:check', 'item:a']);
   assert.equal(page.messages[0].fragments[0].text, 'Please edit the file');
   assert.equal(page.messages[1].events?.[0].kind, 'tool_result');
+  assert.equal(page.messages[1].events?.[0].exitCode, 7);
+  assert.equal(page.messages[1].events?.[0].callID, 'command-native');
   assert.deepEqual(page.messages[2].files.map(f => f.path), ['/fixture/project/file.txt']);
   assert.deepEqual(page.messages[3].files, []);
   assert.equal(page.messages[4].events?.[0].kind, 'message');
@@ -83,7 +85,9 @@ test('T3 app threads replace only uniquely linked native sessions in the visible
   try {
     const native = blankSession('codex', 'native', '/fixture'); native.created = Date.parse(at);
     store.upsert({ session: native, revision: 'native', locator: { path: 'fixture' } });
-    store.replace({ session: native, revision: 'native', locator: { path: 'fixture' } }, [], false);
+    const nativeMessage = blankMessage('native-user', Date.parse(at), 'user');
+    addText(nativeMessage, 'Provider-only detail', 'You');
+    store.replace({ session: native, revision: 'native', locator: { path: 'fixture' } }, [nativeMessage], false);
     const child = blankSession('codex', 'child', '/fixture'); child.created = Date.parse(at); child.parentID = native.id;
     store.upsert({ session: child, revision: 'child', locator: { path: 'fixture' } });
     const importer = new Importer(store, [t3CodeAdapter]); importer.start(['t3-code']); await importer.settled();
@@ -94,7 +98,87 @@ test('T3 app threads replace only uniquely linked native sessions in the visible
     assert.ok(sessionMatchesSource(library.sessions.find(s => s.id === 't3-code:app')!, 'codex'));
     assert.equal(store.getSession(native.id)?.id, native.id);
     const incomplete = { ...library.sessions.find(s => s.id === 't3-code:app')!, coverage: { history: 'partial' as const } };
-    assert.equal(visibleSessions([native, incomplete]).length, 2);
+    assert.deepEqual(visibleSessions([native, incomplete]).map(s => s.id), ['t3-code:app']);
+    assert.equal(store.getSession(native.id)?.id, native.id, 'provider history stays directly accessible');
+    assert.equal(store.events(native.id, { filter: 'messages' }).selected?.text, 'Provider-only detail');
+    assert.equal(visibleSessions([native, incomplete, child]).find(s => s.id === child.id)?.parentID, 't3-code:app');
+  } finally { store.close(); }
+}));
+
+test('T3 OpenCode edit labels stay tool activity; real file paths and other providers retain file evidence', async () => fixture(async (path, db) => {
+  db.exec(`CREATE TABLE projection_projects(project_id TEXT PRIMARY KEY, workspace_root TEXT, deleted_at TEXT);
+    CREATE TABLE orchestration_v2_projection_threads(thread_id TEXT PRIMARY KEY, project_id TEXT, title TEXT, default_provider TEXT, created_at TEXT, updated_at TEXT, archived_at TEXT, deleted_at TEXT, payload_json TEXT);
+    CREATE TABLE orchestration_v2_projection_turn_items(turn_item_id TEXT PRIMARY KEY, thread_id TEXT, ordinal INTEGER, type TEXT, status TEXT, updated_at TEXT, payload_json TEXT);`);
+  db.prepare('INSERT INTO projection_projects VALUES (?,?,NULL)').run('p', '/fixture');
+  db.prepare('INSERT INTO orchestration_v2_projection_threads VALUES (?,?,?,?,?,?,NULL,NULL,?)').run('app', 'p', 'Task', 'opencode', at, at, '{}');
+  const insert = db.prepare('INSERT INTO orchestration_v2_projection_turn_items VALUES (?,?,?,?,?,?,?)');
+  let ordinal = 0;
+  const put = (id: string, fileName: string, driver: string | undefined, status = 'completed') => insert.run(id, 'app', ++ordinal, 'file_change', status, at, JSON.stringify({ fileName, startedAt: at, nativeItemRef: driver ? { driver, nativeId: `call-${id}`, strength: 'strong' } : undefined }));
+  for (const name of ['patch', 'apply_patch', 'edit', 'write', 'multiedit', 'Edit', 'Write']) put(`tool-${name}`, name, 'opencode');
+  for (const state of ['pending', 'running', 'failed', 'unknown']) put(`tool-${state}`, 'patch', 'opencode', state);
+  put('codex-patch', 'patch', 'codex');
+  put('claude-edit', 'edit', 'claudeAgent');
+  put('unattributed-patch', 'patch', undefined);
+  put('absolute-patch', '/fixture/patch', 'opencode');
+  put('relative-patch', './patch', 'opencode');
+  put('nested-write', 'src/write', 'opencode');
+  put('source-file', 'src/patch.ts', 'opencode');
+  put('failed-file', 'failed.ts', 'codex', 'failed');
+  const before = await readFile(path), candidate = (await t3CodeAdapter.discover()).sessions[0];
+  const page = await t3CodeAdapter.read(candidate), byID = new Map(page.messages.map(m => [m.id, m]));
+  for (const message of page.messages.filter(m => m.id.startsWith('item:tool-'))) {
+    assert.deepEqual(message.files, []);
+    assert.deepEqual(message.tools, [message.events![0].name]);
+    assert.equal(message.events![0].nativeType, 'file_change');
+    assert.equal(message.events![0].callID, `call-${message.id.slice(5)}`);
+  }
+  assert.equal(byID.get('item:tool-patch')!.events![0].kind, 'tool_result');
+  for (const state of ['pending', 'running', 'unknown']) assert.equal(byID.get(`item:tool-${state}`)!.events![0].kind, 'tool_call');
+  assert.equal(byID.get('item:tool-failed')!.events![0].kind, 'tool_result');
+  assert.equal(byID.get('item:tool-failed')!.events![0].status, 'failed');
+  for (const id of ['codex-patch', 'unattributed-patch', 'absolute-patch', 'relative-patch']) assert.deepEqual(byID.get(`item:${id}`)!.files, [{ path: '/fixture/patch', source: 'file change', steps: 1 }]);
+  assert.equal(byID.get('item:claude-edit')!.files[0].path, '/fixture/edit');
+  assert.equal(byID.get('item:nested-write')!.files[0].path, '/fixture/src/write');
+  assert.equal(byID.get('item:source-file')!.files[0].path, '/fixture/src/patch.ts');
+  assert.deepEqual(byID.get('item:failed-file')!.files, []);
+  assert.deepEqual(await readFile(path), before);
+}));
+
+test('T3 refresh repairs old phantom file counts across pages without changed source timestamps', async () => fixture(async (path, db) => {
+  db.exec(`CREATE TABLE projection_projects(project_id TEXT PRIMARY KEY, workspace_root TEXT, deleted_at TEXT);
+    CREATE TABLE orchestration_v2_projection_threads(thread_id TEXT PRIMARY KEY, project_id TEXT, title TEXT, default_provider TEXT, created_at TEXT, updated_at TEXT, archived_at TEXT, deleted_at TEXT, payload_json TEXT);
+    CREATE TABLE orchestration_v2_projection_turn_items(turn_item_id TEXT PRIMARY KEY, thread_id TEXT, ordinal INTEGER, type TEXT, status TEXT, updated_at TEXT, payload_json TEXT);`);
+  db.prepare('INSERT INTO projection_projects VALUES (?,?,NULL)').run('p', '/fixture');
+  db.prepare('INSERT INTO orchestration_v2_projection_threads VALUES (?,?,?,?,?,?,NULL,NULL,?)').run('app', 'p', 'Task', 'opencode', at, at, '{}');
+  const insert = db.prepare('INSERT INTO orchestration_v2_projection_turn_items VALUES (?,?,?,?,?,?,?)');
+  insert.run('user', 'app', 0, 'user_message', 'completed', at, JSON.stringify({ text: 'Keep this conversation', startedAt: at }));
+  for (let n = 1; n <= 120; n++) insert.run(String(n), 'app', n, 'file_change', 'completed', at, JSON.stringify({ fileName: 'patch', startedAt: at, nativeItemRef: { driver: 'opencode', nativeId: `call-${n}`, strength: 'strong' } }));
+  const candidate = (await t3CodeAdapter.discover()).sessions[0];
+  const oldRevision = digest([at, undefined, [121, at], undefined]);
+  assert.notEqual(candidate.revision, oldRevision);
+  const store = new SessionGraphStore(':memory:');
+  try {
+    const old = { ...candidate, revision: oldRevision }, message = blankMessage('item:user', Date.parse(at), 'user');
+    addText(message, 'Keep this conversation', 'You');
+    const phantom = { ...blankMessage('item:1', Date.parse(at), 'tool'), files: [{ path: '/fixture/patch', source: 'file change' as const, steps: 120 }] };
+    store.upsert(old); store.replace(old, [message, phantom], false);
+    assert.equal(store.detail(candidate.session.id).files[0].steps, 120);
+    const before = await readFile(path), importer = new Importer(store, [t3CodeAdapter]);
+    importer.sync(['t3-code']); await importer.settled();
+    assert.equal(importer.status.imported, 1); assert.equal(importer.status.failed, 0);
+    assert.equal(store.revision(candidate.session.id), candidate.revision);
+    let cursor: string | undefined, scanned = 0, patches = 0;
+    do {
+      const detail = store.detail(candidate.session.id, cursor);
+      assert.deepEqual(detail.files, []); scanned += detail.messagesScanned;
+      patches += detail.tools.find(t => t.name === 'patch')?.count ?? 0;
+      cursor = detail.nextCursor ?? undefined;
+    } while (cursor);
+    assert.equal(scanned, 121); assert.equal(patches, 120);
+    assert.equal(store.events(candidate.session.id, { filter: 'messages' }).selected?.text, 'Keep this conversation');
+    importer.sync(['t3-code']); await importer.settled();
+    assert.equal(importer.status.unchanged, 1);
+    assert.deepEqual(await readFile(path), before);
   } finally { store.close(); }
 }));
 
@@ -143,5 +227,9 @@ test('ambiguous or empty T3 bindings do not hide provider history', () => {
   const first = { ...blankSession('t3-code', 'first'), linkedSessionIDs: [native.id], coverage: { history: 'complete' as const }, activity: { firstMessageAt: 1, lastMessageAt: 1, userMessages: 1, untimedUserMessages: 0 } };
   const second = { ...first, id: 't3-code:second', nativeID: 'second' };
   assert.equal(visibleSessions([native, first, second]).length, 3);
+  assert.equal(visibleSessions([native, first, { ...second, coverage: { history: 'partial' } }]).length, 3);
+  assert.equal(visibleSessions([native, first, { ...second, coverage: { history: 'pending' } }]).length, 3);
   assert.equal(visibleSessions([native, { ...first, activity: { ...first.activity, userMessages: 0 } }]).length, 2);
+  assert.equal(visibleSessions([native, { ...first, coverage: { history: 'pending' } }]).length, 2);
+  assert.equal(visibleSessions([native, { ...first, linkedSessionIDs: [native.id, native.id], coverage: { history: 'partial' } }]).length, 1);
 });

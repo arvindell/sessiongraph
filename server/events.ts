@@ -1,7 +1,7 @@
 import { digest } from './adapters/common';
 import { messageTime } from './activity';
 import type { ImportedMessage } from './adapters/types';
-import type { TimelineEvent, TimelineItem } from '../src/timeline';
+import type { TimelineEvent, TimelineItem } from '@sessiongraph/core/timeline';
 
 /** Keep JSON readable while bounding payloads and excluding binary/credential fields. */
 export function eventText(value: unknown, limit = 32_000): string {
@@ -37,9 +37,9 @@ export function boundEventPayloads(message: ImportedMessage, budget: number): nu
   message.events = message.events.slice(0, 200).flatMap((event) => {
     if (remaining <= 0) { message.partial = true; return []; }
     const bounded = { ...event };
-    for (const key of ['text', 'input', 'output', 'name', 'id', 'nativeID', 'nativeType', 'callID', 'parentID'] as const) {
+    for (const key of ['text', 'input', 'output', 'name', 'id', 'nativeID', 'nativeType', 'callID', 'parentID', 'cwd'] as const) {
       if (bounded[key] === undefined) continue;
-      const value = String(bounded[key]), size = key === 'text' || key === 'output' ? 64_000 : key === 'input' ? 32_000 : 512;
+      const value = String(bounded[key]), size = key === 'text' || key === 'output' ? 64_000 : key === 'input' ? 32_000 : key === 'cwd' ? 4096 : 512;
       bounded[key] = value.slice(0, Math.max(0, Math.min(remaining, size)));
       remaining -= bounded[key]!.length;
       if (bounded[key]!.length < value.length) { bounded.partial = true; message.partial = true; }
@@ -63,6 +63,17 @@ export function blockEvents(message: ImportedMessage, content: unknown, transfor
     if (['thinking', 'reasoning'].includes(part.type)) return [eventFor(message, id, 'reasoning', 'Recorded reasoning', eventText(part.thinking ?? part.text), fields)];
     return [eventFor(message, id, 'event', `${part.type || 'Unknown'} content`, 'This content type is not represented as text.', { ...fields, partial: true })];
   });
+}
+
+/** Normalize before truncation, retaining context-only blocks as source events. */
+export function userBlockEvents(message: ImportedMessage, content: unknown, normalize: (value: string) => string): TimelineEvent[] {
+  const context: boolean[] = [];
+  return blockEvents(message, content, value => {
+    const text = normalize(value);
+    context.push(Boolean(value && !text));
+    return text || value;
+  }).map(event => event.kind === 'message' && context.shift()
+    ? { ...event, kind: 'event', role: 'system', name: 'Session context', nativeType: 'user-context' } : event);
 }
 
 export function normalizedEvents(message: ImportedMessage, sessionID: string): Omit<TimelineItem, 'ordinal'>[] {

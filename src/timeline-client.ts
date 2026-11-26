@@ -1,4 +1,4 @@
-import type { TimelinePage } from './timeline';
+import type { TimelinePage } from '@sessiongraph/core/timeline';
 
 export type EventQuery = { item?: string; cursor?: string; filter?: string; revision?: string };
 type Pending = { controller: AbortController; promise: Promise<TimelinePage>; readers: number };

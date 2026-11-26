@@ -1,4 +1,5 @@
 import { homedir } from 'node:os';
+import { sourcePath } from '../source-paths';
 import { join } from 'node:path';
 import { blankMessage } from './common';
 import { eventFor, eventText } from '../events';
@@ -29,11 +30,11 @@ export function piHistory(value: string): LocalHistory {
 export const piAdapter = localFileAdapter({
   id: 'pi', name: 'Pi', description: 'Local JSONL sessions · messages, tools, compaction, and branch entries',
   capabilities: { history: true, forks: false, children: false, files: true },
-  roots: () => [process.env.SESSIONGRAPH_PI_SESSIONS_DIR || join(process.env.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent'), 'sessions')],
+  roots: () => [sourcePath('pi') || process.env.SESSIONGRAPH_PI_SESSIONS_DIR || join(process.env.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent'), 'sessions')],
   match: path => path.endsWith('.jsonl'),
   parse(path, files) {
     const history = piHistory(files.get(path)!);
-    history.session!.nativeResume = Boolean(history.session!.directory) && !process.env.SESSIONGRAPH_PI_SESSIONS_DIR;
+    history.session!.nativeResume = Boolean(history.session!.directory) && !sourcePath('pi') && !process.env.SESSIONGRAPH_PI_SESSIONS_DIR;
     return history;
   },
 });

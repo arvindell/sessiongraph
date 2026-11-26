@@ -1,0 +1,24 @@
+name: sessiongraph-local
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: sessiongraph
+      POSTGRES_DB: sessiongraph_dev
+      # Local development only; matches the passwordless PostgreSQL used in CI.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:${SESSIONGRAPH_POSTGRES_PORT:-55439}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./packages/site/dev/postgres-init.sql:/docker-entrypoint-initdb.d/01-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U sessiongraph -d sessiongraph_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres-data:

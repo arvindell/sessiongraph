@@ -22,7 +22,8 @@ export function discoverComposers(path: string, workspace = '') {
     for (const table of ['cursorDiskKV', 'ItemTable']) {
       if (!hasTable(db, table)) continue;
       let failed = 0, count = 0;
-      const rows = db.prepare(`SELECT key, CASE WHEN length(value)<=? THEN value END AS value FROM ${table} WHERE key LIKE 'composerData:%' ORDER BY key LIMIT 20001`).iterate(MAX_VALUE);
+      // Cursor also keeps NULL-valued internal markers in this key range.
+      const rows = db.prepare(`SELECT key, CASE WHEN length(value)<=? THEN value END AS value FROM ${table} WHERE key LIKE 'composerData:%' AND value IS NOT NULL ORDER BY key LIMIT 20001`).iterate(MAX_VALUE);
       for (const row of rows) {
         if (++count > 20_000) { warnings.push('Cursor Composer listing reached its 20,000-session limit.'); break; }
         try {
@@ -40,7 +41,7 @@ export function discoverComposers(path: string, workspace = '') {
           session.archived = data.isArchived === true;
           // Only explicit subagent membership establishes child relationships.
           const children = Array.isArray(data.subagentComposerIds) ? data.subagentComposerIds.filter((id: unknown) => typeof id === 'string') : [];
-          sessions.push({ session, revision: digest([1, snapshot, table, nativeID]), locator: { path, kind: 'composer', table, snapshot, nativeID, children: JSON.stringify(children) } });
+          sessions.push({ session, revision: digest([2, snapshot, table, nativeID]), locator: { path, kind: 'composer', table, snapshot, nativeID, children: JSON.stringify(children) } });
         } catch { failed++; }
       }
       if (failed) warnings.push(`${failed} legacy Cursor Composer records were unreadable or oversized; saved imports are retained.`);
