@@ -14,7 +14,7 @@ import { LibraryError } from './library-query';
 import { MAX_SESSION_RECORDS } from './history-limits';
 import { annotateGitCheckouts } from './git-checkouts';
 
-const publishing = new PublishingClient();
+let publishingClient: PublishingClient | undefined;
 
 const generation = Symbol('sessiongraph-backend');
 const runtime = globalThis as typeof globalThis & { sessionGraphRuntime?: { store: SessionGraphStore; importer: Importer; generation?: symbol } };
@@ -48,6 +48,7 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
   try {
     const { store, importer } = library();
     if (url.pathname.startsWith('/api/sessiongraph/publishing')) {
+      const publishing = publishingClient ??= new PublishingClient();
       const action = url.pathname.slice('/api/sessiongraph/publishing'.length);
       if (action === '/settings' && req.method === 'GET') return json(200, publishingSettings(store.setting('publishing')));
       if (action === '/status' && req.method === 'GET') return json(200, await publishing.status());
@@ -93,7 +94,9 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
     if (url.pathname === '/api/sessiongraph' && req.method === 'GET') {
       const sources = adapters.map((a) => ({ id: a.id, name: a.name, description: a.description, capabilities: a.capabilities, selected: store.selected().includes(a.id), available: false, ...store.sourceInfo(a.id) }));
       const data = store.library(sources, importer.status.running);
-      data.sessions = await annotateGitCheckouts(data.sessions);
+      // First-run boot only needs the app-owned library. Do not probe saved
+      // working directories before onboarding, even for CLI-populated stores.
+      if (!data.onboarding) data.sessions = await annotateGitCheckouts(data.sessions);
       return json(200, data);
     }
     const match = /^\/api\/sessiongraph\/session\/([^/]+)(?:\/(content|timeline|commits|events|event-markers|connection|prepare-launch|open-terminal))?$/.exec(url.pathname);

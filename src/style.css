@@ -275,6 +275,14 @@ summary::-webkit-details-marker { display: none; }
 
 dialog { max-width: 420px; width: calc(100% - 32px); max-height: calc(100dvh - 40px); background: #101d1cf7; color: #d1e2dc; border: 1px solid #b0e9d62b; border-radius: var(--radius-18); padding: 28px; box-shadow: 0 25px 100px #0009; }
 dialog::backdrop { background: #02070c88; backdrop-filter: blur(8px); }
+.welcome-screen { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 24px; border: 0; border-radius: 0; background: radial-gradient(ellipse at 50% 46%, var(--color-panel), var(--color-canvas) 72%); color: var(--color-text); }
+.welcome-screen[open] { display: grid; place-items: center; }
+.welcome-screen::backdrop { background: var(--color-canvas); backdrop-filter: none; }
+.welcome-content { display: grid; justify-items: center; text-align: center; gap: 18px; }
+.welcome-content h2 { margin: 0; font-size: clamp(36px, 7vw, 60px); line-height: 1.08; }
+.welcome-content p { margin: 0; max-width: 36ch; color: var(--color-text-secondary); font-size: clamp(14px, 2.6vw, 18px); }
+.welcome-content .primary-button { margin-top: 10px; min-width: 120px; min-height: 44px; font-size: 14px; }
+.welcome-content small { max-width: 48ch; margin-top: -8px; color: var(--color-text-secondary); font-size: 12px; line-height: 1.4; }
 .dialog-close { position: absolute; top: 12px; right: 12px; }
 dialog h2 { font-size: 22px; font-weight: 450; letter-spacing: -.5px; margin: 0 0 18px; }
 dialog p { font-size: 12px; line-height: 1.8; color: #92ad9e; margin: 18px 0; }
@@ -550,12 +558,7 @@ html[data-motion='false'] *, html[data-motion='false'] *::before, html[data-moti
 .imports-dialog > * { flex-shrink: 0; }
 .imports-dialog > .import-sources { flex: 1 1 auto; min-height: 100px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 .imports-dialog .primary-button { flex: 0 0 auto; white-space: nowrap; }
-.imports-dialog .eyebrow { font: 10px var(--mono); letter-spacing: .18em; color: #83b9a3; }
-.imports-dialog h2 { margin: 16px 0 12px; font-size: clamp(24px, 4vw, 32px); font-weight: 450; letter-spacing: -.04em; }
-.imports-intro { color: #91a99d; font-size: 13px; line-height: 1.6; margin-bottom: 14px; }
-.privacy-disclosure { color: #91a99d; font-size: 11px; line-height: 1.65; margin-bottom: 24px; }
-.privacy-disclosure summary { cursor: pointer; color: #aec9bb; }
-.privacy-disclosure p { font-size: inherit; line-height: inherit; margin: 10px 0 0; }
+.imports-dialog h2 { margin: 0 28px 18px 0; font-size: clamp(24px, 4vw, 32px); font-weight: 450; letter-spacing: -.04em; }
 .import-sources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: max-content; align-content: start; gap: 6px; }
 .import-source { display: flex; align-items: center; min-width: 0; min-height: 52px; gap: 9px; padding: 8px 10px; border: 1px solid #b0e9d61c; border-radius: var(--radius-8); cursor: pointer; background: #b0e9d603; }
 .import-source:has(input:checked) { border-color: #b0e9d658; background: #b0e9d608; }
@@ -571,8 +574,8 @@ html[data-motion='false'] *, html[data-motion='false'] *::before, html[data-moti
 .source-detected { color: #789083; white-space: nowrap; }
 .source-detected.detected { color: #aedbc4; }
 .imports-progress { font: 11px var(--mono); color: #9fc2af; margin-top: 20px; line-height: 1.8; min-height: 20px; }
-.imports-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 18px; }
-.imports-dialog footer > span { color: #789083; font-size: 11px; }
+.imports-progress:empty { margin-top: 0; min-height: 0; }
+.imports-dialog footer { display: flex; justify-content: flex-end; margin-top: 18px; }
 .imports-notes { color: #91a99d; font-size: 11px; line-height: 1.6; margin-top: 12px; }
 .imports-notes > div { max-height: 150px; overflow-y: auto; }
 @media (max-width: 600px) { .imports-dialog { padding: 26px 20px; } .import-sources { grid-template-columns: minmax(0, 1fr); gap: 4px; } .import-source { min-height: 44px; padding: 6px 9px; } .imports-dialog footer { flex-wrap: wrap; } }

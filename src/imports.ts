@@ -6,7 +6,7 @@ const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<':
 export function createImports(onChange: (background: boolean) => Promise<void>, onVisibility: () => void, notice: (message: string) => void) {
   const dialog = document.createElement('dialog'); dialog.className = 'imports-dialog';
   dialog.setAttribute('aria-labelledby', 'imports-heading');
-  dialog.innerHTML = `<button class="icon-button dialog-close" aria-label="Close sources">${icon('x')}</button><span class="eyebrow">SessionGraph</span><h2 id="imports-heading">Explore &amp; visualize all your LLM sessions</h2><p class="imports-intro">Your history stays local. Choose the apps to read; import, search, and visualization run on this computer. No account, cloud sync, or telemetry.</p><details class="privacy-disclosure"><summary>Local data &amp; network access</summary><p>Imports are read-only and never start an AI agent. Desktop update checks contact GitHub without session content. Explicitly continuing a session opens another harness, which may contact its model provider.</p><p>Saved history and handoff files are not encrypted by SessionGraph. Your device permissions and backups affect who can access them.</p></details><div class="import-sources"></div><div class="imports-progress" role="status"></div><details class="imports-notes" hidden><summary>Import details</summary><div></div></details><footer><span>Saved locally in SQLite</span><button class="primary-button import-start">Import sessions <span>↗</span></button></footer>`;
+  dialog.innerHTML = `<button class="icon-button dialog-close" aria-label="Close sources">${icon('x')}</button><h2 id="imports-heading">Choose your session sources</h2><div class="import-sources"></div><div class="imports-progress" role="status"></div><details class="imports-notes" hidden><summary>Import details</summary><div></div></details><footer><button class="primary-button import-start">Import sessions</button></footer>`;
   document.body.append(dialog);
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => dialog.querySelector<T>(s)!;
   let running = false, timer = 0, disposed = false, returnFocus: HTMLElement | null = null;
@@ -86,9 +86,8 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
     onboarding = first; const openedView = ++view;
     loadingSources = true; sourcesReady = false;
     returnFocus = document.activeElement as HTMLElement;
-    $('#imports-heading').textContent = first ? 'Explore & visualize all your LLM sessions' : 'Your session sources.';
-    $('footer > span').textContent = first ? 'You can change sources later.' : 'Saved locally in SQLite';
-    if (first) { $('.imports-progress').textContent = 'Detected conversation sources are selected for you.'; $('.imports-notes').hidden = true; }
+    $('#imports-heading').textContent = first ? 'Choose your session sources' : 'Your session sources';
+    if (first) { $('.imports-progress').textContent = ''; $('.imports-notes').hidden = true; }
     renderAction();
     if (!dialog.open) dialog.showModal(); onVisibility();
     $('.import-sources').textContent = 'Finding local session sources…';
@@ -97,7 +96,6 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
       if (disposed || openedView !== view) return;
       $('.import-sources').innerHTML = sortSources(result.sources).map((source) => sourceOption(source, { checked: source.selected || first && source.available && source.capabilities.history, disabled: running })).join('');
       sourcesReady = true;
-      if (first && !dialog.querySelector('input:checked')) $('.imports-progress').textContent = 'No conversation sources selected. You can choose sources now or add them later.';
       const status = await request<ImportStatus>('import');
       if (disposed || openedView !== view) return;
       if (status.running) { renderProgress(status); window.clearTimeout(timer); timer = window.setTimeout(poll, 1000); }

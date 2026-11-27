@@ -14,13 +14,20 @@ test('auto-import settings API validates writes and automatic requests cannot ch
   const previous = process.env.SESSIONGRAPH_DATA_DIR;
   process.env.SESSIONGRAPH_DATA_DIR = directory;
   const { library, sessionGraphMiddleware } = await import('../server/middleware');
-  const { store } = library();
+  const { store, importer } = library();
+  let sourceProbes = 0;
+  for (const adapter of importer.adapters) adapter.detect = async () => { sourceProbes++; return true; };
   const server = createServer((req, res) => { void sessionGraphMiddleware(req, res, () => { res.statusCode = 404; res.end(); }); });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/sessiongraph`;
   const post = (path: string, value: unknown, headers = {}) => fetch(`${base}/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': path, ...headers }, body: JSON.stringify(value) });
   try {
-    assert.equal((await (await fetch(base)).json()).autoImport, false);
+    const startup = await (await fetch(base)).json();
+    assert.equal(startup.autoImport, false);
+    assert.equal(startup.onboarding, true);
+    assert.equal(startup.sessions.length, 0);
+    assert.ok(startup.sources.every((source: { available: boolean }) => !source.available));
+    assert.equal(sourceProbes, 0, 'Boot must not detect local sources');
     assert.equal((await post('settings', { autoImport: true })).status, 200);
     assert.equal((await (await fetch(base)).json()).autoImport, true);
     assert.equal((await post('settings', { autoImport: false })).status, 200);
@@ -32,6 +39,11 @@ test('auto-import settings API validates writes and automatic requests cannot ch
     assert.equal((await post('import', { automatic: 'true' })).status, 400);
     assert.equal((await post('import', null)).status, 400);
     assert.equal((await (await post('import', { automatic: true })).json()).running, false);
+    assert.equal(sourceProbes, 0, 'Automatic import must not detect sources during onboarding');
+    const detected = await (await fetch(`${base}/sources`)).json();
+    assert.equal(detected.onboarding, true);
+    assert.ok(detected.sources.every((source: { available: boolean }) => source.available));
+    assert.equal(sourceProbes, importer.adapters.length);
     assert.deepEqual(store.selected(), []);
     assert.equal(store.autoImportEnabled(), false);
     assert.equal((await post('settings', { preferences: { view: '2d', muted: true, panelOpacity: 75 }, viewState: { days: 30, includeChildren: false, includeArchived: false, sourceID: 'codex', projectID: 'project', directory: '/work/project', fromDate: '2026-10-01', toDate: '2026-10-20' } })).status, 200);

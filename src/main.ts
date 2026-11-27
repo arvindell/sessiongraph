@@ -137,6 +137,32 @@ $('#app').innerHTML = `
   ${shortcutHints(['search', 'fit', 'panels', 'clear'], 'shortcut-hints')}
 `;
 refreshIcons();
+const welcome = document.createElement('dialog');
+welcome.className = 'welcome-screen';
+welcome.setAttribute('aria-labelledby', 'welcome-title');
+welcome.setAttribute('aria-describedby', 'welcome-tagline');
+welcome.innerHTML = `<div class="welcome-content">
+  <img src="/brand/mark.svg" width="64" height="64" alt="">
+  <h2 id="welcome-title">SessionGraph</h2>
+  <p id="welcome-tagline">Explore your coding agent history as an interactive graph.</p>
+  <button type="button" class="primary-button" aria-describedby="welcome-permission" autofocus>Start ${icon('arrow-right')}</button>
+  <small id="welcome-permission">After you click Start, your system may ask for permission to access your files.</small>
+</div>`;
+document.body.append(welcome);
+let onboardingStarted = false;
+let sceneScheduled = false;
+function openOnboarding() {
+  if (onboardingStarted) { void imports.open(true); return; }
+  if (!welcome.open) { welcome.showModal(); modalVisibility(); }
+}
+welcome.addEventListener('cancel', event => event.preventDefault());
+welcome.addEventListener('keydown', event => event.stopPropagation());
+welcome.querySelector('button')!.addEventListener('click', () => {
+  onboardingStarted = true;
+  welcome.close();
+  void imports.open(true);
+});
+
 type SessionRow = { session: Session } | { label: string; year: number };
 const sessionList = new VirtualList<SessionRow>($('#session-list'), {
   key: row => 'session' in row ? `session:${row.session.id}` : `date:${row.year}:${row.label}`,
@@ -334,6 +360,12 @@ async function load(background = false) {
     $('#connection-label').textContent = 'Local library';
     $('.connection').classList.add('connected');
     $('.connection').title = `Connected · ${count(data.sessions.length)} sessions`;
+    if (!background && data.onboarding && !onboardingStarted) openOnboarding();
+    if (!data.onboarding && !sceneScheduled) {
+      sceneScheduled = true;
+      // Let the session list paint before allocating WebGL and compiling shaders.
+      requestAnimationFrame(() => { window.setTimeout(() => void initializeScene(), 0); });
+    }
     if (previous && preferences.grouping === graphGrouping && JSON.stringify(previous.sessions) === JSON.stringify(next.sessions) && JSON.stringify(previous.projects) === JSON.stringify(next.projects)) { renderGraphMessage(); return; }
     timelineClient.clear();
     sessionsByID = new Map(data.sessions.map((session) => [session.id, session]));
@@ -364,7 +396,6 @@ async function load(background = false) {
     }
     else emptyInspector();
     if (!background && data.warnings.length) showToast(data.warnings.join(' '));
-    if (!background && data.onboarding) void imports.open(true);
   } catch (error) {
     if (background && data) { $('.connection').title = 'Library refresh unavailable · retry with Refresh sessions'; return; }
     $('#connection-label').textContent = 'Connection unavailable';
@@ -433,11 +464,11 @@ function renderGraphMessage() {
   message.hidden = Boolean(filtered.length && scene);
   if (!filtered.length) message.innerHTML = data?.importing
     ? '<div class="loading-orbit"><span></span><span></span><span></span></div><h3>Importing your sessions…</h3><p>Your map will appear when the import finishes.</p>'
-    : data && !data.sessions.length ? `${icon('folder')}<h3>Your map starts here</h3><p>Choose a source with saved conversations to get started.</p><button class="primary-button" id="empty-sources">Choose sources ${icon('arrow-right')}</button>`
+    : data && !data.sessions.length ? `${icon('folder')}<p>Choose a source with saved conversations to get started.</p><button class="primary-button" id="empty-sources">Choose sources ${icon('arrow-right')}</button>`
     : `${icon('search')}<h3>No matching sessions</h3><button class="text-button" id="clear-filters">Reset filters ${icon('rotate-ccw')}</button>`;
   else if (!scene) message.innerHTML = sceneLoading ? '<h3>Preparing the map…</h3>' : `${icon('box')}<h3>WebGL is unavailable.</h3><p>You can explore every session and its file details in the list.</p>`;
   $('#clear-filters')?.addEventListener('click', () => resetFilters());
-  $('#empty-sources')?.addEventListener('click', () => void imports.open());
+  $('#empty-sources')?.addEventListener('click', () => { if (data?.onboarding) openOnboarding(); else void imports.open(); });
   refreshIcons();
 }
 
@@ -780,7 +811,7 @@ $('#directory').addEventListener('change', (event) => { directory = (event.targe
 $('#children').addEventListener('change', (event) => { includeChildren = (event.target as HTMLInputElement).checked; updateFilters(); });
 document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.addEventListener('click', () => { days = button.dataset.days === 'ytd' ? 'ytd' : Number(button.dataset.days); fromDate = ''; toDate = ''; updateFilters(true); }));
 $('#reset-camera').addEventListener('click', () => { stopPlayback(); scene?.reset(); });
-$('#refresh').addEventListener('click', () => { if (data?.onboarding) void imports.open(true); else void imports.refresh(); });
+$('#refresh').addEventListener('click', () => { if (data?.onboarding) openOnboarding(); else void imports.refresh(); });
 $('#scrubber').addEventListener('input', (event) => { stopPlayback(); playback = Number((event.target as HTMLInputElement).value) / 1000; updateScrubber(true); });
 $('#play').addEventListener('click', () => {
   if (!filtered.length) return;
@@ -860,11 +891,8 @@ document.addEventListener('keydown', (event) => {
 });
 
 void load().then(() => {
-  // Let the usable session list paint before allocating a WebGL context and
-  // compiling shaders, which can be expensive on a cold graphics driver.
-  requestAnimationFrame(() => { window.setTimeout(() => void initializeScene(), 0); });
   if (data?.importing) imports.resume(); else checkAutoImport();
 });
 if (import.meta.env.DEV) Object.assign(window, { sessionGraphDiagnostics: () => scene?.diagnostics(), sessionGraphAudioDiagnostics: () => audio.diagnostics(), sessionGraphSearchDiagnostics: sessionSearch.diagnostics });
-if (import.meta.hot) import.meta.hot.dispose(() => sessionList.dispose());
+if (import.meta.hot) import.meta.hot.dispose(() => { welcome.remove(); sessionList.dispose(); });
 if (import.meta.hot) import.meta.hot.dispose(() => { settingsSaver?.dispose(); autoImport?.dispose(); autoImportEvents.abort(); window.clearInterval(autoImportTimer); detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); desktopUpdater.dispose(); dateRange.dispose(); disposeSelects(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); cancelAnimationFrame(playFrame); });
