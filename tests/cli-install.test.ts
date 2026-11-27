@@ -122,8 +122,8 @@ test('a failed payload upgrade preserves the working commands and profile', asyn
   assert.equal(JSON.parse((await command(installed.bin, 'ssg', ['--version', '--json'], f.env)).stdout).data.version, '9.8.7');
 });
 
-test('bash, zsh, fish and sh registration respects existing profiles and custom configuration roots', async t => {
-  const f = await fixture(t, 'linux');
+test('bash, zsh, fish and sh registration respects existing profiles and custom configuration roots', { skip: process.platform === 'win32' }, async t => {
+  const f = await fixture(t);
   const bashHome = join(f.home, 'bash'), zshHome = join(f.home, 'zsh'), fishHome = join(f.home, 'fish'), shHome = join(f.home, 'sh');
   for (const home of [bashHome, zshHome, fishHome, shHome]) await mkdir(home);
   await writeFile(join(bashHome, '.bash_login'), 'export CUSTOM_VALUE=kept\n');
