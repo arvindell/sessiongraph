@@ -101,8 +101,6 @@ $('#app').innerHTML = `
     <button class="toolbar-button" id="toggle-explorer" aria-label="Toggle sessions" aria-controls="explorer" aria-expanded="true" title="Sessions">${icon('search')}<span>Sessions</span></button>
   </header>
   <nav class="map-controls glass" aria-label="Map controls">
-    <div class="view-switch" role="group" aria-label="View mode"><button id="view-3d" class="active" aria-pressed="true">3D</button><button id="view-2d" aria-pressed="false">2D</button></div>
-    <span class="toolbar-divider"></span>
     <button class="icon-button" id="reset-camera" aria-label="Fit view" title="Fit view (F)">${icon('crosshair')}</button>
     <button class="icon-button" id="toggle-timeline" aria-label="Toggle timeline" aria-controls="timeline" aria-expanded="true" title="Timeline">${icon('clock')}</button>
     <button class="icon-button" id="toggle-inspector" aria-label="Toggle session details" aria-controls="inspector" aria-expanded="false" title="Session details" hidden>${icon('panel-right')}</button>
@@ -164,7 +162,6 @@ function applyPreferences() {
   document.documentElement.dataset.motion = String(motionEnabled(preferences, reducedMotion.matches));
   document.documentElement.style.setProperty('--panel-opacity', `${preferences.panelOpacity}%`);
   $('#motion').setAttribute('aria-pressed', String(motionEnabled(preferences, reducedMotion.matches)));
-  for (const view of ['2d', '3d']) { const button = $(`#view-${view}`); button.classList.toggle('active', preferences.view === view); button.setAttribute('aria-pressed', String(preferences.view === view)); }
   const mute = $('#mute-audio'); mute.setAttribute('aria-pressed', String(preferences.muted)); mute.setAttribute('aria-label', preferences.muted ? 'Unmute sound' : 'Mute sound'); mute.title = preferences.muted ? 'Unmute sound' : 'Mute sound'; mute.innerHTML = icon(preferences.muted ? 'volume-x' : 'volume-2');
   settings.render(preferences, preferencesSaved || settingsHydrated, settingsSaver?.state || 'saved'); refreshIcons();
 }
@@ -758,7 +755,6 @@ async function openPublishing() {
 $('#share-playback').addEventListener('click', openPublishing);
 $('#open-publishing').addEventListener('click', openPublishing);
 if (import.meta.hot) import.meta.hot.dispose(() => { window.clearTimeout(shareRevealTimer); playbackShare?.dispose(); publishingDialog?.dispose(); });
-for (const flat of [false, true]) $(`#view-${flat ? '2d' : '3d'}`).addEventListener('click', () => changePreferences({ view: flat ? '2d' : '3d' }));
 $('#motion').addEventListener('click', () => changePreferences({ motion: motionEnabled(preferences, reducedMotion.matches) ? 'off' : 'on' }));
 $('#help').addEventListener('click', () => { $<HTMLDialogElement>('#help-dialog').showModal(); modalVisibility(); });
 $('#help-dialog').addEventListener('close', modalVisibility);

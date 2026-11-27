@@ -38,8 +38,8 @@ export function createNodeMaterial(uniforms: FocusUniforms) {
       varying vec3 vSphereNormal; varying vec3 vSphereView;
       ${shader.vertexShader}`.replace('#include <project_vertex>', `
         #include <project_vertex>
-        // Instances only translate/uniformly scale. Keep the original sphere
-        // normals when the graph's depth is flattened, retaining depth cues in 2D.
+        // Instances only translate/uniformly scale, so view-space normals retain
+        // the original sphere's lighting and depth cues.
         vSphereNormal = mat3(viewMatrix) * normal;
         vSphereView = -mvPosition.xyz;
         vNodeEmphasis = nodeEmphasis();

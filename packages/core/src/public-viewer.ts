@@ -1,4 +1,4 @@
-import { createElement, Box, Clock, Crosshair, Folder, GitFork, Network, Pause, Play, RotateCcw, Sparkles, Terminal, X } from 'lucide';
+import { createElement, Clock, Crosshair, Folder, GitFork, Network, Pause, Play, RotateCcw, Sparkles, Terminal, X } from 'lucide';
 import { TimelineScene } from './scene';
 import { observeSelects } from './controls';
 import { DEFAULT_PREFERENCES, motionEnabled } from './preferences';
@@ -28,7 +28,7 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
   host.innerHTML = `
     <div class="public-canvas" aria-label="Interactive public session graph"></div>
     <div class="public-toolbar"><button type="button" class="public-toolbar-button" data-sessions aria-label="Sessions" title="Sessions" aria-expanded="true">${icon(Network)}<span>Sessions</span></button></div>
-    <nav class="public-view-controls" aria-label="Graph controls"><div class="public-view-switch"><button type="button" data-view="3d" aria-pressed="true">${icon(Box)}3D</button><button type="button" data-view="2d" aria-pressed="false">2D</button></div><span class="public-divider"></span><button type="button" class="public-icon-button" data-fit aria-label="Fit view" title="Fit view (F)">${icon(RotateCcw)}</button><button type="button" class="public-icon-button" data-motion aria-label="Motion" title="Motion" aria-pressed="true">${icon(Sparkles)}</button><button type="button" class="public-icon-button" data-timeline aria-label="Toggle timeline" title="Timeline" aria-expanded="true">${icon(Clock)}</button></nav>
+    <nav class="public-view-controls" aria-label="Graph controls"><button type="button" class="public-icon-button" data-fit aria-label="Fit view" title="Fit view (F)">${icon(RotateCcw)}</button><button type="button" class="public-icon-button" data-motion aria-label="Motion" title="Motion" aria-pressed="true">${icon(Sparkles)}</button><button type="button" class="public-icon-button" data-timeline aria-label="Toggle timeline" title="Timeline" aria-expanded="true">${icon(Clock)}</button></nav>
     <aside class="public-browser public-panel" aria-label="Sessions">
       <div class="public-panel-heading"><h2>Sessions <span data-count></span></h2><button type="button" class="public-icon-button" data-close-list aria-label="Close sessions">${icon(X)}</button></div>
       <div class="public-filters"><div class="public-filter">${icon(Folder)}<select data-project aria-label="Project"><option value="">All projects</option></select></div><div class="public-filter" data-harness-filter>${icon(Terminal)}<select data-harness aria-label="Coding agent"><option value="">All agents</option></select></div></div>
@@ -162,11 +162,6 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
   $('[data-fit]').onclick = fit;
   $('[data-timeline]').onclick = () => { stop(); setTimeline(timeline.hidden); };
   $('[data-close-timeline]').onclick = () => setTimeline(false);
-  for (const button of host.querySelectorAll<HTMLButtonElement>('[data-view]')) button.onclick = () => {
-    preferences.view = button.dataset.view === '2d' ? '2d' : '3d';
-    scene?.setFlat(button.dataset.view === '2d');
-    for (const other of host.querySelectorAll('[data-view]')) other.setAttribute('aria-pressed', String(other === button));
-  };
   const applyMotion = () => { scene?.applyPreferences(preferences); $('button[data-motion]').setAttribute('aria-pressed', String(motionEnabled(preferences, motionQuery.matches))); };
   $('button[data-motion]').onclick = () => { preferences.motion = motionEnabled(preferences, motionQuery.matches) ? 'off' : 'on'; applyMotion(); };
   motionQuery.addEventListener('change', applyMotion, { signal: events.signal });
