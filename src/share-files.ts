@@ -4,7 +4,7 @@ export const SHARE_FORMATS = {
   mp4: { label: 'MP4', description: 'MP4 video', mime: 'video/mp4', filename: 'sessiongraph-playback.mp4' },
 } as const;
 export type ShareFormat = keyof typeof SHARE_FORMATS;
-export const SHARE_CAPTION = 'My coding sessions, visualized with SessionGraph.\nhttps://github.com/arvindell/sessiongraph';
+export const SHARE_CAPTION = 'My coding sessions, visualized with SessionGraph.\nhttps://sessiongraph.ai';
 export const SHARE_X_URL = `https://x.com/intent/tweet?text=${encodeURIComponent(SHARE_CAPTION)}`;
 
 type SavePicker = (options: {

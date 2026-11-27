@@ -4,6 +4,7 @@
 </h1>
 <p align="center">Explore &amp; visualize all your LLM sessions</p>
 <p align="center">
+  <a href="https://sessiongraph.ai">Website</a> ·
   <a href="https://github.com/arvindell/sessiongraph/releases/latest">Download</a> ·
   <a href="docs/guide.md">Documentation</a> ·
   <a href="PRIVACY.md">Privacy</a> ·

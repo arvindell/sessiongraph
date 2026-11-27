@@ -4,7 +4,7 @@ import { makeGraph } from '@sessiongraph/core/layout';
 import { projectAliases, shareGraph } from '../src/share-graph';
 import { playbackTokens } from '../src/playback-tokens';
 import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, PLAYBACK_FRAMES, SHARE_FRAMES, SHARE_FPS, overviewTurn, playbackSessions, shareFrameProgress, shareFrameOutro } from '@sessiongraph/core/playback';
-import { SHARE_FORMATS } from '../src/share-files';
+import { SHARE_CAPTION, SHARE_FORMATS, SHARE_X_URL } from '../src/share-files';
 import { switchShareMode } from '../src/share-modes';
 import type { Session } from '@sessiongraph/core/types';
 import { DEFAULT_PUBLISHING, publishableGraph, publicGraphLayout } from '@sessiongraph/core/public-graph';
@@ -74,6 +74,14 @@ test('session counter follows creation and rewind, including unknown usage and a
   assert.deepEqual([0, 1000, 1999, 2000, 5000, 1000].map(time => counter(time)), [0, 1, 1, 3, 4, 1]);
   assert.equal(counter(0, true), 4);
   assert.equal(playbackSessions([])(5000), 0);
+});
+
+test('share captions and X links point to the public website', () => {
+  assert.equal(SHARE_CAPTION, 'My coding sessions, visualized with SessionGraph.\nhttps://sessiongraph.ai');
+  const url = new URL(SHARE_X_URL);
+  assert.equal(url.origin, 'https://x.com');
+  assert.equal(url.pathname, '/intent/tweet');
+  assert.equal(url.searchParams.get('text'), SHARE_CAPTION);
 });
 
 test('video is MP4-only and covers the full timeline, overview orbit, and ending hold', () => {
