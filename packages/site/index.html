@@ -61,23 +61,25 @@
           </figure>
         </section>
 
-        <section class="sources" aria-labelledby="sources-title">
-          <h2 id="sources-title">Supported sources</h2>
-          <ul class="source-list">
-            <!-- featured-sources -->
-          </ul>
-          <details class="more-sources">
-            <summary aria-label="All supported sources"><!-- icon:chevron-down --></summary>
-            <ul class="source-list">
-              <!-- more-sources -->
-            </ul>
-          </details>
-          <a class="text-link" href="https://github.com/arvindell/sessiongraph/blob/main/docs/import-coverage.md">All sources &amp; coverage <!-- icon:arrow-up-right --></a>
-        </section>
-
         <section class="downloads" id="download" aria-labelledby="download-title">
-          <h2 id="download-title">Create your graph</h2>
-          <div class="install-primary"><p>Open SessionGraph locally from your terminal.</p><div class="command-box"><span class="command-prompt" aria-hidden="true">$</span><code>npx sessiongraph</code><button type="button" data-copy-command aria-label="Copy npx sessiongraph"><!-- icon:copy copy-idle --><!-- icon:check copy-done --><span class="command-copy-hint" aria-hidden="true">Copy command</span></button></div></div>
+          <h2 class="landing-section-title" id="download-title">Create your graph</h2>
+          <p class="install-intro">SessionGraph reads your harness' session store, indexes it and opens a desktop app for you to play around. Everything happens locally.</p>
+          <div class="install-primary">
+            <div class="install-copy">
+              <h3>Run it locally</h3>
+              <p>Paste this into your terminal to open SessionGraph.</p>
+            </div>
+            <div class="install-terminal">
+              <div class="install-terminal-bar"><!-- icon:terminal -->Terminal</div>
+              <div class="command-box">
+                <span class="command-prompt" aria-hidden="true">$</span><code>npx sessiongraph</code>
+                <button type="button" data-copy-command aria-label="Copy npx sessiongraph">
+                  <!-- icon:copy copy-idle --><!-- icon:check copy-done -->
+                  <span class="copy-idle" aria-hidden="true">Copy</span><span class="copy-done" aria-hidden="true">Copied!</span>
+                </button>
+              </div>
+            </div>
+          </div>
           <p id="copy-status" class="sr-only" role="status"></p>
           <div class="installer-options"><p class="installer-label">Prefer installer?</p><div class="platforms">
             <div class="platform">
@@ -99,6 +101,69 @@
               </div></details>
             </div>
           </div></div>
+        </section>
+
+        <section class="sources" aria-labelledby="sources-title">
+          <h2 class="landing-section-title" id="sources-title">Supports your harness</h2>
+          <ul class="source-list">
+            <!-- featured-sources -->
+          </ul>
+          <details class="more-sources">
+            <summary aria-label="All supported sources"><!-- icon:chevron-down --></summary>
+            <ul class="source-list">
+              <!-- more-sources -->
+            </ul>
+          </details>
+          <a class="text-link" href="https://github.com/arvindell/sessiongraph/blob/main/docs/import-coverage.md">All sources &amp; coverage <!-- icon:arrow-up-right --></a>
+        </section>
+
+        <section class="session-database" id="session-database" aria-labelledby="database-title">
+          <div class="database-copy">
+            <h2 class="landing-section-title" id="database-title">A database for all your sessions</h2>
+            <p>Search across your harnesses from one local index. Find an old conversation, pick up where you left off, or look up what changed.</p>
+          </div>
+          <section class="database-demo" data-database-demo aria-labelledby="database-mcp">
+            <header class="database-demo-bar">
+              <h3 id="database-mcp"><!-- icon:bot --> MCP</h3>
+              <p>Give your coding agent access to past sessions without switching apps.</p>
+            </header>
+            <div class="database-demo-body">
+              <div class="database-request">
+                <p>“Find my sessions about invoice retries.”</p>
+                <code>search_sessions({ "query": "invoice retries" })</code>
+              </div>
+              <div class="database-demo-results">
+                <div class="database-results-label"><!-- icon:database --> 2 matching sessions</div>
+                <ul>
+                  <li><strong>Fix duplicate invoice retries</strong><span>Codex</span></li>
+                  <li><strong>Test invoice retry backoff</strong><span>Claude Code</span></li>
+                </ul>
+              </div>
+            </div>
+          </section>
+          <section class="database-demo" data-database-demo aria-labelledby="database-api">
+            <header class="database-demo-bar">
+              <h3 id="database-api"><!-- icon:terminal --> REST API</h3>
+              <p>Query the same index from your own scripts and tools.</p>
+            </header>
+            <div class="database-demo-body">
+              <div class="database-request">
+                <p>Find sessions about invoice retries over HTTP.</p>
+                <code><span>GET</span> /v1/search?query=invoice%20retries</code>
+              </div>
+              <div class="database-demo-results">
+                <pre><code>{
+  "data": {
+    "hits": [
+      { "session": { "title": "Fix duplicate invoice retries" } },
+      { "session": { "title": "Test invoice retry backoff" } }
+    ],
+    "total": 2
+  }
+}</code></pre>
+              </div>
+            </div>
+          </section>
         </section>
       </main>
 

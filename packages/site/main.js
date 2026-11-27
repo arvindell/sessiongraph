@@ -38,12 +38,12 @@ for (const copy of document.querySelectorAll('[data-copy-command]')) {
       if (copyStatus) copyStatus.textContent = 'Copied npx sessiongraph to your clipboard. Paste it into your terminal to get started.';
       copy.setAttribute('aria-label', 'Command copied. Copy again');
       copy.dataset.copied = '';
-      hint.textContent = 'Copied!';
+      if (hint) hint.textContent = 'Copied!';
       clearTimeout(reset);
       reset = setTimeout(() => {
         copy.setAttribute('aria-label', 'Copy npx sessiongraph');
         delete copy.dataset.copied;
-        hint.textContent = 'Copy command';
+        if (hint) hint.textContent = 'Copy command';
       }, 2000);
     } catch {
       const selection = window.getSelection(), range = document.createRange();
@@ -51,4 +51,15 @@ for (const copy of document.querySelectorAll('[data-copy-command]')) {
       if (copyStatus) copyStatus.textContent = 'Command selected. Copy it and paste it into your terminal.';
     }
   });
+}
+
+if ('IntersectionObserver' in window) {
+  const observer = new IntersectionObserver(entries => {
+    for (const { target, isIntersecting } of entries) {
+      if (!isIntersecting) continue;
+      target.classList.add('database-demo-reveal');
+      observer.unobserve(target);
+    }
+  }, { threshold: .25 });
+  for (const demo of document.querySelectorAll('[data-database-demo]')) observer.observe(demo);
 }
