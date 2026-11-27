@@ -7,6 +7,7 @@ import type { Candidate, SessionAdapter } from './types';
 import { blockEvents, eventFor, eventText, userBlockEvents } from '../events';
 import { sourcePath } from '../source-paths';
 import { executionFields } from '../commit-extraction';
+import { messageMetadata, openAIUsage } from '../usage';
 
 const root = () => sourcePath('codex') || process.env.CODEX_HOME || join(homedir(), '.codex');
 const revision = async (path: string) => { const s = await stat(path); return digest([10, s.mtimeMs, s.size]); };
@@ -74,12 +75,18 @@ export function codexRecord(raw: any, offset: number, candidate: Candidate) {
     // compaction and unfamiliar events without duplicating conversation text.
     if (raw.type === 'session_meta' || (raw.type === 'event_msg' && ['user_message', 'agent_message', 'agent_reasoning', 'agent_reasoning_raw_content'].includes(p.type))) return;
     const msg = blankMessage(`event:${raw.ordinal ?? offset}`, Date.parse(raw.timestamp) || 0, 'system');
+    if (raw.type === 'event_msg' && p.type === 'token_count') {
+      msg.usage = openAIUsage(p.info?.total_token_usage, undefined, 'session');
+      msg.eventOnly = true;
+    }
     msg.events = [eventFor(msg, 'event', /compact/.test(p.type || raw.type) ? 'compaction' : p.type === 'error' ? 'error' : 'event', p.type || raw.type, eventText(p), { nativeType: `${raw.type}:${p.type || ''}` })];
     return msg;
   }
   const role = p.role === 'user' ? 'user' : p.role === 'assistant' ? 'assistant' : p.type === 'message' ? 'system' : 'tool';
   // Reused call_id across request/response isn't a unique message ID.
   const msg = blankMessage(`item:${raw.ordinal ?? offset}`, Date.parse(raw.timestamp) || 0, role);
+  msg.metadata = messageMetadata(p);
+  if (role === 'assistant') msg.usage = openAIUsage(p.usage, p.id);
   let input = p.arguments ?? p.input;
   if (typeof input === 'string') { try { input = JSON.parse(input); } catch { /* Native plain shell input. */ } }
   const fields = { nativeID: p.id, nativeType: p.type, callID: p.call_id, ...executionFields(input, { cwd: candidate.locator.executionCwd }) };

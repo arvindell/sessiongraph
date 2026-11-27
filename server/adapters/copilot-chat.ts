@@ -8,6 +8,7 @@ import type { ImportedMessage } from './types';
 import type { TimelineEvent } from '@sessiongraph/core/timeline';
 import { vscodeChatLog } from './vscode-chat-log';
 import { sourcePath } from '../source-paths';
+import { messageMetadata, recordedUsage, sumTokens } from '../usage';
 
 /** These are VS Code's own chat stores, rather than the extension's globalStorage. */
 export function copilotChatRoots(platform: NodeJS.Platform = process.platform, home = homedir(), env: NodeJS.ProcessEnv = process.env): string[] {
@@ -85,6 +86,10 @@ function chatMessages(requests: Raw[]): ImportedMessage[] {
     const messages = [user];
     if (request.response !== undefined || request.result?.errorDetails || request.responseErrorDetails || request.editedFileEvents?.length) {
       const assistant = blankMessage(text(request.responseId) || `response:${requestID}`, time(request.responseTimestamp), 'assistant');
+      const metadata = object(request.result?.metadata);
+      const input = request.promptTokens ?? metadata.promptTokens, output = request.completionTokens ?? metadata.outputTokens;
+      assistant.usage = recordedUsage({ input, output, total: sumTokens([input, output]), inputIncludesCache: true, outputIncludesReasoning: true }, 'message', request.responseId || requestID);
+      assistant.metadata = messageMetadata({ model: metadata.resolvedModel || request.modelId });
       assistant.events = [];
       const parts = Array.isArray(request.response) ? request.response : request.response == null ? [] : [request.response];
       if (parts.length > 200) assistant.partial = true;

@@ -494,7 +494,7 @@ function updateScrubber() {
     $('#playback-sessions').textContent = count(sessions);
     $('#playback-tokens').textContent = tokenPlayback.recorded ? compact(usage.tokens) : '—';
     $('#playback-token-coverage').textContent = tokenPlayback.recorded ? `${count(usage.sessions)} / ${count(tokenPlayback.recorded)} with recorded usage` : 'Usage unavailable';
-    $('#playback-summary').title = `${count(sessions)} sessions started. ${tokenPlayback.recorded ? `${count(usage.tokens)} burnt tokens` : 'Token usage unavailable'}. Token totals are added at the latest saved message, including cache where reported. ${count(tokenPlayback.missing)} sessions have no supported recorded count.${tokenPlayback.untimed ? ` ${count(tokenPlayback.untimed)} totals have no message timestamp and are included only at the end.` : ''}`;
+    $('#playback-summary').title = `${count(sessions)} sessions started. ${tokenPlayback.recorded ? `${count(usage.tokens)} burnt tokens` : 'Token usage unavailable'}. Token totals are added at the latest saved message, including cache where reported. ${count(tokenPlayback.missing)} sessions have no recorded total.${tokenPlayback.partial ? ` ${count(tokenPlayback.partial)} recorded totals are partial.` : ''}${tokenPlayback.untimed ? ` ${count(tokenPlayback.untimed)} totals have no message timestamp and are included only at the end.` : ''}`;
   }
   scene?.setCutoff(playback);
 }

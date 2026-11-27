@@ -16,14 +16,14 @@ test('published counters include recorded totals independently of shared harness
   assert.equal(index.missing, 1);
 });
 
-test('playback totals follow saved endpoints and reverse scrubbing, with no prorating or unsupported usage', () => {
-  const index = playbackTokens([session('long', 900, 90), session('short', 100, 20), session('simultaneous', 50, 20, 'continue'), session('unknown', null, 25), session('unsupported', 500, 15, 'codex'), session('zero', 0, 30)]);
+test('playback totals include every harness at saved endpoints and reverse scrubbing without prorating', () => {
+  const index = playbackTokens([session('long', 900, 90), session('short', 100, 20), session('simultaneous', 50, 20, 'continue'), session('unknown', null, 25), session('codex', 500, 15, 'codex'), session('zero', 0, 30)]);
   assert.deepEqual(index.at(10), { tokens: 0, sessions: 0 });
-  assert.deepEqual(index.at(20), { tokens: 150, sessions: 2 });
-  assert.deepEqual(index.at(80), { tokens: 150, sessions: 3 });
-  assert.deepEqual(index.at(90), { tokens: 1050, sessions: 4 });
-  assert.deepEqual(index.at(19), { tokens: 0, sessions: 0 });
-  assert.equal(index.recorded, 4); assert.equal(index.missing, 2);
+  assert.deepEqual(index.at(20), { tokens: 650, sessions: 3 });
+  assert.deepEqual(index.at(80), { tokens: 650, sessions: 4 });
+  assert.deepEqual(index.at(90), { tokens: 1550, sessions: 5 });
+  assert.deepEqual(index.at(19), { tokens: 500, sessions: 1 });
+  assert.equal(index.recorded, 5); assert.equal(index.missing, 1);
   assert.deepEqual(playbackTokens([session('updated', 200, 40)]).at(35), { tokens: 0, sessions: 0 });
 });
 

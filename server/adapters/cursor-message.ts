@@ -1,6 +1,7 @@
 import { addText, blankMessage, toolText } from './common';
 import type { ImportedMessage } from './types';
 import { blockEvents, eventFor, eventText, userBlockEvents } from '../events';
+import { messageMetadata, messageUsage } from '../usage';
 
 export function cursorTime(value: unknown): number {
   const time = typeof value === 'number' ? value : typeof value === 'string' && /(?:Z|[+-]\d\d:\d\d)$/.test(value) ? Date.parse(value) : 0;
@@ -60,6 +61,8 @@ export function cursorMessage(raw: any, fallbackID: string): ImportedMessage | u
   const time = cursorTime(raw.timestamp) || cursorTime(body.timestamp) || cursorTime(body.createdAt) || (role === 'user' && typeof firstText === 'string' ? cursorEnvelopeTime(firstText) : 0);
   const native = [raw.uuid, raw.id, body.uuid, body.id].find((id) => typeof id === 'string' && id.length && id.length <= 512);
   const msg = blankMessage(native || fallbackID, time, role);
+  msg.metadata = messageMetadata(body);
+  if (role === 'assistant') msg.usage = messageUsage(body);
   msg.events = role === 'tool' ? [eventFor(msg, 'result', 'tool_result', body.name || 'Tool result', '', { callID: body.tool_call_id, output: eventText(content, 64_000), status: 'unknown' })]
     : role === 'user' ? userBlockEvents(msg, content, cursorUserText) : blockEvents(msg, content);
   const kind = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'Tool';

@@ -5,6 +5,28 @@ import { json, localFileAdapter, object, text, time } from './local-files';
 import { conversationMessage, successfulEdits } from './local-messages';
 import { sumRecordedTokens } from '../../src/playback-tokens';
 import { sourcePath } from '../source-paths';
+import { recordedCost, recordedUsage, sessionUsage, sumTokens, sumUsage, tokenCount } from '../usage';
+
+/** UI billing rows are native request records, not conversation turns. */
+function taskUsage(value: unknown, source: string) {
+  if (!Array.isArray(value)) return;
+  const records = new Map<string, NonNullable<ReturnType<typeof recordedUsage>>>();
+  value.forEach((row, index) => {
+    if (row?.type !== 'say' || row.say !== 'api_req_started' || typeof row.text !== 'string') return;
+    let payload;
+    try { payload = object(JSON.parse(row.text)); } catch { return; }
+    const caches = [payload.cacheReads, payload.cacheWrites];
+    // Cline's buckets are disjoint. Roo/Kilo changed this schema historically;
+    // without producer-version evidence, nonzero cache overlap stays unknown.
+    const includesCache = source === 'cline' ? false : caches.every(value => tokenCount(value) === 0) ? true : null;
+    const usage = recordedUsage({ input: payload.tokensIn, output: payload.tokensOut, cacheRead: payload.cacheReads, cacheWrite: payload.cacheWrites,
+      total: tokenCount(payload.totalTokens) ?? (includesCache === false ? sumTokens([payload.tokensIn, payload.tokensOut, ...caches])
+        : includesCache === true ? sumTokens([payload.tokensIn, payload.tokensOut]) : null),
+      inputIncludesCache: includesCache, outputIncludesReasoning: true, cost: recordedCost(payload.cost), costEstimated: true });
+    if (usage) records.set(typeof row.id === 'string' ? row.id : row.ts != null ? String(row.ts) : `row:${index}`, usage);
+  });
+  return sessionUsage(sumUsage([...records.values()]));
+}
 
 function editorTaskRoots(extension: string) {
   const home = homedir();
@@ -21,7 +43,7 @@ function taskAdapter(id: string, name: string, extension: string, env: string) {
     id, name, description: id === 'kilo-code' ? 'VS Code extension task histories · choose Kilo CLI separately' : id === 'cline' ? 'Local extension tasks and CLI/SDK message snapshots' : 'Local VS Code extension task histories',
     capabilities: { history: true, forks: id === 'cline', children: true, files: true }, roots,
     match: path => /^[^/]+\/api_conversation_history\.json$/.test(path) || (id === 'cline' && /^[^/]+\/[^/]+\.messages\.json$/.test(path)),
-    extras: path => ['history_item.json', 'task_metadata.json', 'session.json'].map(file => join(dirname(path), file)),
+    extras: path => ['history_item.json', 'task_metadata.json', 'session.json', 'ui_messages.json'].map(file => join(dirname(path), file)),
     parse(path, files) {
       const sdk = path.endsWith('.messages.json'), value = json(files.get(path)!);
       const records = sdk ? object(value).messages : value;
@@ -32,6 +54,12 @@ function taskAdapter(id: string, name: string, extension: string, env: string) {
       if (history.id && history.id !== nativeID || info.session_id && info.session_id !== nativeID) throw new Error('Task metadata identity mismatch.');
       const messages = records.map((raw, index) => {
         const row = object(raw), message = conversationMessage(row, `record:${index}`);
+        if (sdk && message.role === 'assistant' && row.metrics) {
+          const metrics = object(row.metrics);
+          message.usage = recordedUsage({ input: metrics.inputTokens, output: metrics.outputTokens, cacheRead: metrics.cacheReadTokens, cacheWrite: metrics.cacheWriteTokens,
+            total: sumTokens([metrics.inputTokens, metrics.outputTokens]), inputIncludesCache: true, outputIncludesReasoning: true,
+            cost: recordedCost(metrics.cost), costEstimated: true }, 'message', row.id);
+        }
         if (row.isSummary || row.isTruncationMarker || row.type === 'reasoning') {
           message.role = 'system';
           message.events = [eventFor(message, 'summary', row.type === 'reasoning' ? 'reasoning' : 'compaction', row.type === 'reasoning' ? 'Recorded reasoning' : 'Context checkpoint', eventText(row.summary ?? row.content ?? row.text), { partial: Boolean(row.encrypted_content), nativeType: row.type || 'summary' })];
@@ -45,7 +73,8 @@ function taskAdapter(id: string, name: string, extension: string, env: string) {
       return { nativeID, messages, partial: !sdk,
         parent: text(history.parentTaskId || info.parent_session_id) || undefined,
         fork: text(info.metadata?.fork?.forkedFromSessionId) || undefined,
-        session: { directory: text(history.workspace || info.cwd || info.workspace_root || task.workspace), created: time(info.started_at), title: text(history.task || info.metadata?.title), model: text(lastModel?.modelInfo?.id || lastModel?.model || info.model) || 'Unknown model', provider: text(lastModel?.modelInfo?.provider || info.provider) },
+        session: { directory: text(history.workspace || info.cwd || info.workspace_root || task.workspace), created: time(info.started_at), title: text(history.task || info.metadata?.title), model: text(lastModel?.modelInfo?.id || lastModel?.model || info.model) || 'Unknown model', provider: text(lastModel?.modelInfo?.provider || info.provider),
+          usage: !sdk && files.has(join(dirname(path), 'ui_messages.json')) ? taskUsage(json(files.get(join(dirname(path), 'ui_messages.json'))!), id) : undefined },
         note: sdk ? undefined : 'Earlier and editor-only messages may be missing.' };
     },
   });
@@ -75,7 +104,9 @@ export const continueAdapter = localFileAdapter({
     });
     const usage = object(value.usage);
     return { nativeID: value.sessionId, messages,
-      session: { directory: text(value.workspaceDirectory), title: text(value.title), created: time(meta.dateCreated), model: text(value.chatModelTitle) || 'Unknown model', cost: typeof usage.totalCost === 'number' ? usage.totalCost : null, tokens: sumRecordedTokens([usage.promptTokens, usage.completionTokens]) },
+      session: { directory: text(value.workspaceDirectory), title: text(value.title), created: time(meta.dateCreated), model: text(value.chatModelTitle) || 'Unknown model', cost: recordedCost(usage.totalCost), tokens: sumRecordedTokens([usage.promptTokens, usage.completionTokens]),
+        usage: sessionUsage(recordedUsage({ input: usage.promptTokens, output: usage.completionTokens, total: sumTokens([usage.promptTokens, usage.completionTokens]),
+          inputIncludesCache: true, outputIncludesReasoning: true, cost: recordedCost(usage.totalCost) })) },
     };
   },
 });

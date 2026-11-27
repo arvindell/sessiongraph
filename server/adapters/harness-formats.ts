@@ -5,6 +5,7 @@ import { json, jsonLines, object, text, time, type LocalHistory, type Raw } from
 import { conversationMessage } from './local-messages';
 import { piHistory } from './pi';
 import type { ImportedMessage } from './types';
+import { messageMetadata, messageUsage, recordedUsage, sessionUsage, sumTokens } from '../usage';
 
 export const nativeText = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) ? String(v) : text(v);
 export const seconds = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0 ? v * 1000 : time(v);
@@ -20,6 +21,7 @@ export function message(raw: Raw, id: string, timestamp?: unknown): ImportedMess
 }
 export function recordEvent(raw: Raw, id: string, kind: string, timestamp: unknown, content?: unknown) {
   const m = blankMessage(id, time(timestamp), 'system');
+  m.eventOnly = true;
   m.events = [eventFor(m, 'record', /compact|summary/i.test(kind) ? 'compaction' : /error/i.test(kind) ? 'error' : 'event', kind || 'Source event', eventText(content), { nativeType: kind, partial: true })];
   m.partial = true;
   return m;
@@ -36,6 +38,7 @@ export function envelopeHistory(path: string, value: string): LocalHistory {
   const messages = rows.flatMap((r, i) => {
     const body = object(r.message), role = body.role || r.role || (['user', 'assistant', 'system'].includes(r.type) ? r.type : undefined);
     const m = message({ ...body, id: text(r.uuid || r.id) || body.id, role, content: body.content ?? r.content ?? r.text }, `record:${i}`, r.timestamp ?? body.timestamp);
+    if (m?.role === 'assistant') m.usage = messageUsage({ ...body, id: body.id || r.uuid || r.id, usage: body.usage ?? r.usage });
     return m ? [m] : [];
   });
   if (!messages.length) throw new Error('No readable conversation records.');
@@ -51,6 +54,7 @@ export function ampHistory(path: string, files: Map<string, string>): LocalHisto
   if (!text(raw.id) || !Array.isArray(raw.messages)) throw new Error('Unsupported Amp thread.');
   const messages = raw.messages.flatMap((m: Raw, i: number) => {
     const result = message(m, nativeText(m.messageId) || `message:${i}`, m.timestamp ?? m.usage?.timestamp);
+    if (result) result.metadata = messageMetadata({ model: m.usage?.model, ...m });
     return result ? [result] : [];
   });
   return { nativeID: raw.id, messages, partial: true, session: { created: time(raw.created), title: text(raw.title), directory: text(raw.cwd) } };
@@ -66,10 +70,9 @@ export function jcodeHistory(path: string, files: Map<string, string>): LocalHis
     if (Array.isArray(row.append_messages)) records.push(...row.append_messages);
     if (row.meta) Object.assign(raw, object(row.meta));
   }
-  const seen = new Set<string>();
-  const messages = records.flatMap((r, i) => {
-    const id = text(r.id) || `message:${i}`;
-    if (seen.has(id)) return []; seen.add(id);
+  const unique = new Map<string, Raw>();
+  records.forEach((r, i) => unique.set(text(r.id) || `message:${i}`, r));
+  const messages = [...unique].flatMap(([id, r]) => {
     const m = message(r, id); return m ? [m] : [];
   });
   return { nativeID: raw.id, messages, partial: appended.partial, session: { title: text(raw.title), directory: text(raw.working_dir), created: time(raw.created_at), model: text(raw.model) || 'Unknown model', provider: text(raw.provider_key) } };
@@ -98,8 +101,9 @@ export function vibeHistory(path: string, files: Map<string, string>): LocalHist
   if (!text(meta.session_id) || !Array.isArray(records)) throw new Error('Unsupported Vibe session.');
   const messages = records.flatMap((r: Raw, i: number) => { const m = message(r, `message:${i}`); return m ? [m] : []; });
   return { nativeID: meta.session_id, messages, partial: parsed.partial || !messages.length,
-    session: { directory: text(meta.environment?.working_directory), created: time(meta.start_time), model: text(meta.config?.active_model) || 'Unknown model', title: text(meta.title) },
-  };
+    session: { directory: text(meta.environment?.working_directory), created: time(meta.start_time), model: text(meta.config?.active_model) || 'Unknown model', title: text(meta.title),
+      usage: sessionUsage(recordedUsage({ input: meta.stats?.session_prompt_tokens, output: meta.stats?.session_completion_tokens, cacheRead: meta.stats?.session_cached_tokens,
+        total: sumTokens([meta.stats?.session_prompt_tokens, meta.stats?.session_completion_tokens]), inputIncludesCache: true, outputIncludesReasoning: true })) } };
 }
 
 /** ACP updates are fragments, not complete turns. Group only adjacent chunks of a recorded turn. */

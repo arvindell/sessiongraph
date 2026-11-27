@@ -2,10 +2,13 @@ import { addText, blankMessage, toolText } from './common';
 import { blockEvents, eventFor, eventText } from '../events';
 import { object, text, time, type Raw } from './local-files';
 import type { ImportedMessage } from './types';
+import { messageMetadata, messageUsage } from '../usage';
 
 export function conversationMessage(raw: Raw, fallbackID: string): ImportedMessage {
   const role = raw.role === 'user' ? 'user' : ['assistant', 'model', 'thinking'].includes(raw.role) ? 'assistant' : ['tool', 'toolResult'].includes(raw.role) ? 'tool' : 'system';
   const message = blankMessage(text(raw.id) || fallbackID, time(raw.timestamp ?? raw.ts), role);
+  message.metadata = messageMetadata(raw);
+  if (role === 'assistant') message.usage = messageUsage(raw);
   let content = raw.content;
   if (Array.isArray(content)) content = content.map(part => {
     const p = object(part);

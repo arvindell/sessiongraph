@@ -9,6 +9,7 @@ import { hasTable, sqliteRevision, withSqliteSnapshot, SqliteSnapshotChangedErro
 import { eventFor, eventText, messageEvent } from '../events';
 import type { TimelineEvent } from '@sessiongraph/core/timeline';
 import { executionFields } from '../commit-extraction';
+import { messageMetadata, messageUsage } from '../usage';
 
 type Row = Record<string, unknown>;
 const SOURCE = 't3-code';
@@ -162,6 +163,8 @@ function v2Message(row: Row, directory: string): ImportedMessage {
   const parsed = parsedObject(row.payload_json), item = parsed || {}, type = string(row.type), id = string(row.turn_item_id);
   const role = type === 'user_message' ? 'user' : type === 'assistant_message' ? 'assistant' : type === 'reasoning' ? 'assistant' : 'tool';
   const message = blankMessage(`item:${id}`, time(item.startedAt || item.createdAt), role);
+  message.metadata = messageMetadata(item);
+  if (type === 'assistant_message') message.usage = messageUsage(item);
   const recorded = Boolean(message.time), name = string(item.title || item.toolName) || type.replaceAll('_', ' ');
   const fields: Partial<TimelineEvent> = { nativeID: id, nativeType: type, parentID: string(item.parentItemId) || undefined,
     status: status(row.status), endTime: time(item.completedAt) || null, timeSource: recorded ? 'recorded' : 'unknown' };

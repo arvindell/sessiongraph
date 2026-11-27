@@ -1,6 +1,7 @@
 import { basename, dirname, join } from 'node:path';
 import { json, jsonLines, object, text, time, type LocalHistory, type Raw } from './local-files';
 import { acpHistory, fileID, message, recordEvent, seconds } from './harness-formats';
+import { recordedCost, recordedUsage, sessionUsage, sumTokens, sumUsage } from '../usage';
 
 export function kiroHistory(path: string, files: Map<string, string>): LocalHistory {
   const header = object(json(files.get(path)!));
@@ -43,7 +44,15 @@ export function muxHistory(path: string, files: Map<string, string>): LocalHisto
     const m = message({ ...r, content: parts }, r.id, r.metadata?.timestamp ?? r.createdAt); return m ? [m] : [];
   });
   if (!messages.length) throw new Error('No readable Mux conversation.');
-  return { nativeID: basename(dirname(path)), messages, partial: true };
+  const usagePath = join(dirname(path), 'session-usage.json');
+  const usage = files.has(usagePath) ? object(json(files.get(usagePath)!)) : {};
+  const models = Object.values(object(usage.byModel)).slice(0, 50_000).map((value) => {
+    const row = object(value), buckets = [row.input, row.cached, row.cacheCreate, row.output, row.reasoning].map(object);
+    return recordedUsage({ input: row.input?.tokens, output: row.output?.tokens, cacheRead: row.cached?.tokens, cacheWrite: row.cacheCreate?.tokens,
+      reasoning: row.reasoning?.tokens, total: sumTokens(buckets.map(bucket => bucket.tokens)), inputIncludesCache: false, outputIncludesReasoning: false,
+      cost: buckets.every(bucket => recordedCost(bucket.cost_usd) !== null) ? buckets.reduce((sum, bucket) => sum + bucket.cost_usd, 0) : null });
+  }).filter(value => value !== undefined);
+  return { nativeID: basename(dirname(path)), messages, partial: true, session: { usage: sessionUsage(sumUsage(models), models.some(value => value.total === null)) } };
 }
 
 export function devinDesktopHistory(path: string, files: Map<string, string>): LocalHistory {

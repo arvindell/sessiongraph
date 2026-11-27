@@ -4,6 +4,7 @@ import type { ImportedMessage, SessionAdapter } from './adapters/types';
 import { SessionGraphStore } from './store';
 import { boundEventPayloads } from './events';
 import { withSourcePaths } from './source-paths';
+import { IMPORT_METADATA_VERSION, mergeUsage } from './usage';
 
 export class Importer {
   status: ImportStatus = { running: false, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [], warnings: [] };
@@ -60,7 +61,7 @@ export class Importer {
           const saved = this.store.getSession(candidate.session.id);
           // A failed update or an older inconsistent metadata snapshot must be
           // retried, even if the source has returned to its saved revision.
-          const retry = !saved?.coverage?.importedAt || saved.coverage.note?.startsWith('Latest import failed:') || !this.store.commitsCurrent(candidate.session.id);
+          const retry = !saved?.coverage?.importedAt || saved.importVersion !== IMPORT_METADATA_VERSION || saved.coverage.note?.startsWith('Latest import failed:') || !this.store.commitsCurrent(candidate.session.id);
           if (!retry && saved?.revision === candidate.revision && this.store.revision(candidate.session.id) === candidate.revision) { this.store.upsert(candidate); this.status.unchanged++; continue; }
           // New sessions need a pending row. Existing snapshots keep their
           // metadata and locator until replacement commits with their history.
@@ -73,7 +74,13 @@ export class Importer {
               const page = await adapter.read(candidate, cursor);
               partial ||= Boolean(page.partial); note = page.note || note;
               for (const message of page.messages) {
-                if (!message.id || messages.has(message.id)) continue;
+                if (!message.id) continue;
+                const previous = messages.get(message.id);
+                if (previous) {
+                  if (message.usage) previous.usage = previous.usage ? mergeUsage(previous.usage, message.usage) : message.usage;
+                  if (message.metadata) previous.metadata = { ...previous.metadata, ...message.metadata };
+                  continue;
+                }
                 if (messages.size >= 50_000 || characters >= 16_000_000) { partial = true; break; }
                 let remaining = 16_000_000 - characters;
                 message.fragments = message.fragments.flatMap((fragment) => {

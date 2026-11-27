@@ -5,6 +5,7 @@ import { blankMessage } from './common';
 import { eventFor, eventText } from '../events';
 import { jsonLines, localFileAdapter, object, text, time } from './local-files';
 import { googleMessage, successfulEdits } from './local-messages';
+import { googleUsage, messageMetadata } from '../usage';
 
 export const qwenAdapter = localFileAdapter({
   id: 'qwen-code', name: 'Qwen Code', description: 'Local project chat records · tool results, forks, and child sessions',
@@ -19,6 +20,8 @@ export const qwenAdapter = localFileAdapter({
       const id = text(raw.uuid) || `record:${index}`;
       if (raw.message && !['agent_message', 'agent_mention', 'notification'].includes(raw.subtype)) {
         const message = googleMessage({ id, timestamp: raw.timestamp, role: raw.type === 'assistant' ? 'assistant' : raw.type === 'user' ? 'user' : 'tool', toolCallId: raw.toolCallResult?.callId, content: object(raw.message).parts }, id);
+        message.metadata = messageMetadata(raw);
+        if (raw.type === 'assistant') message.usage = googleUsage(raw.usageMetadata ?? raw.message?.usageMetadata, id);
         // A Google function response alone does not prove execution succeeded.
         for (const event of message.events || []) if (event.kind === 'tool_result') { event.status = raw.toolCallResult?.status === 'success' ? 'completed' : raw.toolCallResult?.status === 'error' ? 'failed' : 'unknown'; event.nativeType = text(raw.toolCallResult?.status); }
         return message;

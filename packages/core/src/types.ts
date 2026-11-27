@@ -3,6 +3,8 @@ export interface Session {
   nativeID?: string;
   nativeResume?: boolean;
   revision?: string;
+  /** Version of normalized import metadata; source revisions alone cannot detect parser upgrades. */
+  importVersion?: number;
   commits?: import('./commits').CommitIndex;
   coverage?: { history: 'complete' | 'partial' | 'pending'; note?: string; importedAt?: number };
   id: string;
@@ -22,6 +24,7 @@ export interface Session {
   agent: string;
   cost: number | null;
   tokens: number | null;
+  usage?: import('./usage').SessionUsage;
   outcome?: string;
 }
 

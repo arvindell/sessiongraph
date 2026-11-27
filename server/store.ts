@@ -15,6 +15,7 @@ import { visibleSessions } from '../src/session-links';
 import { fingerprint, pageLimit, pageOffset, nextCursor, type PageOptions } from './library-query';
 import { COMMIT_SCHEMA, writeCommits, readCommits, pendingCommits } from './commit-store';
 import { COMMIT_EXTRACTOR_VERSION } from './commit-extraction';
+import { IMPORT_METADATA_VERSION, summarizeUsage } from './usage';
 
 /** SessionGraph owns this database. No adapter opens or modifies a harness database. */
 export class SessionGraphStore {
@@ -128,18 +129,23 @@ export class SessionGraphStore {
   upsert(candidate: Candidate) {
     const s = candidate.session, previous = this.getSession(s.id);
     const metadata = { ...s, model: s.model === 'Unknown model' ? previous?.model || s.model : s.model,
+      tokens: previous?.revision === candidate.revision ? previous.tokens : s.tokens,
+      cost: previous?.revision === candidate.revision ? previous.cost : s.cost,
+      usage: previous?.revision === candidate.revision ? previous.usage : s.usage, importVersion: previous?.importVersion,
       parentID: previous?.parentID && candidate.locator.agent ? previous.parentID : s.parentID,
       activity: previous?.activity, commits: previous?.commits || pendingCommits(), revision: previous?.revision || '', coverage: previous?.coverage || { history: 'pending' } };
     this.db.prepare(`INSERT INTO sessions (id,source,native_id,metadata,locator) VALUES (?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata,locator=excluded.locator`).run(s.id, s.source!, s.nativeID!, JSON.stringify(metadata), JSON.stringify(candidate.locator));
   }
   replace(candidate: Candidate, messages: ImportedMessage[], partial: boolean, note?: string) {
-    const s: Session = { ...candidate.session, revision: candidate.revision, coverage: { history: partial ? 'partial' : 'complete', note, importedAt: Date.now() } };
+    const usage = summarizeUsage(candidate.session, messages, partial);
+    const s: Session = { ...candidate.session, tokens: usage.total, cost: usage.cost, usage, importVersion: IMPORT_METADATA_VERSION,
+      revision: candidate.revision, coverage: { history: partial ? 'partial' : 'complete', note, importedAt: Date.now() } };
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.db.prepare('DELETE FROM messages WHERE session_id=?').run(s.id);
       const insert = this.db.prepare('INSERT INTO messages (session_id,id,ordinal,data,time,is_user) VALUES (?,?,?,?,?,?) ON CONFLICT(session_id,id) DO UPDATE SET ordinal=excluded.ordinal,data=excluded.data,time=excluded.time,is_user=excluded.is_user');
-      messages.forEach((message, i) => insert.run(s.id, message.id, i, JSON.stringify(message), messageTime(message.time), Number(isUserMessage(message))));
+      messages.forEach((message, i) => insert.run(s.id, message.id, i, JSON.stringify(message), message.eventOnly ? null : messageTime(message.time), Number(isUserMessage(message))));
       writeEvents(this.db, s.id, this.db.prepare('SELECT data FROM messages WHERE session_id=? ORDER BY ordinal').iterate(s.id));
       const commits = writeCommits(this.db, s);
       const activity = this.db.prepare(activitySQL).get(s.id);
@@ -245,6 +251,7 @@ export class SessionGraphStore {
         });
         truncated ||= !!message.partial;
         return { id: message.id, time: messageTime(message.time), role: message.role, fragments,
+          metadata: message.metadata, usage: message.usage, locations: message.locations,
           files: message.files.slice(0, 200), tools: message.tools.slice(0, 200), partial: !!message.partial || message.fragments.length > 200 || message.files.length > 200 || message.tools.length > 200 || fragments.some(f => f.truncated) };
       });
       return { sessionID: id, revision: session.revision, messages, order: 'newest-first',
@@ -256,14 +263,16 @@ export class SessionGraphStore {
     return this.readSnapshot(id, (session) => {
       const page = this.messagePage(id, Number(cursor || 0), 120);
       const files = new Map<string, SessionDetail['files'][number]>(), tools = new Map<string, number>();
+      const locations: SessionDetail['locations'] = [];
       for (const message of page.messages) {
         for (const file of message.files) {
           const previous = files.get(file.path);
           files.set(file.path, { ...file, source: previous?.source === 'snapshot' ? 'snapshot' : file.source, steps: (previous?.steps || 0) + file.steps });
         }
         message.tools.forEach((tool) => tools.set(tool, (tools.get(tool) || 0) + 1));
+        for (const location of message.locations || []) if (locations.length < 200 && messageTime(location.time) !== null) locations.push(location);
       }
-      return { id, revision: session.revision, files: [...files.values()].sort((a, b) => b.steps - a.steps), tools: [...tools].map(([name, count]) => ({ name, count })), locations: [], messagesScanned: page.messages.length,
+      return { id, revision: session.revision, files: [...files.values()].sort((a, b) => b.steps - a.steps), tools: [...tools].map(([name, count]) => ({ name, count })), locations, messagesScanned: page.messages.length,
         snapshotSteps: page.messages.reduce((n, m) => n + (m.snapshots || 0), 0), nextCursor: page.next, partial: Boolean(page.next) || session.coverage?.history !== 'complete', loadedAt: Date.now(), note: session.coverage?.note || (session.coverage?.history === 'pending' ? 'Waiting for import.' : undefined) };
     });
   }

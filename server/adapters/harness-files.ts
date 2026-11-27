@@ -5,6 +5,7 @@ import { acpHistory, ampHistory, codebuffHistory, dshHistory, envelopeHistory, f
 import { appPath, configPath, dataPath, envHome, harnessRoots, homePath, tokscalePath } from './harness-paths';
 import type { SessionAdapter } from './types';
 import { devinDesktopHistory, kiroHistory, muxHistory } from './harness-extra-formats';
+import { recordedUsage, sessionUsage, sumTokens } from '../usage';
 
 interface FileHarness {
   id: string;
@@ -81,14 +82,18 @@ function fxHistory(path: string, files: Map<string, string>): LocalHistory {
   const usage = object(json(files.get(path)!)), meta = sidecar(files, join(dirname(path), 'session.json'));
   const id = text(usage.session_id) || text(meta.id);
   if (!id || !usage.snapshot || meta.id && meta.id !== id) throw new Error('Unsupported Fx session metadata.');
-  return { nativeID: id, messages: [], partial: true, session: { created: time(meta.created_at_ms), directory: text(meta.workspace_root), title: text(meta.title) },
+  const snapshot = object(usage.snapshot);
+  return { nativeID: id, messages: [], partial: true, session: { created: time(meta.created_at_ms), directory: text(meta.workspace_root), title: text(meta.title),
+    usage: sessionUsage(recordedUsage({ input: snapshot.input_tokens, output: snapshot.output_tokens, cacheRead: snapshot.cache_read_tokens, cacheWrite: snapshot.cache_write_tokens,
+      reasoning: snapshot.reasoning_tokens, total: sumTokens([snapshot.input_tokens, snapshot.output_tokens, snapshot.cache_read_tokens, snapshot.cache_write_tokens, ...(snapshot.reasoning_tokens == null ? [] : [snapshot.reasoning_tokens])]),
+      inputIncludesCache: false, outputIncludesReasoning: false, cost: snapshot.total_cost })) },
     note: 'Session metadata only.' };
 }
 
 const definitions: FileHarness[] = [
   ...piSources,
   { id: 'kiro', name: 'Kiro', roots: () => [homePath('.kiro/sessions'), appPath('Kiro/User/globalStorage/kiro.kiroagent')], match: p => p.endsWith('/session.json') || /^cli\/[^/]+\.json$/.test(p), extras: p => [basename(p) === 'session.json' ? join(dirname(p), 'messages.jsonl') : p.replace(/\.json$/, '.jsonl')], parse: kiroHistory },
-  { id: 'mux', name: 'Mux', roots: () => [envHome('MUX_ROOT', '.mux', 'sessions')], match: p => p.endsWith('/chat.jsonl'), extras: p => [join(dirname(p), 'chat-archive.jsonl')], parse: muxHistory },
+  { id: 'mux', name: 'Mux', roots: () => [envHome('MUX_ROOT', '.mux', 'sessions')], match: p => p.endsWith('/chat.jsonl'), extras: p => [join(dirname(p), 'chat-archive.jsonl'), join(dirname(p), 'session-usage.json')], parse: muxHistory },
   { id: 'devin-desktop', name: 'Devin Desktop', roots: () => [appPath('Devin/User/acp-events')], match: p => /\.(ndjson|jsonl)$/.test(p), parse: devinDesktopHistory },
   { id: 'openclaw', name: 'OpenClaw', roots: openclawRoots, match: p => /(?:^|\/)sessions\/.*\.jsonl(?:\.[\w.-]+)?$/.test(p) || /session-sqlite-import-archive\/.*\.jsonl\./.test(p), parse: piParse },
   { id: 'amp', name: 'Amp', roots: () => [dataPath('amp/threads'), tokscalePath('amp-cache/threads')], match: p => p.endsWith('.json'), parse: ampHistory },
