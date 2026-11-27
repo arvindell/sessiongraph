@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
 import { sessionGraphMiddleware } from './server/middleware';
 
@@ -10,7 +11,13 @@ function sessionGraphApi(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [sessionGraphApi()],
+  plugins: [sessionGraphApi(), {
+    name: 'katagami-license',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'assets/licenses/katagami.txt', source: readFileSync(new URL('./packages/site/assets/licenses/katagami.txt', import.meta.url)) });
+    },
+  }],
   build: {
     rollupOptions: {
       output: { manualChunks: (id) => id.includes('/node_modules/three/') || id.includes('/node_modules/.pnpm/three@') ? 'three' : undefined },

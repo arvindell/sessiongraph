@@ -1,8 +1,10 @@
-@import '@fontsource-variable/geist';
 @import '@fontsource/ibm-plex-mono/400.css';
 
+@font-face { font-family: 'Katagami Sans'; src: url('../packages/site/assets/katagami-sans.woff2') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; }
+
 :root {
-  font-family: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--app-sans);
+  --app-sans: 'Katagami Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #dbe7e3;
   background: #080e13;
   font-synthesis: none;
@@ -134,7 +136,7 @@ select option { background: #14211e; color: #e1e8ea; }
 .share-tray { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; }
 .share-tray p { margin: 0 0 12px; }
 .share-tray > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.share-caption { width: 100%; resize: none; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #070f1380; color: #b8d2c5; font: 11px/1.7 'Geist Variable', sans-serif; }
+.share-caption { width: 100%; resize: none; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #070f1380; color: #b8d2c5; font: 11px/1.7 var(--app-sans); }
 .custom-dates { position: relative; }
 summary { cursor: pointer; list-style: none; }
 summary::-webkit-details-marker { display: none; }
