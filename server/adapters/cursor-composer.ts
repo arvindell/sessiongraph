@@ -52,7 +52,10 @@ export function discoverComposers(path: string, workspace = '') {
     }
     for (const c of sessions) {
       const found = parents.get(c.session.nativeID!);
-      if (found?.size === 1 && !found.has(c.session.nativeID!)) c.session.parentID = identity('cursor', [...found][0]);
+      if (found?.size === 1 && !found.has(c.session.nativeID!)) {
+        c.session.parentID = identity('cursor', [...found][0]);
+        c.session.origin = 'automated';
+      }
       c.session.projectID = project('cursor', c.session.directory).id;
       c.revision = digest([c.revision, c.session.directory, c.session.parentID]);
     }

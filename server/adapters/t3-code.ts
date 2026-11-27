@@ -148,6 +148,7 @@ function discoverV2(db: DatabaseSync, path: string, databaseRevision: string) {
     const session = blankSession(SOURCE, nativeID, directory);
     const parent = string(row.parent_thread_id);
     session.parentID = row.relationship === 'subagent' && parent ? identity(SOURCE, parent) : undefined;
+    if (row.relationship === 'subagent') session.origin = 'automated';
     session.forkID = row.relationship === 'fork' && parent ? identity(SOURCE, parent) : undefined;
     Object.assign(session, { title: string(row.title) || 'T3 Code thread', projectID: p.id, created,
       updated: time(row.updated_at) || created, archived: Boolean(row.archived_at),

@@ -11,6 +11,8 @@ export interface Session {
   title: string;
   projectID: string;
   parentID?: string;
+  /** Only set from explicit launcher provenance; a parent link or user-role message alone is insufficient. */
+  origin?: 'human' | 'automated';
   forkID?: string;
   /** Explicit provider-native conversations recorded as part of this app thread. */
   linkedSessionIDs?: string[];

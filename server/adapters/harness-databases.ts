@@ -55,6 +55,7 @@ const hermes: DatabaseHarness = {
     if (usage && usage.cost === null && aggregate?.cost != null) { usage.cost = aggregate.cost; usage.costEstimated = aggregate.costEstimated; }
     h.session!.usage = sessionUsage(usage);
     if (r.source === 'subagent') h.parent = text(r.parent_session_id) || undefined;
+    if (r.source === 'cron' || r.source === 'subagent') h.session!.origin = 'automated';
     h.fork = text(optionalJSON(r.model_config)._branched_from) || undefined;
     h.session!.archived = r.archived === 1;
     return h;
@@ -75,6 +76,7 @@ const goose: DatabaseHarness = {
     h.session!.usage = sessionUsage(recordedUsage({ input, output, total: r.accumulated_total_tokens ?? r.total_tokens ?? sumTokens([input, output]),
       inputIncludesCache: true, outputIncludesReasoning: true }), r.accumulated_total_tokens == null);
     if (r.session_type === 'sub_agent') h.parent = text(r.parent_session_id) || undefined;
+    if (r.session_type === 'sub_agent') h.session!.origin = 'automated';
     h.session!.archived = Boolean(r.archived_at);
     return h;
   },

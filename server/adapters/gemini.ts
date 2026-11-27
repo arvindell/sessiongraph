@@ -70,7 +70,7 @@ export const geminiAdapter = localFileAdapter({
     successfulEdits(messages, ['write_file', 'replace']);
     const parent = meta.kind === 'subagent' && basename(dirname(dirname(path))) === 'chats' ? basename(dirname(path)) : undefined;
     return { nativeID: meta.sessionId, messages, parent, partial,
-      session: { directory, created: time(meta.startTime), title: text(meta.summary), model: text([...records].reverse().find(r => r.model)?.model) || 'Unknown model', provider: 'Google', nativeResume: !parent && Boolean(directory) && !sourcePath('gemini') && !process.env.SESSIONGRAPH_GEMINI_HOME && !path.includes(`${sep}.cache${sep}`) },
+      session: { directory, origin: meta.kind === 'subagent' ? 'automated' : undefined, created: time(meta.startTime), title: text(meta.summary), model: text([...records].reverse().find(r => r.model)?.model) || 'Unknown model', provider: 'Google', nativeResume: !parent && Boolean(directory) && !sourcePath('gemini') && !process.env.SESSIONGRAPH_GEMINI_HOME && !path.includes(`${sep}.cache${sep}`) },
     };
   },
 });

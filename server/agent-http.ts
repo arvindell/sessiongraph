@@ -39,7 +39,7 @@ function openapi(version: string) {
 }
 export async function startAgentHttp(library: LibraryService, port: number, credential: Buffer, version: string) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) invalid('Port must be 0–65535.');
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     const authority = `127.0.0.1:${(server.address() as AddressInfo).port}`;
     const fail = (status: number, code: string, message: string) => send(res, status, { schemaVersion: 1, error: { code, message } });
     if (req.headers.host !== authority || (req.headers.origin !== undefined && req.headers.origin !== `http://${authority}`)) {
@@ -66,7 +66,7 @@ export async function startAgentHttp(library: LibraryService, port: number, cred
           if (!Object.hasOwn(q.inputSchema.properties || {}, key) || Object.hasOwn(args, key)) invalid('Unknown or duplicate query parameter.');
           args[key] = ['limit', 'since', 'until'].includes(key) && /^\d+$/.test(value) ? Number(value) : value;
         }
-        return send(res, 200, { schemaVersion: 1, data: q.call(library, args) });
+        return send(res, 200, { schemaVersion: 1, data: await q.call(library, args) });
       }
       return fail(404, 'NOT_FOUND', 'Unknown endpoint.');
     } catch (error) { const e = queryError(error); return fail(e.status, e.code, e.message); }

@@ -35,8 +35,11 @@ export function page<T>(items: T[], key: string, options: PageOptions = {}) {
 
 export interface SessionFilters {
   sources?: string[]; directory?: string; project?: string; model?: string;
+  dateField?: 'created' | 'lastActivity' | 'overlap' | 'message';
+  origin?: Session['origin'] | 'unknown'; relationship?: 'root' | 'child' | 'fork';
   since?: number; until?: number; archived?: 'include' | 'exclude' | 'only'; raw?: boolean;
 }
+export const relationshipOf = (s: Session) => s.forkID ? 'fork' : s.parentID ? 'child' : 'root';
 export function filterSessions(sessions: Session[], filters: SessionFilters = {}) {
   return sessions.filter(session => {
     if (filters.sources?.length && !filters.sources.some(source => sessionMatchesSource(session, source))) return false;
@@ -47,9 +50,14 @@ export function filterSessions(sessions: Session[], filters: SessionFilters = {}
     }
     if (filters.project && session.projectID !== filters.project) return false;
     if (filters.model && session.model !== filters.model) return false;
+    if (filters.origin && (session.origin ?? 'unknown') !== filters.origin) return false;
+    if (filters.relationship && relationshipOf(session) !== filters.relationship) return false;
     if (filters.archived === 'exclude' && session.archived || filters.archived === 'only' && !session.archived) return false;
     const end = sessionEnd(session);
-    return !(filters.since !== undefined && end < filters.since || filters.until !== undefined && session.created > filters.until);
+    if (filters.dateField === 'message') return true; // LibraryService checks recorded message rows in the same snapshot.
+    const lower = filters.dateField === 'created' ? session.created : end;
+    const upper = filters.dateField === 'lastActivity' ? end : session.created;
+    return !(filters.since !== undefined && lower < filters.since || filters.until !== undefined && upper > filters.until);
   }).sort((a, b) => sessionEnd(b) - sessionEnd(a) || a.id.localeCompare(b.id));
 }
 

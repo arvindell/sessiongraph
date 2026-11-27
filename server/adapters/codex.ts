@@ -124,6 +124,7 @@ export const codexAdapter: SessionAdapter = {
       const stats = await stat(path), session = blankSession('codex', meta.id, meta.cwd);
       session.title = names.get(meta.id) || (typeof meta.name === 'string' ? meta.name : 'Untitled session');
       const source = meta.source?.subagent?.thread_spawn || meta.source?.sub_agent?.thread_spawn;
+      if (meta.source?.subagent || meta.source?.sub_agent) session.origin = 'automated';
       const parent = meta.parent_thread_id || source?.parent_thread_id;
       const fork = meta.forked_from_id || meta.forkedFromId;
       Object.assign(session, { created: Date.parse(meta.timestamp) || stats.birthtimeMs || stats.mtimeMs, updated: stats.mtimeMs, archived: path.includes(`${sep}archived_sessions${sep}`), provider: meta.model_provider || '', agent: 'Codex', parentID: parent ? identity('codex', parent) : undefined, forkID: fork ? identity('codex', fork) : undefined });

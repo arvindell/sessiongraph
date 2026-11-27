@@ -13,6 +13,38 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SessionGraphStore } from '../server/store';
 import { blankMessage, blankSession } from '../server/adapters/common';
 import { LibraryService } from '../server/library-service';
+import { reportingFixture } from './fixtures/reporting';
+import { agentQueries } from '../server/agent-queries';
+
+test('agent reporting distinguishes dated evidence, provenance and same-name repositories', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'ssg-reports-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  reportingFixture(dir);
+  const store = new SessionGraphStore(join(dir, 'library', 'sessiongraph.sqlite'));
+  t.after(() => store.close());
+  const service = new LibraryService(store, []);
+  const call = async (name: string, args: object): Promise<any> => agentQueries.find(q => q.name === name)!.call(service, args);
+  const day = { since: '2026-05-13', until: '2026-05-13' };
+  for (const [field, count] of Object.entries({ overlap: 7, created: 4, lastActivity: 4, message: 5 })) {
+    const args = { ...day, dateField: field, limit: 1 };
+    assert.equal((await call('get_stats', args)).totals.sessions, count);
+    assert.equal((await call('list_sessions', args)).total, count);
+  }
+  assert.equal((await call('list_sessions', day)).total, 7);
+  const args = { ...day, dateField: 'created', relationship: 'root', origin: 'unknown' };
+  const { items: [root], total } = await call('list_sessions', args);
+  assert.equal(total, 1); assert.equal(root.title, 'Nightly bot roadmap');
+  assert.equal(root.projectLabel, 'lantern'); assert.equal(root.usage, undefined);
+  assert.equal(root.created, '2026-05-13T12:00:00.000Z');
+  const groups = (await call('get_stats', { ...day, dateField: 'created', groupBy: 'relationship' })).groups.items;
+  assert.deepEqual(groups.find((g: any) => g.key === 'root').origins, { human: 0, automated: 1, unknown: 1 });
+  assert.ok((await call('get_session', { id: root.id })).coverage);
+  const repos = (await call('get_stats', { groupBy: 'repository' })).groups.items;
+  assert.deepEqual(repos.map((g: any) => g.sessions).sort(), [2, 6]);
+  assert.ok(repos.every((g: any) => g.label === 'lantern'));
+  assert.notEqual(repos[0].key, repos[1].key);
+  await assert.rejects(call('list_sessions', { since: '2026-02-30' }), /YYYY-MM-DD/);
+});
 
 function seed(store: SessionGraphStore, name: string) {
   const candidate = { session: { ...blankSession('codex', name), created: 1234 }, revision: 'one', locator: {} };

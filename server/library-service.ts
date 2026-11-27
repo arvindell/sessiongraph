@@ -1,14 +1,18 @@
-import type { Session } from '@sessiongraph/core/types';
+import type { Project, Session } from '@sessiongraph/core/types';
+import { basename } from 'node:path';
+import { annotateGitCheckouts } from './git-checkouts';
 import { makeGraph, sessionEnd } from '@sessiongraph/core/layout';
 import { SessionGraphStore } from './store';
 import { Importer } from './importer';
 import type { SessionAdapter } from './adapters/types';
 import { sourcePathHint } from './source-paths';
-import { filterSessions, fingerprint, invalid, LibraryError, localPath, nextCursor, page, pageLimit, pageOffset, type PageOptions, type SessionFilters } from './library-query';
+import { filterSessions, fingerprint, invalid, LibraryError, localPath, nextCursor, page, pageLimit, pageOffset, relationshipOf, type PageOptions, type SessionFilters } from './library-query';
 import { SessionSearchIndex, parseQuery } from '../src/search/engine';
 import { MAX_CHARACTERS, SESSION_CHARACTERS } from '../src/search/persistence';
 import { sampleContent } from '../src/search/sampling';
 import { MAX_SESSION_RECORDS } from './history-limits';
+
+const utc = (ms: number) => ms > 0 && ms <= 8.64e15 ? new Date(ms).toISOString() : null;
 
 export class LibraryService {
   private searchCache?: { key: string; index: SessionSearchIndex; complete: number; characters: number };
@@ -26,7 +30,12 @@ export class LibraryService {
     this.validateSources(filters.sources || []);
     const library = this.store.library([], this.importer.status.running);
     const sessions = filters.raw ? this.store.db.prepare('SELECT metadata FROM sessions').all().map(row => JSON.parse(String(row.metadata)) as Session) : library.sessions;
-    return { sessions: filterSessions(sessions, filters), projects: library.projects };
+    let matched = filterSessions(sessions, filters);
+    if (filters.dateField === 'message') {
+      const exists = this.store.db.prepare('SELECT 1 FROM messages WHERE session_id=? AND is_user IN (0,1) AND time BETWEEN ? AND ? LIMIT 1');
+      matched = matched.filter(s => exists.get(s.id, filters.since ?? 0, filters.until ?? Number.MAX_SAFE_INTEGER));
+    }
+    return { sessions: matched, projects: library.projects };
   }
   private key(kind: string, sessions: Session[], filters: unknown) { return fingerprint([this.store.setting('libraryID'), kind, filters, sessions]); }
   async discoverSources() {
@@ -87,6 +96,16 @@ export class LibraryService {
     return this.snapshot(() => {
       const { sessions } = this.sessions(filters);
       return { ...page(sessions, this.key('sessions', sessions, filters), options), filters, order: 'latest-message-first' };
+    });
+  }
+  listSessionSummaries(filters: SessionFilters, options: PageOptions) {
+    return this.snapshot(() => {
+      const { sessions, projects } = this.sessions(filters);
+      const names = new Map(projects.map(p => [p.id, p.name]));
+      const result = page(sessions, this.key('session-summaries', sessions, [filters, projects]), options);
+      return { ...result, items: result.items.map(s => ({ id: s.id, title: s.title, source: s.source, projectID: s.projectID,
+        projectLabel: names.get(s.projectID) || basename(s.directory) || 'Unknown project', created: utc(s.created), lastActivity: utc(sessionEnd(s)),
+        relationship: relationshipOf(s), origin: s.origin ?? 'unknown' })), filters, order: 'latest-message-first' };
     });
   }
   getSession(id: string) {
@@ -156,9 +175,17 @@ export class LibraryService {
     });
   }
   getStats(filters: SessionFilters = {}, groupBy = 'source', options: PageOptions = {}) {
-    if (!['source', 'model', 'project', 'directory'].includes(groupBy)) invalid('Group by source, model, project, or directory.');
-    return this.snapshot(() => {
-      const { sessions } = this.sessions(filters), grouped = new Map<string, Session[]>();
+    return this.snapshot(() => this.summarize(this.sessions(filters), filters, groupBy, options));
+  }
+  async getRepositoryStats(filters: SessionFilters, options: PageOptions) {
+    const data = this.snapshot(() => this.sessions(filters));
+    // No transaction open while inspecting local Git metadata.
+    return this.summarize({ ...data, sessions: await annotateGitCheckouts(data.sessions) }, filters, 'repository', options);
+  }
+  private summarize(data: { sessions: Session[]; projects: Project[] }, filters: SessionFilters, groupBy: string, options: PageOptions) {
+      if (!['source', 'model', 'project', 'directory', 'relationship', 'origin', 'repository'].includes(groupBy)) invalid('Unknown stats grouping.');
+      const { sessions, projects } = data, grouped = new Map<string, Session[]>();
+      const names = new Map(projects.map(p => [p.id, p.name]));
       const usage = (values: (number | null | undefined)[]) => {
         const known = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
         return { knownTotal: known.length || !values.length ? known.reduce((a, b) => a + b, 0) : null, knownSessions: known.length, unknownSessions: values.length - known.length };
@@ -167,11 +194,25 @@ export class LibraryService {
         coverage: { complete: values.filter(s => s.coverage?.history === 'complete').length, partial: values.filter(s => s.coverage?.history === 'partial').length, pending: values.filter(s => !s.coverage || s.coverage.history === 'pending').length },
         firstCreated: values.some(s => s.created > 0) ? values.reduce((min, s) => s.created > 0 ? Math.min(min, s.created) : min, Infinity) : null,
         lastActivity: values.some(s => sessionEnd(s) > 0) ? values.reduce((max, s) => Math.max(max, sessionEnd(s)), 0) : null });
-      for (const s of sessions) { const key = (groupBy === 'project' ? s.projectID : s[groupBy as 'source' | 'model' | 'directory']) || 'unknown'; if (!grouped.has(key)) grouped.set(key, []); grouped.get(key)!.push(s); }
-      const groups = [...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([key, values]) => ({ key, ...summary(values) }));
-      return { totals: summary(sessions), groupBy, groups: page(groups, this.key('stats', sessions, [filters, groupBy]), options), filters,
-        note: 'Totals use matched sessions’ lifetime usage. Unknown usage is reported separately.' };
-    });
+      for (const s of sessions) {
+        const key = (groupBy === 'project' ? s.projectID : groupBy === 'repository' ? s.checkout?.repository :
+          groupBy === 'relationship' ? relationshipOf(s) : s[groupBy as 'source' | 'model' | 'directory' | 'origin']) || 'unknown';
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(s);
+      }
+      const groups = [...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([key, values]) => ({ key,
+        label: groupBy === 'project' ? names.get(key) || basename(values[0].directory) || 'Unknown project' :
+          groupBy === 'repository' ? values[0].checkout?.repositoryLabel || 'Unverified repository' : key,
+        ...(groupBy === 'repository' ? { worktrees: [...new Set(values.flatMap(s => s.checkout?.worktree || []))].sort() } : {}),
+        ...(groupBy === 'relationship' ? { origins: values.reduce((counts, s) => {
+          counts[s.origin ?? 'unknown']++; return counts;
+        }, { human: 0, automated: 0, unknown: 0 }) } : {}),
+        ...summary(values) }));
+      return { totals: summary(sessions), groupBy, groups: page(groups, this.key('stats', sessions, [filters, groupBy, groups]), options), filters,
+        ...(filters.origin || groupBy === 'origin' || groupBy === 'relationship' ? {
+          interpretation: 'Origin identifies launcher type, not a specific person. Report unknown origins separately. If any are unknown, the actual number personally started is undetermined; zero confirmed human launches is not a personal count of zero.',
+        } : {}),
+        note: 'Totals use matched sessions’ lifetime usage. Unknown usage is reported separately. userMessages also counts lifetime messages.' };
   }
   getGraph(filters: SessionFilters = {}) {
     return this.snapshot(() => {

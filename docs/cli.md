@@ -94,10 +94,27 @@ prints the OS-assigned URL. Ctrl+C stops the server.
 
 Both transports query the same local library. Pass `--data-dir` to `serve` or
 `mcp` to select another. Use `ssg sync` separately to refresh saved history.
-Filters and limits are listed by `/openapi.json` and MCP `tools/list`; `since`
-and `until` use Unix milliseconds. URL-encode session IDs as one path segment.
+Filters and limits are listed by `/openapi.json` and MCP `tools/list`.
+`since` and `until` are inclusive: pass Unix milliseconds, ISO timestamps with a
+timezone, or `YYYY-MM-DD` (whole UTC days). URL-encode session IDs as one path segment.
 Use `nextCursor` with the original filters for the next page; restart on
 `STALE_CURSOR`. Search reuses the index between queries on the same selection.
+
+For “How many sessions did I start on May 13?”, call `get_stats` with
+`{"dateField":"created","since":"2026-05-13","until":"2026-05-13"}`.
+`totals.sessions` counts all matching saved sessions, regardless of page size.
+Use `lastActivity` for the latest saved message (creation fallback), `message`
+for any timed saved message in the window, or `overlap` (default) for
+lifetimes intersecting the window, including idle gaps. Usage is lifetime.
+
+`list_sessions` returns compact rows with IDs for `get_session`. For a breakdown,
+use `groupBy: "project"` for labeled source-specific IDs, or `"repository"` to
+combine verified local checkouts across tools and worktrees. Unverified
+checkouts share an **unknown** bucket, not a verified repository.
+`relationship` (root/child/fork) and `origin` (human/automated/unknown) can be
+filtered or grouped independently. Root means no recorded parent/fork.
+Origins require explicit evidence; titles, user messages and interactive tools
+do not prove personal initiation. Sync after updating to pick up native provenance.
 
 ### Reference
 
