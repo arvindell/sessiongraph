@@ -25,9 +25,10 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
   let preview: { id: string; graph: PublicGraph } | undefined, username: string | null = null, published = false;
   let generation = 0, busy = false, preparing = false, submitted = false, timer = 0, pollBusy = false;
   let loginBusy = false, loginAttempt = 0, connectionUrl: string | undefined;
+  let previewController: AbortController | undefined;
   const notice = (text: string) => { $('.publishing-status').textContent = text; };
-  const api = async (action: string, method = 'GET', body?: unknown) => {
-    const response = await fetch(`/api/sessiongraph/publishing/${action}`, { method, headers: { 'Content-Type': 'application/json', 'x-sessiongraph-action': '1' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  const api = async (action: string, method = 'GET', body?: unknown, signal?: AbortSignal) => {
+    const response = await fetch(`/api/sessiongraph/publishing/${action}`, { method, signal, headers: { 'Content-Type': 'application/json', 'x-sessiongraph-action': '1' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     const data = await response.json(); if (!response.ok) throw Object.assign(new Error(data.error || 'Please try again.'), { status: response.status }); return data;
   };
   function controls() {
@@ -64,17 +65,20 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
     $('.publishing-error').hidden = !text; $('[data-preview-error]').textContent = text;
   }
   async function refreshPreview() {
-    const request = ++generation; preview = undefined; submitted = false; viewer?.dispose(); viewer = undefined;
+    const request = ++generation; preview = undefined; submitted = false;
+    previewController?.abort(); const controller = new AbortController(); previewController = controller;
     preparing = !!ids.length; previewError(''); showJSON(false); $('.publishing-json').textContent = ''; controls();
     if (!ids.length) { $('.publishing-preview').textContent = 'Choose sessions on the map to share.'; return; }
-    $('.publishing-preview').textContent = 'Preparing preview…';
+    if (!viewer) $('.publishing-preview').textContent = 'Preparing preview…';
+    $('.publishing-preview').setAttribute('aria-busy', 'true');
     try {
-      const result = await api('preview', 'POST', { ids, settings });
+      const result = await api('preview', 'POST', { ids, settings }, controller.signal);
       if (!dialog.open || request !== generation) return;
       preview = result; settings = result.graph.settings;
-      viewer = createPublicViewer($('.publishing-preview'), result.graph);
-    } catch (error) { if (dialog.open && request === generation) { $('.publishing-preview').textContent = ''; previewError((error as Error).message); } }
-    finally { if (request === generation) { preparing = false; controls(); } }
+      if (viewer) viewer.setData(result.graph);
+      else viewer = createPublicViewer($('.publishing-preview'), result.graph);
+    } catch (error) { if (dialog.open && request === generation) { preview = undefined; viewer?.dispose(); viewer = undefined; $('.publishing-preview').textContent = ''; previewError((error as Error).message); } }
+    finally { if (request === generation) { preparing = false; $('.publishing-preview').setAttribute('aria-busy', 'false'); controls(); } }
   }
   async function refreshAccount() {
     const attempt = loginAttempt;
@@ -183,6 +187,7 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
   dialog.addEventListener('close', () => {
     if (dialog.open) return;
     generation++; loginAttempt++; loginBusy = false; window.clearInterval(timer); timer = 0;
+    previewController?.abort();
     viewer?.dispose(); viewer = undefined; preview = undefined; visibility();
   });
   return {
@@ -206,6 +211,6 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
       } catch (error) { if (dialog.open && request === generation) { preparing = false; previewError((error as Error).message); controls(); } }
       await account;
     },
-    dispose() { generation++; loginAttempt++; window.clearInterval(timer); viewer?.dispose(); viewer = undefined; dialog.close(); dialog.remove(); },
+    dispose() { generation++; loginAttempt++; previewController?.abort(); window.clearInterval(timer); viewer?.dispose(); viewer = undefined; dialog.close(); dialog.remove(); },
   };
 }

@@ -7,6 +7,11 @@ import type { TimelineFilter, TimelineMarkers, TimelinePage } from '@sessiongrap
 import type { Session } from '@sessiongraph/core/types';
 import { commitMarkers } from './commit-store';
 
+/** Covers message counts and ordered times without touching the large payload rows. */
+export const MESSAGE_TIME_INDEX = `CREATE INDEX IF NOT EXISTS timeline_messages_time
+  ON timeline_items(session_id,time,ordinal)
+  WHERE kind='message' AND role IN ('user','assistant');`;
+
 export const EVENT_SCHEMA = `CREATE TABLE IF NOT EXISTS timeline_items (
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, id TEXT NOT NULL, message_id TEXT NOT NULL,
   ordinal INTEGER NOT NULL, kind TEXT NOT NULL, role TEXT, time REAL, call_id TEXT, name TEXT NOT NULL, preview TEXT NOT NULL, data TEXT NOT NULL,

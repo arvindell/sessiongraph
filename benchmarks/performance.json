@@ -1,0 +1,116 @@
+{
+  "measuredAt": "2026-11-27",
+  "baselineRevision": "0f1de0115d203dec40dc9e4643989407047ea804",
+  "optimizedSource": "perf/render-performance working tree",
+  "environment": {
+    "node": "v24.22.1",
+    "browser": "159.0.8154.6",
+    "cpu": "Apple M3 Pro",
+    "gpu": "ANGLE Metal Renderer: Apple M3 Pro",
+    "platform": "darwin-arm64",
+    "viewport": [1440, 1000],
+    "deviceScaleFactor": 1,
+    "quality": "balanced",
+    "motion": "off"
+  },
+  "browser": {
+    "sessions": 2400,
+    "runs": 5,
+    "unit": "milliseconds unless named as a count",
+    "baseline": {
+      "initialListMs": { "median": 360.6, "p95": 3984 },
+      "oldestSessionMs": { "median": 3001.4, "p95": 3893.2 },
+      "mountedSessionCards": { "median": 2400, "p95": 2400 },
+      "searchScrollTaskMs": { "median": 197.161, "p95": 262.358 },
+      "searchScrollLayoutMs": { "median": 30.763, "p95": 36.973 },
+      "searchAddedRows": { "median": 780, "p95": 780 },
+      "sceneFitMs": { "median": 31.9, "p95": 36.9 },
+      "sceneNodesMs": { "median": 0.6, "p95": 0.8 },
+      "scenePickingMs": { "median": 1, "p95": 1.2 },
+      "sceneHoverMs": { "median": 0.7, "p95": 0.9 },
+      "nodeUpdatesOnHover": { "median": 23, "p95": 23 },
+      "previewOpenMs": { "median": 314.713, "p95": 676.777 },
+      "previewChangesMs": { "median": 231.402, "p95": 360.412 }
+    },
+    "optimized": {
+      "initialListMs": { "median": 184, "p95": 318.6 },
+      "oldestSessionMs": { "median": 24.1, "p95": 31.1 },
+      "mountedSessionCards": { "median": 8, "p95": 8 },
+      "searchScrollTaskMs": { "median": 42.135, "p95": 43.456 },
+      "searchScrollLayoutMs": { "median": 0.41, "p95": 0.502 },
+      "searchAddedRows": { "median": 0, "p95": 0 },
+      "sceneFitMs": { "median": 2, "p95": 2.6 },
+      "sceneNodesMs": { "median": 0.6, "p95": 0.9 },
+      "scenePickingMs": { "median": 0.5, "p95": 0.7 },
+      "sceneHoverMs": { "median": 0, "p95": 0.1 },
+      "nodeUpdatesOnHover": { "median": 0, "p95": 0 },
+      "previewOpenMs": { "median": 251.908, "p95": 274.852 },
+      "previewChangesMs": { "median": 109.848, "p95": 169.336 }
+    }
+  },
+  "navigation": {
+    "sessions": 2400,
+    "runs": 3,
+    "warmupFramesPerGesture": 30,
+    "measuredFramesPerGesturePerRun": 120,
+    "view": "3d",
+    "motion": "off",
+    "timer": "EXT_disjoint_timer_query_webgl2",
+    "aggregation": "pooled frames",
+    "baselineZoomForcedToRender": true,
+    "optimizedZoomForcedToRender": false,
+    "balancedPolicy": "Defer bloom and SMAA while moving; restore 150 ms after the camera settles. Geometry MSAA, supersampling, and node halos remain.",
+    "baseline": {
+      "orbit": {
+        "gpuMs": { "median": 25.745083, "p95": 33.047583 },
+        "cpuMs": { "median": 1.4, "p95": 2.9 },
+        "frameIntervalMs": { "median": 16.7, "p95": 33.4 }
+      },
+      "pan": {
+        "gpuMs": { "median": 25.136333, "p95": 32.368625 },
+        "cpuMs": { "median": 1.4, "p95": 2.4 },
+        "frameIntervalMs": { "median": 16.7, "p95": 33.4 }
+      },
+      "zoom": {
+        "gpuMs": { "median": 25.104166, "p95": 32.237999 },
+        "cpuMs": { "median": 1.5, "p95": 2.0 },
+        "frameIntervalMs": { "median": 16.7, "p95": 33.4 }
+      },
+      "unforcedWheelProbe": { "cameraMoved": true, "renderedFrames": 0 }
+    },
+    "optimized": {
+      "orbit": {
+        "gpuMs": { "median": 5.174041, "p95": 8.475374 },
+        "cpuMs": { "median": 0.9, "p95": 1.5 },
+        "frameIntervalMs": { "median": 16.7, "p95": 16.7 }
+      },
+      "pan": {
+        "gpuMs": { "median": 5.795999, "p95": 8.387249 },
+        "cpuMs": { "median": 0.9, "p95": 1.1 },
+        "frameIntervalMs": { "median": 16.7, "p95": 16.8 }
+      },
+      "zoom": {
+        "gpuMs": { "median": 5.748874, "p95": 8.5395 },
+        "cpuMs": { "median": 0.8, "p95": 1.0 },
+        "frameIntervalMs": { "median": 16.7, "p95": 16.7 }
+      },
+      "unforcedWheelProbe": { "cameraMoved": true, "renderedFrames": 1 }
+    }
+  },
+  "publishingDatabase": {
+    "sessions": 1200,
+    "events": 300000,
+    "payloadBytes": 2186,
+    "runs": 7,
+    "baseline": {
+      "medianMs": 366.484,
+      "p95Ms": 444.329,
+      "samplesMs": [393.567, 375.074, 355.77, 366.484, 359.065, 349.853, 444.329]
+    },
+    "optimized": {
+      "medianMs": 72.136,
+      "p95Ms": 179.352,
+      "samplesMs": [70.712, 71.681, 79.215, 179.352, 72.136, 76.377, 66.494]
+    }
+  }
+}

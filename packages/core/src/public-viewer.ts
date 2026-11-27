@@ -9,6 +9,7 @@ import { playbackTokens, validTokenCount } from './playback-tokens';
 import { sessionEnd } from './layout';
 import { sourceName, sourceIconElement } from './sources';
 import type { TimelineSummary } from './timeline';
+import { VirtualList } from './virtual-list';
 import './public-viewer.css';
 
 export { publicSummary } from './public-stats';
@@ -20,9 +21,9 @@ const icon = (node: typeof Play) => createElement([node[0], { ...node[1], 'aria-
 
 /** Shared desktop publication preview and web explorer. All inspection is in-memory public data. */
 export function createPublicViewer(host: HTMLElement, input: PublicGraph, options: { fullscreen?: boolean; sourceIconBase?: string } = {}) {
-  const value = validatePublicGraph(input);
+  let value = validatePublicGraph(input);
   let graph = publicGraphLayout(value);
-  const projects = new Map(graph.lanes.flatMap(lane => lane.nodes.map(node => [Number(node.session.projectID), lane.label] as const)));
+  let projects = new Map(graph.lanes.flatMap(lane => lane.nodes.map(node => [Number(node.session.projectID), lane.label] as const)));
   host.classList.add('public-viewer');
   host.classList.toggle('public-viewer-full', Boolean(options.fullscreen));
   host.innerHTML = `
@@ -32,7 +33,7 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
     <aside class="public-browser public-panel" aria-label="Sessions">
       <div class="public-panel-heading"><h2>Sessions <span data-count></span></h2><button type="button" class="public-icon-button" data-close-list aria-label="Close sessions">${icon(X)}</button></div>
       <div class="public-filters"><div class="public-filter">${icon(Folder)}<select data-project aria-label="Project"><option value="">All projects</option></select></div><div class="public-filter" data-harness-filter>${icon(Terminal)}<select data-harness aria-label="Coding agent"><option value="">All agents</option></select></div></div>
-      <div class="public-list" role="list" aria-label="Sessions"></div><button type="button" data-more hidden>Show more sessions</button>
+      <div class="public-list" role="list" aria-label="Sessions"></div>
     </aside>
     <aside class="public-session public-panel" aria-label="Session details" hidden><div class="public-panel-heading"><h2 data-session-heading></h2><button type="button" class="public-icon-button" data-focus aria-label="Focus session" title="Focus session">${icon(Crosshair)}</button><button type="button" class="public-icon-button" data-close-detail aria-label="Close session details">${icon(X)}</button></div><div class="public-session-data"></div></aside>
     <div class="public-tooltip" hidden></div>
@@ -46,7 +47,7 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
   const scrubber = part('scrubber') as HTMLInputElement, play = part('play') as HTMLButtonElement;
   const motionQuery = matchMedia('(prefers-reduced-motion: reduce)'), events = new AbortController();
   const preferences = { ...DEFAULT_PREFERENCES, muted: true, clickSounds: false, focusDimming: false, messageDots: value.settings.messageTimestamps };
-  let scene: TimelineScene | undefined, selected: number | null = null, visible = value.sessions, listLimit = 80, days = 0;
+  let scene: TimelineScene | undefined, selected: number | null = null, visible = value.sessions, days = 0;
   let frame = 0, playing = false, progress = 1, outro = 0, last = 0, disposed = false, markers: TimelineSummary[] = [];
   let panels: { browser: boolean; details: boolean } | undefined;
   let sessionCount = playbackSessions(graph.nodes.map(n => n.session)), tokens = playbackTokens(graph.nodes.map(n => n.session), { allSources: true });
@@ -54,6 +55,21 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
   const setTimeline = (open: boolean) => { timeline.hidden = !open; $('[data-timeline]').setAttribute('aria-expanded', String(open)); };
   const announce = (text: string) => { $('.public-announcement').textContent = text; };
   const row = (name: string, text: string) => { const p = document.createElement('p'), label = document.createElement('strong'); label.textContent = `${name}: `; p.append(label, text); body.append(p); };
+  let colors = new Map<number, string>();
+  const virtualList = new VirtualList<PublicGraph['sessions'][number]>(list, {
+    key: session => String(session.id),
+    estimate: () => 66,
+    render: (session, index) => {
+      const item = document.createElement('div'), button = document.createElement('button'), title = document.createElement('span'), subtitle = document.createElement('small');
+      item.setAttribute('role', 'listitem'); item.setAttribute('aria-posinset', String(index + 1)); item.setAttribute('aria-setsize', String(visible.length));
+      button.type = 'button'; button.dataset.session = String(session.id); button.setAttribute('aria-pressed', String(selected === session.id));
+      button.style.setProperty('--session-color', colors.get(session.id) || '#b0e9d6'); title.textContent = `Session ${session.id + 1}`;
+      if (session.harness) subtitle.append(sourceIconElement(session.harness, options.sourceIconBase));
+      const text = document.createElement('span'); text.textContent = [projects.get(session.group), session.model].filter(Boolean).join(' · '); subtitle.append(text);
+      button.append(title, subtitle); button.onclick = () => select(String(session.id)); item.append(button);
+      return item;
+    },
+  });
 
   function stop() {
     cancelAnimationFrame(frame); frame = 0; playing = false; outro = 0;
@@ -95,18 +111,11 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
     announce(`Selected Session ${session.id + 1}.`);
   }
   function renderList() {
-    list.replaceChildren(); $('[data-count]').textContent = number(visible.length);
-    const colors = new Map(graph.nodes.map(n => [Number(n.session.id), n.color]));
-    for (const session of visible.slice(0, listLimit)) {
-      const item = document.createElement('div'), button = document.createElement('button'), title = document.createElement('span'), subtitle = document.createElement('small');
-      item.setAttribute('role', 'listitem'); button.type = 'button'; button.dataset.session = String(session.id); button.setAttribute('aria-pressed', String(selected === session.id));
-      button.style.setProperty('--session-color', colors.get(session.id) || '#b0e9d6'); title.textContent = `Session ${session.id + 1}`;
-      if (session.harness) subtitle.append(sourceIconElement(session.harness, options.sourceIconBase));
-      const text = document.createElement('span'); text.textContent = [projects.get(session.group), session.model].filter(Boolean).join(' · '); subtitle.append(text);
-      button.append(title, subtitle); button.onclick = () => select(String(session.id)); item.append(button); list.append(item);
-    }
-    if (!visible.length) list.textContent = 'No sessions match these filters.';
-    $('[data-more]').hidden = listLimit >= visible.length;
+    $('[data-count]').textContent = number(visible.length);
+    colors = new Map(graph.nodes.map(n => [Number(n.session.id), n.color]));
+    virtualList.setItems(visible);
+    list.querySelector('.public-list-empty')?.remove();
+    if (!visible.length) { const empty = document.createElement('p'); empty.className = 'public-list-empty'; empty.textContent = 'No sessions match these filters.'; list.append(empty); }
   }
   function update() {
     scene?.setCutoff(progress); scrubber.value = String(Math.round(progress * 1000));
@@ -120,11 +129,11 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
     part('tokens').textContent = tokens.recorded && validTokenCount(usage.tokens) ? compact.format(usage.tokens) : '—';
     $('[data-token-total]').hidden = !value.settings.tokens;
   }
-  function filter() {
-    stop(); listLimit = 80; progress = 1;
+  function filter(reuseLayout = false) {
+    stop(); progress = 1;
     const cutoff = value.settings.timestamps && days ? Math.max(...value.sessions.map(s => Math.max(s.timestamps!.created, s.timestamps!.lastMessageAt ?? 0))) - days * 86400_000 : 0;
     visible = value.sessions.filter(s => (!project.value || String(s.group) === project.value) && (!harness.value || s.harness === harness.value) && (!cutoff || Math.max(s.timestamps!.created, s.timestamps!.lastMessageAt ?? 0) >= cutoff));
-    graph = publicGraphLayout(value, new Set(visible.map(s => s.id)));
+    if (!reuseLayout) graph = publicGraphLayout(value, new Set(visible.map(s => s.id)));
     sessionCount = playbackSessions(graph.nodes.map(n => n.session)); tokens = playbackTokens(graph.nodes.map(n => n.session), { allSources: true });
     scene?.setGraph(graph, true); select(null);
     const buckets = timelineBuckets(graph.nodes.map(n => sessionEnd(n.session)), graph.start, graph.end), max = Math.max(1, ...buckets);
@@ -148,12 +157,16 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
     canvas.textContent = '3D rendering is unavailable. Explore sessions in the panel.';
     $('.public-view-controls').hidden = true;
   }
-  [...projects].sort((a, b) => a[0] - b[0]).forEach(([id, name]) => project.add(new Option(name, String(id))));
-  [...new Set(value.sessions.flatMap(s => s.harness ? [s.harness] : []))].sort().forEach(id => harness.add(new Option(sourceName(id), id)));
-  $('[data-harness-filter]').hidden = !value.settings.harness;
-  for (const control of [project, harness]) control.onchange = filter;
+  function populateFilters() {
+    project.replaceChildren(new Option('All projects', '')); harness.replaceChildren(new Option('All agents', ''));
+    [...projects].sort((a, b) => a[0] - b[0]).forEach(([id, name]) => project.add(new Option(name, String(id))));
+    [...new Set(value.sessions.flatMap(s => s.harness ? [s.harness] : []))].sort().forEach(id => harness.add(new Option(sourceName(id), id)));
+    $('[data-harness-filter]').hidden = !value.settings.harness;
+    for (const button of host.querySelectorAll<HTMLButtonElement>('[data-days]')) button.hidden = !value.settings.timestamps && button.dataset.days !== '0';
+  }
+  populateFilters();
+  for (const control of [project, harness]) control.onchange = () => filter();
   for (const button of host.querySelectorAll<HTMLButtonElement>('[data-days]')) { button.hidden = !value.settings.timestamps && button.dataset.days !== '0'; button.onclick = () => { days = Number(button.dataset.days); filter(); }; }
-  $('[data-more]').onclick = () => { listLimit += 80; renderList(); };
   $('[data-sessions]').onclick = () => { stop(); if (browser.hidden && host.clientWidth < 1000) details.hidden = true; setList(browser.hidden); };
   $('[data-close-list]').onclick = () => setList(false);
   $('[data-close-detail]').onclick = () => select(null);
@@ -196,10 +209,16 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
   document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); scene?.setSuspended(document.hidden); }, { signal: events.signal });
   const observer = new IntersectionObserver(([entry]) => { if (!entry.isIntersecting) stop(); scene?.setSuspended(!entry.isIntersecting || document.hidden); }); observer.observe(host);
   if (host.clientWidth < 760) setList(false);
-  filter(); applyMotion();
+  filter(true); applyMotion();
   const disposeSelects = observeSelects(host);
   return {
     diagnostics: () => ({ ...scene?.diagnostics(), playing, progress, outro, selected }),
-    dispose() { disposed = true; stop(); events.abort(); observer.disconnect(); disposeSelects(); scene?.dispose(); host.replaceChildren(); host.classList.remove('public-viewer', 'public-viewer-full'); },
+    setData(input: PublicGraph) {
+      value = validatePublicGraph(input); graph = publicGraphLayout(value);
+      projects = new Map(graph.lanes.flatMap(lane => lane.nodes.map(node => [Number(node.session.projectID), lane.label] as const)));
+      preferences.messageDots = value.settings.messageTimestamps; days = 0; selected = null;
+      populateFilters(); filter(true); applyMotion();
+    },
+    dispose() { disposed = true; stop(); events.abort(); observer.disconnect(); disposeSelects(); virtualList.dispose(); scene?.dispose(); host.replaceChildren(); host.classList.remove('public-viewer', 'public-viewer-full'); },
   };
 }

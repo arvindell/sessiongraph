@@ -1,8 +1,9 @@
-import { createIcons, Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2 } from 'lucide';
+import { createIcons, createElement, Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Copy, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2 } from 'lucide';
 import type { TimelineScene } from '@sessiongraph/core/scene';
 import { directoryLabel, makeGraph, sessionEnd } from '@sessiongraph/core/layout';
 import { setupPanelDragging } from './panels';
 import { createSessionSearch } from './search/ui';
+import { VirtualList } from '@sessiongraph/core/virtual-list';
 import { createSessionLauncher } from './launcher';
 import { createImports } from './imports';
 import { AutoImportScheduler, AUTO_IMPORT_INTERVAL } from './auto-import';
@@ -49,7 +50,7 @@ let data: SessionGraphData | undefined;
 let graph: Graph = { nodes: [], edges: [], lanes: [], start: 0, end: 0 };
 let filtered: Session[] = [];
 let sortedSessions: Session[] = [], filteredIDs = new Set<string>(), sessionsByID = new Map<string, Session>();
-let sessionCards = new Map<string, HTMLButtonElement>(), nodeColors = new Map<string, string>();
+let sessionRows = new Map<string, number>(), nodeColors = new Map<string, string>();
 let scene: TimelineScene | undefined;
 let sceneLoading = true;
 let tooltipSession: Session | undefined;
@@ -65,7 +66,6 @@ let fromDate = '';
 let toDate = '';
 let includeChildren = true;
 let includeArchived = false;
-let listLimit = 60;
 let detailRequest = 0;
 let detailController: AbortController | undefined, timelineController: AbortController | undefined;
 let playFrame = 0;
@@ -136,6 +136,21 @@ $('#app').innerHTML = `
   <aside class="shortcut-hints" aria-label="Keyboard shortcuts"><span><kbd>/</kbd>Search</span><span><kbd>F</kbd>Fit view</span><span><kbd>H</kbd>Panels</span><span><kbd>Esc</kbd>Clear selection</span></aside>
 `;
 refreshIcons();
+type SessionRow = { session: Session } | { label: string; year: number };
+const sessionList = new VirtualList<SessionRow>($('#session-list'), {
+  key: row => 'session' in row ? `session:${row.session.id}` : `date:${row.year}:${row.label}`,
+  estimate: row => 'session' in row ? preferences.density === 'compact' ? 66 : 76 : 42,
+  render: row => {
+    const element = document.createElement('template');
+    if ('session' in row) {
+      const session = row.session, end = sessionEnd(session);
+      element.innerHTML = `<button class="session-card ${selectedID === session.id ? 'selected' : ''}" data-session="${escape(session.id)}" aria-pressed="${selectedID === session.id}" title="${escape(session.title)}"><span class="session-dot" style="--node-color:${nodeColors.get(session.id)}"></span><span class="session-card-body"><span class="session-title">${escape(session.title)}</span><span class="session-meta">${session.forkID ? icon('git-fork') : session.parentID ? icon('network') : ''}<span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><span title="${session.activity?.lastMessageAt ? 'Latest saved message' : 'Session created; message time unavailable'}">${clock.format(end)}</span></span></span></button>`;
+      const marker = element.content.querySelector('[data-lucide]');
+      if (marker) { const svg = createElement(session.forkID ? GitFork : Network); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('stroke-width', '1.5'); marker.replaceWith(svg); }
+    } else element.innerHTML = `<div class="list-date">${row.label}<span>${row.year}</span></div>`;
+    return element.content.firstElementChild as HTMLElement;
+  },
+});
 const disposePanelDragging = setupPanelDragging();
 const desktopUpdater = createDesktopUpdater();
 const disposeSelects = observeSelects();
@@ -160,7 +175,9 @@ const settings = createSettings({ publishing: openPublishing, change: changePref
 const audio = new InteractionAudio(preferences, settings.audioStatus);
 function applyPreferences() {
   scene?.applyPreferences(preferences); audio.configure(preferences);
+  const densityChanged = document.documentElement.dataset.density !== preferences.density;
   document.documentElement.dataset.density = preferences.density;
+  if (densityChanged) sessionList.resetHeights();
   document.documentElement.dataset.motion = String(motionEnabled(preferences, reducedMotion.matches));
   document.documentElement.style.setProperty('--panel-opacity', `${preferences.panelOpacity}%`);
   $('#motion').setAttribute('aria-pressed', String(motionEnabled(preferences, reducedMotion.matches)));
@@ -274,6 +291,7 @@ async function initializeScene() { try {
     },
   }, { panels: [$('#explorer'), $('#inspector'), $('#timeline')] });
   scene.applyPreferences(preferences);
+  scene.setSuspended(Boolean(document.querySelector('dialog[open]')));
   if (data) {
     scene.setGraph(graph, true);
     if (selectedID) { scene.select(selectedID); scene.focus(selectedID); }
@@ -284,7 +302,6 @@ async function initializeScene() { try {
   console.error('[sessiongraph] Graphics initialization failed', error);
   showToast('3D requires WebGL. You can still browse sessions in the list.');
 } finally { sceneLoading = false; if (data) renderGraphMessage(); } }
-void initializeScene();
 $('#scene').addEventListener('scene-error', (event) => showToast((event as CustomEvent<string>).detail));
 
 async function fetchJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -380,8 +397,7 @@ function updateDirectories() {
 
 function updateFilters(fit = false, preserve = false) {
   if (!data) return;
-  if (!preserve) { stopPlayback(); playback = 1; listLimit = 60; }
-  const scroll = $('#session-list').scrollTop;
+  if (!preserve) { stopPlayback(); playback = 1; }
   const focused = document.activeElement?.closest<HTMLElement>('[data-session]')?.dataset.session;
   const now = Date.now();
   const min = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : days ? now - days * 86400000 : 0;
@@ -400,8 +416,8 @@ function updateFilters(fit = false, preserve = false) {
   scene?.setGraph(graph, fit, preserve);
   renderGraphMessage();
   document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.classList.toggle('active', !fromDate && !toDate && Number(button.dataset.days) === days));
-  renderList();
-  if (preserve) { $('#session-list').scrollTop = scroll; if (focused) sessionCards.get(focused)?.focus({ preventScroll: true }); }
+  renderList(preserve);
+  if (preserve && focused) sessionList.getElement(sessionRows.get(focused)!)?.focus({ preventScroll: true });
   renderHistogram();
   if (selectedID && !filtered.some((s) => s.id === selectedID)) clearSelection();
   else if (selectedID && selectedDetail) scene?.setFiles(selectedDetail.files);
@@ -446,24 +462,25 @@ function resetFilters(reveal?: Session) {
   updateFilters(true);
 }
 
-function renderList() {
+function renderList(preserve = false) {
   $('#list-count').textContent = count(filtered.length);
-  const sorted = sortedSessions;
+  const rows: SessionRow[] = [];
+  sessionRows = new Map();
   let lastDate = '';
-  $('#session-list').innerHTML = sorted.slice(0, listLimit).map((session) => {
-    const end = sessionEnd(session), d = date(end);
-    const header = d !== lastDate ? `<div class="list-date">${d}<span>${new Date(end).getFullYear()}</span></div>` : '';
+  for (const session of sortedSessions) {
+    const end = sessionEnd(session), d = date(end, true);
+    if (d !== lastDate) rows.push({ label: date(end), year: new Date(end).getFullYear() });
     lastDate = d;
-    return `${header}<button class="session-card ${selectedID === session.id ? 'selected' : ''}" data-session="${escape(session.id)}" aria-pressed="${selectedID === session.id}" title="${escape(session.title)}"><span class="session-dot" style="--node-color:${nodeColors.get(session.id)}"></span><span class="session-card-body"><span class="session-title">${escape(session.title)}</span><span class="session-meta">${session.forkID ? icon('git-fork') : session.parentID ? icon('network') : ''}<span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><span title="${session.activity?.lastMessageAt ? 'Latest saved message' : 'Session created; message time unavailable'}">${clock.format(end)}</span></span></span></button>`;
-  }).join('') + (sorted.length > listLimit ? `<button id="more-sessions" class="load-more">Show more sessions ${icon('chevron-down')}</button>` : !sorted.length ? '<p class="empty-list">No sessions match your filters.</p>' : '');
-  $('#more-sessions')?.addEventListener('click', () => { listLimit += 100; const scroll = $('#session-list').scrollTop; renderList(); $('#session-list').scrollTop = scroll; refreshIcons(); });
-  sessionCards = new Map([...$('#session-list').querySelectorAll<HTMLButtonElement>('.session-card')].map((card) => [card.dataset.session!, card]));
-  refreshIcons();
+    sessionRows.set(session.id, rows.length); rows.push({ session });
+  }
+  sessionList.setItems(rows, preserve);
+  $('#session-list').querySelector('.empty-list')?.remove();
+  if (!rows.length) $('#session-list').insertAdjacentHTML('beforeend', '<p class="empty-list">No sessions match your filters.</p>');
 }
 
 function updateListSelection(previous: string | null) {
   for (const id of [previous, selectedID]) {
-    const card = id ? sessionCards.get(id) : undefined;
+    const card = id ? sessionList.getElement(sessionRows.get(id)!) : undefined;
     if (card) { card.classList.toggle('selected', id === selectedID); card.setAttribute('aria-pressed', String(id === selectedID)); }
   }
 }
@@ -718,7 +735,7 @@ $('#source').addEventListener('change', (event) => { sourceID = (event.target as
 $('#directory').addEventListener('change', (event) => { directory = (event.target as HTMLSelectElement).value; updateFilters(true); });
 $('#children').addEventListener('change', (event) => { includeChildren = (event.target as HTMLInputElement).checked; updateFilters(); });
 document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.addEventListener('click', () => { days = Number(button.dataset.days); fromDate = ''; toDate = ''; updateFilters(true); }));
-$('#reset-camera').addEventListener('click', () => updateFilters(true));
+$('#reset-camera').addEventListener('click', () => { stopPlayback(); scene?.reset(); });
 $('#refresh').addEventListener('click', () => { if (data?.onboarding) void imports.open(true); else void imports.refresh(); });
 $('#scrubber').addEventListener('input', (event) => { stopPlayback(); playback = Number((event.target as HTMLInputElement).value) / 1000; updateScrubber(); });
 $('#play').addEventListener('click', () => {
@@ -783,14 +800,15 @@ document.addEventListener('keydown', (event) => {
       if (next) {
         event.preventDefault(); selectSession(next.id);
         if (target.closest('.session-card')) {
-          if (!sessionCards.has(next.id)) { listLimit = Math.min(sorted.length, listLimit + 100); renderList(); }
-          sessionCards.get(next.id)?.focus({ preventScroll: true });
+          const row = sessionRows.get(next.id)!;
+          sessionList.scrollToIndex(row);
+          sessionList.getElement(row)?.focus({ preventScroll: true });
         }
       }
       return;
     }
   }
-  if (event.key.toLowerCase() === 'f') updateFilters(true);
+  if (event.key.toLowerCase() === 'f') { stopPlayback(); scene?.reset(); }
   if (event.key.toLowerCase() === 'h') {
     stopPlayback();
     const visible = (['explorer', 'timeline', 'inspector'] as const).filter((id) => !$(`#${id}`).hidden);
@@ -799,6 +817,12 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-void load().then(() => { if (data?.importing) imports.resume(); else checkAutoImport(); });
+void load().then(() => {
+  // Let the usable session list paint before allocating a WebGL context and
+  // compiling shaders, which can be expensive on a cold graphics driver.
+  requestAnimationFrame(() => { window.setTimeout(() => void initializeScene(), 0); });
+  if (data?.importing) imports.resume(); else checkAutoImport();
+});
 if (import.meta.env.DEV) Object.assign(window, { sessionGraphDiagnostics: () => scene?.diagnostics(), sessionGraphAudioDiagnostics: () => audio.diagnostics(), sessionGraphSearchDiagnostics: sessionSearch.diagnostics });
+if (import.meta.hot) import.meta.hot.dispose(() => sessionList.dispose());
 if (import.meta.hot) import.meta.hot.dispose(() => { settingsSaver?.dispose(); autoImport?.dispose(); autoImportEvents.abort(); window.clearInterval(autoImportTimer); detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); desktopUpdater.dispose(); dateRange.dispose(); disposeSelects(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });

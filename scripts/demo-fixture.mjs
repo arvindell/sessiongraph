@@ -1,18 +1,20 @@
 /** Entirely invented demo data. Every API request is intercepted before navigation. */
-export async function installDemoRoutes(page) {
-  const end = Date.now() - 3_600_000, start = end - 24 * 86_400_000;
+export async function installDemoRoutes(page, options = {}) {
+  const end = (options.now ?? Date.now()) - 3_600_000, start = end - 24 * 86_400_000;
   const lanes = ['sessiongraph', 'timeline', 'search', 'desktop', 'source-adapters', 'design-system'];
   const titles = ['Build conversation search', 'Polish timeline playback', 'Add keyboard navigation', 'Explore a new layout', 'Ship the desktop app', 'Connect local session sources', 'Refine the command palette', 'Animate session branches', 'Improve search ranking', 'Design the onboarding flow', 'Trace changes across forks', 'Make the galaxy feel alive'];
   const sources = ['opencode', 'claude-code', 'codex', 'cursor', 'gemini', 'qwen-code', 'pi', 'copilot', 'cline', 'roo-code', 'kilo-code', 'continue'], sessions = [];
   const names = ['OpenCode', 'Claude Code', 'Codex', 'Cursor', 'Gemini CLI', 'Qwen Code', 'Pi', 'GitHub Copilot CLI', 'Cline', 'Roo Code', 'Kilo Code', 'Continue'];
-  for (let lane = 0; lane < lanes.length; lane++) for (let i = 0; i < 70 - lane * 4; i++) {
+  for (let lane = 0; lane < lanes.length; lane++) for (let i = 0; i < (options.perLane ?? 70 - lane * 4); i++) {
     const source = sources[(i + lane) % sources.length], id = `demo-${lane}-${i}`;
-    const created = start + ((i + lane * 1.4) / 80) * (end - start);
+    const created = start + ((i + lane * 1.4) / (options.perLane ? options.perLane + 10 : 80)) * (end - start);
     const parent = i > 2 && i % 6 !== 0 && i % 3 !== 0 ? `demo-${lane}-${i - i % 6}` : undefined;
     const lastMessageAt = created + (i % 7 + 1) * 6 * 3_600_000;
     sessions.push({ id, nativeID: id, source, projectID: 'demo', directory: `/demo/${lanes[lane]}`, title: titles[(i + lane * 2) % titles.length], created, updated: lastMessageAt, activity: { firstMessageAt: created, lastMessageAt, userMessages: 8, untimedUserMessages: 0 }, archived: false, model: source === 'claude-code' ? 'claude-sonnet-4-6' : 'gpt-6-astra', provider: source === 'claude-code' ? 'anthropic' : 'openai', agent: 'build', tokens: 24000 + i * 1371, cost: null, ...(i % 2 ? { forkID: parent } : { parentID: parent }), revision: 'demo', coverage: { history: 'complete', importedAt: end } });
   }
   const data = { sourceID: 'synthetic-demo', onboarding: false, importing: false, loadedAt: end, warnings: [], projects: [{ id: 'demo', name: 'sessiongraph', directory: '/demo/sessiongraph', worktrees: lanes.slice(1).map(n => '/demo/' + n) }], sources: sources.map((id, i) => ({ id, name: names[i], description: 'Synthetic local history for this demo', available: true, selected: true, sessions: sessions.filter(s => s.source === id).length, capabilities: { history: true, forks: id !== 'cursor', children: true, files: id !== 'cursor' } })), sessions };
+  if (options.preferences) data.preferences = options.preferences;
+  if (options.autoImport !== undefined) data.autoImport = options.autoImport;
   const events = (session) => Array.from({ length: 15 }, (_, i) => {
     const tool = i % 4 === 3;
     const text = tool ? 'Updated the timeline with smooth camera motion and keyboard navigation.' : i % 2 ? 'The timeline now follows the active cluster. Forks and child sessions stay distinct, and every message is searchable.' : 'Make the timeline easy to explore. I want to follow branches, inspect tool calls, and find the conversation where we built search.';

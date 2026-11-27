@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SceneRenderPass } from './scene-render-pass';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
@@ -40,9 +40,12 @@ export class TimelineScene {
   private camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2500);
   private controls: OrbitControls;
   private composer: EffectComposer;
+  private scenePass: SceneRenderPass;
   private bloom: UnrealBloomPass;
   private smaa: SMAAPass;
   private dirty = true;
+  private cameraDirty = true;
+  private cameraSettlesAt = 0;
   private graphGroup = new THREE.Group();
   private selectionGroup = new THREE.Group();
   private filesGroup = new THREE.Group();
@@ -136,7 +139,8 @@ export class TimelineScene {
     this.onHover = callbacks.onHover;
     this.onEvent = callbacks.onEvent;
     this.onEventHover = callbacks.onEventHover;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    // Only a fullscreen output triangle reaches the canvas; geometry AA is offscreen.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'high-performance' });
     // Supersample thin filaments on 1x displays; cap retina rendering at 2x.
     this.renderer.setPixelRatio(Math.min(Math.max(devicePixelRatio, 1.5), 2));
     this.renderer.localClippingEnabled = true;
@@ -156,6 +160,9 @@ export class TimelineScene {
     this.controls.dampingFactor = 0.065;
     this.controls.rotateSpeed = 0.5;
     this.controls.zoomSpeed = 0.8;
+    // Wheel/touch handlers update OrbitControls before the animation frame.
+    // A second update() can return false even though the camera has moved.
+    this.controls.addEventListener('change', () => { this.cameraDirty = true; });
     this.controls.addEventListener('start', () => {
       this.targetPosition = undefined; this.targetLook = undefined;
       this.focusedSession = null;
@@ -163,16 +170,20 @@ export class TimelineScene {
     });
     this.camera.position.set(20, 70, 320);
     this.scene.add(this.graphGroup, this.selectionGroup, this.filesGroup);
-    // Canvas antialiasing does not reach EffectComposer's offscreen targets.
-    // Resolve 4x MSAA before bloom. Three's SMAA operates in linear color,
-    // so apply it before the final output transform.
+    // Resolve geometry MSAA once, before the single-sample effects pipeline.
+    // Three's SMAA operates in linear color, before the final output transform.
+    const samples = Math.min(2, this.renderer.capabilities.maxSamples);
     const renderTarget = new THREE.WebGLRenderTarget(1, 1, {
       type: THREE.HalfFloatType,
-      samples: Math.min(2, this.renderer.capabilities.maxSamples),
+      depthBuffer: samples === 0,
     });
     this.composer = new EffectComposer(this.renderer, renderTarget);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.scenePass = new SceneRenderPass(this.scene, this.camera);
+    this.scenePass.setSamples(samples);
+    this.composer.addPass(this.scenePass);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.23, 0.4, 0.9);
+    // The blur pyramid is fullscreen image processing, with no depth testing.
+    for (const target of [this.bloom.renderTargetBright, ...this.bloom.renderTargetsHorizontal, ...this.bloom.renderTargetsVertical]) target.depthBuffer = false;
     this.composer.addPass(this.bloom);
     this.smaa = new SMAAPass();
     this.composer.addPass(this.smaa);
@@ -218,7 +229,11 @@ export class TimelineScene {
     if ((values.view === '2d') !== this.flat) this.setFlat(values.view === '2d');
     if (values.quality !== previous.quality) {
       const samples = values.quality === 'performance' ? 0 : Math.min(values.quality === 'high' ? 4 : 2, this.renderer.capabilities.maxSamples);
-      for (const target of [this.composer.renderTarget1, this.composer.renderTarget2]) { target.samples = samples; target.dispose(); }
+      this.scenePass.setSamples(samples);
+      // With MSAA off, render geometry directly into the composer's input.
+      for (const target of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+        target.depthBuffer = samples === 0; target.dispose();
+      }
       this.smaa.enabled = values.quality !== 'performance';
       this.resize();
     }
@@ -234,6 +249,7 @@ export class TimelineScene {
     }
     const markers = this.selectionGroup.getObjectByName('event-markers'); if (markers) markers.visible = values.messageDots;
     if (this.nodeMesh && previous.nodeScale !== values.nodeScale) { this.nodeMesh.boundingSphere = null; this.revealsActive = true; }
+    if (previous.messageDots !== values.messageDots) this.revealsActive = true;
     this.dirty = true;
   }
 
@@ -542,6 +558,7 @@ export class TimelineScene {
 
   select(id: string | null) {
     this.pickingDirty = true;
+    this.revealsActive = true;
     this.dirty = true;
     if (this.selected !== id) { this.selectedEvent = null; this.focusedEvent = undefined; }
     this.selected = id;
@@ -929,7 +946,10 @@ export class TimelineScene {
     this.nodeGrid.clear(); this.markerGrid.clear();
     const point = new THREE.Vector3(), view = new THREE.Vector3();
     this.graph.nodes.forEach((node, index) => {
-      point.fromArray(this.orbCenter(node)); if (this.flat) point.z *= .001;
+      // Pick the transforms actually drawn. Re-evaluating each spiral and its
+      // camera-facing offset here duplicates the preceding frame's node work.
+      if (!this.nodeMesh) return;
+      point.fromArray(this.nodeMesh.instanceMatrix.array, index * 16 + 12).applyMatrix4(this.nodeMesh.matrixWorld);
       view.copy(point).applyMatrix4(this.camera.matrixWorldInverse); point.project(this.camera);
       if (point.z < -1 || point.z > 1) return;
       const radius = this.drawnRadius(node);
@@ -1021,6 +1041,7 @@ export class TimelineScene {
   private resize() {
     this.dirty = true;
     this.pickingDirty = true;
+    this.revealsActive = true;
     const width = this.container.clientWidth, height = this.container.clientHeight;
     if (!width || !height) return;
     this.width = width; this.height = height;
@@ -1063,7 +1084,17 @@ export class TimelineScene {
       this.controls.target.lerp(this.targetLook, ease);
       if (this.camera.position.distanceTo(this.targetPosition) < 0.05) { this.targetPosition = undefined; this.targetLook = undefined; }
     }
-    const changed = this.controls.update();
+    this.controls.update();
+    const changed = this.cameraDirty;
+    if (changed || animatingCamera) this.cameraSettlesAt = this.time + .15;
+    // Balanced navigation retains geometry MSAA, supersampling, and node halos.
+    // Defer fullscreen glow/SMAA until damping settles, with one final idle draw.
+    // High quality and fixed-step video capture always keep their chosen effects.
+    const navigating = !this.options.manual && this.preferences.quality === 'balanced' && !this.playing && this.time < this.cameraSettlesAt;
+    const smaa = this.preferences.quality !== 'performance' && !navigating;
+    if (this.smaa.enabled !== smaa) { this.smaa.enabled = smaa; this.dirty = true; }
+    const bloom = this.preferences.quality !== 'performance' && this.preferences.bloom > 0 && !navigating;
+    if (this.bloom.enabled !== bloom) { this.bloom.enabled = bloom; this.dirty = true; }
     if (!this.playing && this.camera.view?.enabled && (this.focusedSession || this.focusedEvent)) this.frameFocus();
     // Project labels with the same camera matrix used for this frame's nodes,
     // including immediate 2D/reset jumps when reduced motion is enabled.
@@ -1075,7 +1106,9 @@ export class TimelineScene {
     const flow = this.motion && (this.playing || this.preferences.trailFlow) && this.preferences.trails !== 'off';
     this.trailUniforms.uTrailTime.value = this.time; this.trailUniforms.uTrailFlow.value = Number(flow);
     if (!this.dirty && !changed && !animatingCamera && !focusing && !this.revealsActive && !flow && !(this.motion && this.selected && this.selectionGroup.visible)) return;
-    if (changed || animatingCamera || this.dirty) this.revealsActive = true;
+    // Hover, labels, and focus dimming only change uniforms. Rebuild instance
+    // transforms when geometry, reveal state, or the camera actually changes.
+    if (changed || animatingCamera) this.revealsActive = true;
     this.animateNodes();
     if (selected) {
       const center = this.orbCenter(selected);
@@ -1125,6 +1158,7 @@ export class TimelineScene {
       }
     }
     this.composer.render();
+    this.cameraDirty = false;
     this.dirty = false;
   }
 

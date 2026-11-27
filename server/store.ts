@@ -8,7 +8,7 @@ import { MAX_CHARACTERS, validRecord, type CachedContent } from '../src/search/p
 import type { Candidate, ImportedMessage } from './adapters/types';
 import { databasePath } from './config';
 import { activitySQL, isUserMessage, messageTime } from './activity';
-import { EVENT_SCHEMA, writeEvents, readEvents, readEventMarkers } from './event-store';
+import { EVENT_SCHEMA, MESSAGE_TIME_INDEX, writeEvents, readEvents, readEventMarkers } from './event-store';
 import { normalizePreferences, type Preferences } from '@sessiongraph/core/preferences';
 import { normalizeViewState } from '@sessiongraph/core/view-state';
 import { visibleSessions } from '../src/session-links';
@@ -26,7 +26,7 @@ export class SessionGraphStore {
     if (path !== ':memory:') chmodSync(path, 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
-    if (version > 6) throw new Error('This SessionGraph database requires a newer version of the app.');
+    if (version > 7) throw new Error('This SessionGraph database requires a newer version of the app.');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, last_import INTEGER, error TEXT);
@@ -94,6 +94,11 @@ export class SessionGraphStore {
         for (const id of retired) remove.run(id);
         this.db.exec('PRAGMA user_version=6; COMMIT');
       } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    }
+    if (version < 7) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try { this.db.exec(`${MESSAGE_TIME_INDEX} PRAGMA user_version=7; COMMIT;`); }
+      catch (error) { this.db.exec('ROLLBACK'); throw error; }
     }
     if (!this.setting('libraryID')) this.setting('libraryID', randomUUID());
     // An interrupted import never exposes staged/half-replaced messages.

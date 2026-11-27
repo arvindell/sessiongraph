@@ -48,6 +48,9 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
   let errorMessage = '', selectionTouched = false;
   const cache = new Map<string, ContentPage>();
   const ROW_HEIGHT = 86;
+  const resultDates = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+  const mounted = new Map<number, HTMLElement>();
+  let renderedHits: SearchHit[] | undefined, rowsFrame = 0;
   const send = (message: SearchRequest) => worker.postMessage(message);
 
   function updateStatus() {
@@ -57,6 +60,8 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
     state.title = `Titles and metadata cover all ${status.total.toLocaleString()} imported sessions. ${status.complete.toLocaleString()} conversations have all supported text indexed. ${status.failed ? `${status.failed} unavailable; toggle Conversations to retry. ` : ''}${status.limited ? 'Large histories are sampled; missing matches may be in unindexed text. ' : ''}${status.storage === 'memory' ? 'Saving unavailable; search continues in memory.' : `Saved in local SQLite. ${status.restored.toLocaleString()} conversations restored; unchanged pages are reused. Clear saved index under Filters. Imported sessions remain saved.`}`;
   }
   function renderRows() {
+    cancelAnimationFrame(rowsFrame); rowsFrame = 0;
+    if (renderedHits !== hits) { mounted.clear(); inner.replaceChildren(); renderedHits = hits; }
     inner.style.height = `${hits.length * ROW_HEIGHT}px`;
     if (!hits.length) {
       inner.innerHTML = `<div class="search-empty">${escape(errorMessage || (pending ? 'Searching…' : input.value ? 'No matching sessions' : 'No sessions available'))}</div>`;
@@ -65,15 +70,27 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
     }
     const start = Math.max(0, Math.floor(list.scrollTop / ROW_HEIGHT) - 3);
     const end = Math.min(hits.length, start + Math.ceil(list.clientHeight / ROW_HEIGHT) + 7);
-    inner.innerHTML = hits.slice(start, end).map((hit, offset) => {
-      const i = start + offset, session = sessions.get(hit.id)!;
-      if (!session) return '';
-      const meta = `${sourceName(session.source)} · ${projects.get(session.projectID) || session.directory.split('/').at(-1) || 'Global'} · ${new Date(session.updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-      return `<div id="search-hit-${i}" class="search-result ${i === active ? 'active' : ''}" role="option" aria-selected="${i === active}" aria-posinset="${i + 1}" aria-setsize="${total}" data-result-index="${i}" style="top:${i * ROW_HEIGHT}px"><div class="search-result-title">${highlight(session.title, hit.terms)}</div><div class="search-result-meta"><span>${sourceIcon(session.source)}${escape(meta)}</span><span class="match-kind">${escape(hit.source)}</span></div>${hit.excerpt ? `<div class="search-result-excerpt">${highlight(hit.excerpt, hit.terms)}</div>` : `<div class="search-result-excerpt">${escape(session.model)}</div>`}</div>`;
-    }).join('');
+    for (const [index, element] of mounted) if (index < start || index >= end) { element.remove(); mounted.delete(index); }
+    for (let i = start; i < end; i++) {
+      let element = mounted.get(i);
+      if (!element) {
+        const hit = hits[i], session = sessions.get(hit.id);
+        if (!session) continue;
+        const meta = `${sourceName(session.source)} · ${projects.get(session.projectID) || session.directory.split('/').at(-1) || 'Global'} · ${resultDates.format(session.updated)}`;
+        const template = document.createElement('template');
+        template.innerHTML = `<div id="search-hit-${i}" class="search-result" role="option" aria-posinset="${i + 1}" aria-setsize="${total}" data-result-index="${i}" style="top:${i * ROW_HEIGHT}px"><div class="search-result-title">${highlight(session.title, hit.terms)}</div><div class="search-result-meta"><span>${sourceIcon(session.source)}${escape(meta)}</span><span class="match-kind">${escape(hit.source)}</span></div>${hit.excerpt ? `<div class="search-result-excerpt">${highlight(hit.excerpt, hit.terms)}</div>` : `<div class="search-result-excerpt">${escape(session.model)}</div>`}</div>`;
+        element = template.content.firstElementChild as HTMLElement;
+        mounted.set(i, element);
+        const next = [...mounted.keys()].filter(index => index > i).sort((a, b) => a - b)[0];
+        inner.insertBefore(element, mounted.get(next) ?? null);
+      }
+      const selected = String(i === active);
+      if (element.getAttribute('aria-selected') !== selected) { element.classList.toggle('active', i === active); element.setAttribute('aria-selected', selected); }
+    }
     if (active >= start && active < end) input.setAttribute('aria-activedescendant', `search-hit-${active}`);
     else input.removeAttribute('aria-activedescendant');
   }
+  function scheduleRows() { if (!rowsFrame) rowsFrame = requestAnimationFrame(renderRows); }
   function renderPreview(page?: ContentPage, loading = false, failed = false) {
     const hit = hits[active], session = hit && sessions.get(hit.id);
     if (!session) { preview.innerHTML = ''; return; }
@@ -179,7 +196,7 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
   input.addEventListener('compositionstart', () => { composing = true; }, options);
   input.addEventListener('compositionend', () => { composing = false; changeQuery(); }, options);
   scope.addEventListener('change', changeQuery, options);
-  list.addEventListener('scroll', renderRows, options);
+  list.addEventListener('scroll', scheduleRows, { ...options, passive: true });
   list.addEventListener('click', (event) => {
     const row = (event.target as Element).closest<HTMLElement>('[data-result-index]');
     if (!row) return;
@@ -218,7 +235,7 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
       event.preventDefault(); open();
     }
   }, options);
-  const observer = new ResizeObserver(() => { if (dialog.open) renderRows(); });
+  const observer = new ResizeObserver(() => { if (dialog.open) scheduleRows(); });
   observer.observe(list);
   return {
     open,
@@ -226,10 +243,11 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
       if (sourceID !== data.sourceID) { cache.clear(); previewKey = ''; previewController?.abort(); window.clearTimeout(previewTimer); }
       sourceID = data.sourceID;
       sessions = new Map(data.sessions.map((s) => [s.id, s])); projects = new Map(data.projects.map((p) => [p.id, p.name]));
+      renderedHits = undefined;
       send({ type: 'data', sessions: data.sessions, projects: data.projects, sourceID });
     },
     setScope(ids: string[]) { send({ type: 'scope', ids }); },
     diagnostics: () => ({ open: dialog.open, query: input.value, matches: total, renderedRows: inner.querySelectorAll('[role="option"]').length, roundTripMs: elapsed, pending, index: status }),
-    dispose() { worker.terminate(); events.abort(); observer.disconnect(); previewController?.abort(); window.clearTimeout(previewTimer); cancelAnimationFrame(queryFrame); dialog.remove(); },
+    dispose() { worker.terminate(); events.abort(); observer.disconnect(); previewController?.abort(); window.clearTimeout(previewTimer); cancelAnimationFrame(queryFrame); cancelAnimationFrame(rowsFrame); dialog.remove(); },
   };
 }
