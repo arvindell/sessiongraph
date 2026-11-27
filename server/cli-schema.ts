@@ -3,7 +3,7 @@ import { invalid } from './library-query';
 export interface Option { name: string; type: 'boolean' | 'string' | 'integer'; description: string; values?: string[]; default?: string | number; repeatable?: boolean }
 export interface Command {
   name: string; aliases?: string[]; summary: string; args?: { name: string; required?: boolean; variadic?: boolean };
-  options: Option[]; effect: 'read' | 'configure' | 'import'; result: string; examples: string[];
+  options: Option[]; effect: 'read' | 'configure' | 'import' | 'serve'; result: string; examples: string[];
 }
 const flag = (name: string, description: string): Option => ({ name, type: 'boolean', description });
 const text = (name: string, description: string, extra: Partial<Option> = {}): Option => ({ name, type: 'string', description, ...extra });
@@ -19,7 +19,11 @@ const filters: Option[] = [
 ];
 export const globalOptions: Option[] = [flag('help', 'Show help (-h).'), flag('json', 'Output versioned JSON.'), text('data-dir', 'Use this library directory. Defaults to SESSIONGRAPH_DATA_DIR or the app’s library.')];
 const sessionArg = { name: 'session-id', required: true };
+const serverPort: Option = { name: 'port', type: 'integer', description: 'Local API port.', default: 4783 };
 export const commands: Command[] = [
+  { name: 'serve', summary: 'Serve the library over HTTP on 127.0.0.1. Set SESSIONGRAPH_SERVER_PASSWORD to start.', options: [serverPort], effect: 'serve', result: 'Foreground REST server. --json prints the listening URL.', examples: ['serve', 'serve --port 0 --json'] },
+  { name: 'mcp', summary: 'Start the session query MCP server on stdio.', options: [], effect: 'serve', result: 'MCP over stdin and stdout; exits when the client disconnects.', examples: ['mcp', 'mcp --data-dir /path/to/library'] },
+  { name: 'api', summary: 'Send an authenticated GET to the local REST server.', args: { name: 'path', required: true }, options: [serverPort], effect: 'read', result: 'JSON from the running server.', examples: ['api /api/info', 'api "/v1/sessions?limit=5"'] },
   { name: 'sources list', aliases: ['sources'], summary: 'List session sources and their status.', options: [], effect: 'read', result: '{ sources: SourceStatus[] with path/pathHint, configured, autoImport }', examples: ['sources --json'] },
   { name: 'sources setup', summary: 'Configure session sources.', args: { name: 'source', variadic: true }, options: [flag('detected', 'Enable all detected sources.'), text('path', 'Save a custom history path for one filesystem source. Overrides its environment/default path.'), flag('default-path', 'Restore automatic path detection for one source.'), text('auto-import', 'Turn the app’s automatic refresh on or off.', { values: ['on', 'off'] })], effect: 'configure', result: '{ selected, paths, autoImport, historyRetained }', examples: ['sources setup claude-code codex', 'sources setup codex --path ~/.codex', 'sources setup --detected', 'sources setup --auto-import off'] },
   { name: 'sources remove', summary: 'Disable sources and clear their custom paths. Keep saved history.', args: { name: 'source', variadic: true }, options: [flag('all', 'Disable all sources.')], effect: 'configure', result: '{ selected, paths, autoImport, historyRetained }', examples: ['sources remove codex', 'sources remove --all'] },

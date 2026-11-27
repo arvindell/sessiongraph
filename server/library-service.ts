@@ -10,6 +10,7 @@ import { MAX_CHARACTERS, SESSION_CHARACTERS } from '../src/search/persistence';
 import { sampleContent } from '../src/search/sampling';
 
 export class LibraryService {
+  private searchCache?: { key: string; index: SessionSearchIndex; complete: number; characters: number };
   readonly importer: Importer;
   constructor(readonly store: SessionGraphStore, adapters: SessionAdapter[]) { this.importer = new Importer(store, adapters); }
   private validateSources(ids: string[]) {
@@ -123,19 +124,28 @@ export class LibraryService {
     const plan = parseQuery(query); if (plan.error) invalid(plan.error);
     return this.snapshot(() => {
       const { sessions, projects } = this.sessions(filters);
-      const index = new SessionSearchIndex(); index.setData(sessions, projects);
-      let characters = 0, complete = 0;
-      const quota = Math.min(SESSION_CHARACTERS, Math.floor(MAX_CHARACTERS / Math.max(1, sessions.length)));
-      for (const session of sessions) {
-        let cursor: string | undefined, used = 0, partial = session.coverage?.history !== 'complete', done = false;
-        for (let n = 0; n < 8 && used < quota; n++) {
-          const content = this.store.content(session.id, cursor), sampled = sampleContent(content, quota - used);
-          index.addContent(session.id, sampled.fragments); used += sampled.characters; partial ||= sampled.partial;
-          if (!content.nextCursor) { done = true; break; }
-          cursor = content.nextCursor;
+      // Keep one bounded index for follow-up searches/pages. Both local writes and
+      // commits from a separate desktop/sync process invalidate it.
+      const generation = [this.store.db.prepare('PRAGMA data_version').get(), this.store.db.prepare('SELECT total_changes() AS n').get()];
+      const indexKey = fingerprint([filters, generation]);
+      if (this.searchCache?.key !== indexKey) {
+        this.searchCache = undefined;
+        const index = new SessionSearchIndex(); index.setData(sessions, projects);
+        let characters = 0, complete = 0;
+        const quota = Math.min(SESSION_CHARACTERS, Math.floor(MAX_CHARACTERS / Math.max(1, sessions.length)));
+        for (const session of sessions) {
+          let cursor: string | undefined, used = 0, partial = session.coverage?.history !== 'complete', done = false;
+          for (let n = 0; n < 8 && used < quota; n++) {
+            const content = this.store.content(session.id, cursor), sampled = sampleContent(content, quota - used);
+            index.addContent(session.id, sampled.fragments); used += sampled.characters; partial ||= sampled.partial;
+            if (!content.nextCursor) { done = true; break; }
+            cursor = content.nextCursor;
+          }
+          characters += used; if (done && !partial) complete++;
         }
-        characters += used; if (done && !partial) complete++;
+        this.searchCache = { key: indexKey, index, complete, characters };
       }
+      const { index, complete, characters } = this.searchCache;
       const key = this.key('search', sessions, [query, filters, projects]), offset = pageOffset(options.cursor, key), limit = pageLimit(options.limit);
       const result = index.search(query, false, limit, offset), byID = new Map(sessions.map(s => [s.id, s]));
       return { query, hits: result.hits.map(hit => ({ ...hit, session: byID.get(hit.id)! })), total: result.total,

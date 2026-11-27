@@ -52,6 +52,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.3.312",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@opencode/client": "^2.2.1",
     "@sessiongraph/core": "workspace:*",
     "@tauri-apps/api": "^2.12.4",
@@ -73,7 +74,8 @@
     "three": "^0.180.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.0",
-    "vite": "^7.2.0"
+    "vite": "^7.2.0",
+    "zod": "4.6.7"
   },
   "packageManager": "pnpm@11.10.0"
 }

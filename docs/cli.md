@@ -47,6 +47,60 @@ Running `sessiongraph` alone opens the desktop app; `--browser` opens the web ap
 
 ## Commands
 
+### Query from an agent
+
+`ssg mcp` serves saved sessions over stdio. In OpenCode, register it once:
+
+```sh
+opencode mcp add sessiongraph --global -- ssg mcp
+opencode mcp list
+```
+
+For clients with an `mcpServers` configuration:
+
+```json
+{ "mcpServers": { "sessiongraph": { "command": "ssg", "args": ["mcp"] } } }
+```
+
+Use the full `ssg` executable path if a GUI client cannot find it. The client
+launches the process as your OS user and owns the connection. Start with
+`search_sessions` or `list_sessions`, then pass a returned `id` to `list_messages`,
+`list_events`, `list_commits`, `list_files`, `get_timeline`, `list_relationships`,
+or `get_session`. `get_stats` returns aggregate usage.
+
+### Local REST API
+
+Set `SESSIONGRAPH_SERVER_PASSWORD` in the server and client environments. The
+default username is `sessiongraph`; override it with `SESSIONGRAPH_SERVER_USERNAME`.
+Start the API in the foreground:
+
+```sh
+ssg serve                         # http://127.0.0.1:4783
+```
+
+From another terminal with the same credentials:
+
+```sh
+ssg api /api/info
+ssg api '/v1/sessions?source=codex&limit=10'
+ssg api '/v1/search?query=invoice'
+ssg api /openapi.json
+```
+
+All HTTP endpoints require Basic authentication, including discovery. Use
+`curl --user sessiongraph http://127.0.0.1:4783/v1/sessions` to enter the
+password interactively. `--port` selects another port; `ssg serve --port 0 --json`
+prints the OS-assigned URL. Ctrl+C stops the server.
+
+Both transports query the same local library. Pass `--data-dir` to `serve` or
+`mcp` to select another. Use `ssg sync` separately to refresh saved history.
+Filters and limits are listed by `/openapi.json` and MCP `tools/list`; `since`
+and `until` use Unix milliseconds. URL-encode session IDs as one path segment.
+Use `nextCursor` with the original filters for the next page; restart on
+`STALE_CURSOR`. Search reuses the index between queries on the same selection.
+
+### Reference
+
 | Command | Description |
 | --- | --- |
 | `sources` | List session sources and their status |

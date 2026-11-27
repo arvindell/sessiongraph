@@ -4,6 +4,7 @@ import { LibraryService } from './library-service';
 import { EventReadError } from './event-store';
 import { invalid, LibraryError, localPath, pageLimit, parseDate, type SessionFilters } from './library-query';
 import { commands, help, manifest, markdownDocs, parseCLI, resolveCommand } from './cli-schema';
+import type { AddressInfo } from 'node:net';
 
 interface CLIOptions {
   version?: string;
@@ -61,6 +62,34 @@ export async function runCli(argv: string[], io: CLIOptions = {}): Promise<numbe
       const markdown = markdownDocs(target); emit({ markdown }, markdown); return 0;
     }
     const text = (name: string) => options[name] as string | undefined;
+    const version = io.version || 'development';
+    const port = Number(text('port') ?? 4783);
+    const directory = text('data-dir');
+    const path = databasePath(directory ? { ...process.env, SESSIONGRAPH_DATA_DIR: localPath(directory) } : process.env);
+    if (command === 'api') {
+      if (directory) invalid('Use --port to select a running API.');
+      const { getLocalApi } = await import('./agent-http');
+      const result = await getLocalApi(port, args[0]);
+      stdout(JSON.stringify(result.body, null, json ? undefined : 2) + '\n'); return result.ok ? 0 : 1;
+    }
+    if (command === 'serve' || command === 'mcp') {
+      if (command === 'mcp' && json) invalid('Use mcp without --json for the stdio protocol.');
+      const http = command === 'serve' ? await import('./agent-http') : undefined;
+      const credential = http?.apiCredential(process.env);
+      if (http && (!Number.isInteger(port) || port > 65535)) invalid('Port must be 0–65535.');
+      library = io.openLibrary ? await io.openLibrary(path) : new LibraryService(new SessionGraphStore(path), (await import('./adapters')).adapters);
+      library.store.db.exec('PRAGMA query_only=ON');
+      if (http && credential) {
+        const server = await http.startAgentHttp(library, port, credential, version);
+        const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+        const closed = new Promise<void>(resolve => server.once('close', resolve));
+        const stop = () => { server.close(); server.closeAllConnections(); };
+        process.once('SIGINT', stop); process.once('SIGTERM', stop);
+        try { if (json) emit({ url }); else stderr(`Listening on ${url}\n`); await closed; }
+        finally { process.off('SIGINT', stop); process.off('SIGTERM', stop); }
+      } else await (await import('./agent-mcp')).runAgentMcp(library, version);
+      return 0;
+    }
     let now = io.now ?? Date.now(), cursor = text('cursor');
     const windowCursor = ['sessions', 'search', 'stats'].includes(command);
     if (windowCursor && cursor) {
@@ -78,8 +107,6 @@ export async function runCli(argv: string[], io: CLIOptions = {}): Promise<numbe
     };
     if (filters.since !== undefined && filters.until !== undefined && filters.since > filters.until) invalid('--since must not be later than --until.');
     const paging = { limit: text('limit') ? pageLimit(Number(text('limit'))) : undefined, cursor };
-    const directory = text('data-dir');
-    const path = databasePath(directory ? { ...process.env, SESSIONGRAPH_DATA_DIR: localPath(directory) } : process.env);
     library = io.openLibrary ? await io.openLibrary(path) : new LibraryService(new SessionGraphStore(path), (await import('./adapters')).adapters);
     let data: unknown;
     switch (command) {
