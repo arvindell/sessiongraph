@@ -44,7 +44,7 @@ export class LibraryService {
       configured: this.store.setting('selected') !== undefined, autoImport: this.store.autoImportEnabled() };
   }
   private configure(change: () => void) {
-    if (this.importer.status.running || !this.store.acquireImport()) throw new LibraryError('IMPORT_BUSY', 'Another SessionGraph process is importing this library. Retry when it finishes.');
+    if (this.importer.status.running || !this.store.acquireImport()) throw new LibraryError('IMPORT_BUSY', 'Another import is running. Try again when it finishes.');
     try {
       this.store.db.exec('BEGIN IMMEDIATE');
       try { change(); this.store.db.exec('COMMIT'); }
@@ -87,8 +87,7 @@ export class LibraryService {
     this.validateSources(sources);
     if (!sources.length) invalid('No import sources configured. Run sessiongraph sources setup <source...> first.');
     if (sources.some(id => !selected.includes(id))) invalid('Set up each source before syncing it: sessiongraph sources setup <source...>.');
-    try { this.importer.sync(sources); }
-    catch (error) { if ((error as Error).message.includes('importing this library')) throw new LibraryError('IMPORT_BUSY', (error as Error).message); throw error; }
+    this.importer.sync(sources);
     await this.importer.settled();
     return { ...this.importer.status, sources, selected: this.store.selected() };
   }

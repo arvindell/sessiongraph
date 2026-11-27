@@ -38,6 +38,21 @@ test('auto-import settings API validates writes and automatic requests cannot ch
     assert.equal((await post('import', { automatic: true, sources: ['opencode'] })).status, 400);
     assert.equal((await post('import', { automatic: 'true' })).status, 400);
     assert.equal((await post('import', null)).status, 400);
+    const malformed = await fetch(`${base}/settings`, { method: 'POST', headers: { 'X-SessionGraph-Action': 'settings' }, body: '{' });
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(await malformed.json(), { code: 'INVALID_ARGUMENT', error: 'Invalid request JSON.' });
+    importer.status.running = true;
+    const running = await post('import', {});
+    importer.status.running = false;
+    assert.equal(running.status, 409);
+    assert.equal((await running.json()).code, 'IMPORT_RUNNING');
+    const other = new SessionGraphStore(store.path);
+    try {
+      assert.equal(other.acquireImport(), true);
+      const busy = await post('import', {});
+      assert.equal(busy.status, 409);
+      assert.equal((await busy.json()).code, 'IMPORT_BUSY');
+    } finally { other.releaseImport(); other.close(); }
     assert.equal((await (await post('import', { automatic: true })).json()).running, false);
     assert.equal(sourceProbes, 0, 'Automatic import must not detect sources during onboarding');
     const detected = await (await fetch(`${base}/sources`)).json();

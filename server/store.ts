@@ -12,7 +12,8 @@ import { EVENT_SCHEMA, MESSAGE_TIME_INDEX, writeEvents, readEvents, readEventMar
 import { normalizePreferences, type Preferences } from '@sessiongraph/core/preferences';
 import { normalizeViewState } from '@sessiongraph/core/view-state';
 import { visibleSessions } from '../src/session-links';
-import { fingerprint, pageLimit, pageOffset, nextCursor, type PageOptions } from './library-query';
+import { fingerprint, pageLimit, pageOffset, nextCursor, LibraryError, type PageOptions } from './library-query';
+import { storageFailure } from './local-errors';
 import { COMMIT_SCHEMA, writeCommits, readCommits, pendingCommits } from './commit-store';
 import { COMMIT_EXTRACTOR_VERSION } from './commit-extraction';
 import { IMPORT_METADATA_VERSION, summarizeUsage } from './usage';
@@ -22,12 +23,22 @@ export class SessionGraphStore {
   private owner = randomUUID();
   readonly db: DatabaseSync;
   constructor(readonly path = databasePath()) {
-    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    this.db = new DatabaseSync(path);
-    if (path !== ':memory:') chmodSync(path, 0o600);
-    this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
-    const version = Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
-    if (version > 8) throw new Error('This SessionGraph database requires a newer version of the app.');
+    let db: DatabaseSync | undefined;
+    try {
+      if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      this.db = db = new DatabaseSync(path);
+      this.db.exec('PRAGMA busy_timeout=5000;');
+      const version = Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
+      if (version > 8) throw new LibraryError('LIBRARY_VERSION', 'This library requires a newer version of SessionGraph.');
+      if (path !== ':memory:') chmodSync(path, 0o600);
+      this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;');
+      this.initialize(version);
+    } catch (error) {
+      try { db?.close(); } catch { /* Preserve the opening error. */ }
+      throw storageFailure(error, true) ?? error;
+    }
+  }
+  private initialize(version: number) {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, last_import INTEGER, error TEXT);

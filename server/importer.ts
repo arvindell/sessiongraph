@@ -5,6 +5,8 @@ import { SessionGraphStore } from './store';
 import { boundEventPayloads } from './events';
 import { withSourcePaths } from './source-paths';
 import { MAX_SESSION_RECORDS, MAX_SESSION_CHARACTERS, MAX_SESSION_PAGES, SESSION_LIMIT_NOTE } from './history-limits';
+import { LibraryError } from './library-query';
+import { storageFailure } from './local-errors';
 import { IMPORT_METADATA_VERSION, mergeUsage } from './usage';
 
 export class Importer {
@@ -26,14 +28,18 @@ export class Importer {
     if (this.job) return this.status;
     // Recheck the saved choice for every automatic request, including other windows.
     if (automatic && (!this.store.autoImportEnabled() || !this.store.selected().length)) return this.status;
-    if (ids?.some((id) => !this.adapters.some((a) => a.id === id))) throw new Error('Unknown session source.');
-    if (!this.store.acquireImport()) throw new Error('Another SessionGraph window is importing this library.');
+    if (ids?.some((id) => !this.adapters.some((a) => a.id === id))) throw new LibraryError('INVALID_ARGUMENT', 'Unknown session source.', 2);
+    if (!this.store.acquireImport()) throw new LibraryError('IMPORT_BUSY', 'Another import is running. Try again when it finishes.');
     if (ids && save) {
       this.store.setting('selected', [...new Set(ids)]);
     }
     this.status = { running: true, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [], warnings: [] };
     const heartbeat = setInterval(() => this.store.heartbeat(), 5000);
-    this.job = this.run(ids || this.store.selected()).catch(() => { this.status.failed++; this.status.errors.push('Import interrupted. Re-import to resume remaining sessions.'); }).finally(() => { clearInterval(heartbeat); this.store.releaseImport(); this.status.running = false; this.status.source = undefined; this.job = undefined; });
+    this.job = this.run(ids || this.store.selected()).catch(error => { this.status.failed++; this.report('errors', storageFailure(error)?.message ?? 'Import failed. Try again.'); }).finally(() => {
+      clearInterval(heartbeat);
+      try { this.store.releaseImport(); } catch (error) { this.status.failed++; this.report('errors', storageFailure(error)?.message ?? 'Could not release the import lock.'); }
+      this.status.running = false; this.status.source = undefined; this.job = undefined;
+    });
     return this.status;
   }
   async settled() { await this.job; }
@@ -116,8 +122,9 @@ export class Importer {
             this.status.imported++;
           } catch (error) {
             this.status.failed++;
-            this.store.failed(candidate.session.id, error instanceof Error ? error.message : 'Unavailable');
-            if (this.status.errors.length < 30) this.report('errors', `${adapter.name}: ${error instanceof Error ? error.message : 'Session import failed.'}`);
+            const detail = storageFailure(error)?.message ?? (error instanceof Error ? error.message : 'Session import failed.');
+            if (this.status.errors.length < 30) this.report('errors', `${adapter.name}: ${detail}`);
+            this.store.failed(candidate.session.id, detail);
           }
           await yieldToIO();
         }
@@ -125,8 +132,9 @@ export class Importer {
         if (discoveryErrors.length) this.status.failed++;
         this.store.recordSource(adapter.id, [...discoveryErrors, failed ? `${failed} ${failed === 1 ? 'session' : 'sessions'} failed to import. Run sync to retry.` : ''].filter(Boolean).join(' ') || undefined);
       } catch (error) {
-        const message = `${adapter.name}: ${error instanceof Error ? error.message : 'Import failed.'}`;
-        this.report('errors', message); this.store.recordSource(adapter.id, message); this.status.failed++;
+        const detail = storageFailure(error)?.message ?? (error instanceof Error ? error.message : 'Import failed.');
+        const message = `${adapter.name}: ${detail}`;
+        this.report('errors', message); this.status.failed++; this.store.recordSource(adapter.id, message);
       }
     }
   }

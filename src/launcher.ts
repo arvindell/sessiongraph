@@ -2,6 +2,7 @@ import { icon } from '@sessiongraph/core/icons';
 import type { Session } from '@sessiongraph/core/types';
 import { HARNESSES, isHarness, sessionWebUrl, validSessionID, type LaunchConnection, type PreparedLaunch } from './launch-links';
 import { sourceName } from '@sessiongraph/core/sources';
+import { requestLocal } from './local-api';
 import { focusSelect } from './controls';
 
 export function createSessionLauncher(onVisibility: () => void) {
@@ -95,15 +96,13 @@ export function createSessionLauncher(onVisibility: () => void) {
     prepareController = new AbortController();
     status.textContent = 'Preparing command…';
     try {
-      const response = await fetch(`/api/sessiongraph/session/${encodeURIComponent(current.id)}/prepare-launch`, {
-        method: 'POST', signal: prepareController.signal,
+      const value = await requestLocal<PreparedLaunch>(`/api/sessiongraph/session/${encodeURIComponent(current.id)}/prepare-launch`, 'Could not prepare this session.', {
+        method: 'POST', signal: AbortSignal.any([prepareController.signal, AbortSignal.timeout(30_000)]),
         headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'prepare-launch' },
         body: JSON.stringify({ target: select.value, directory: directory.value }),
       });
-      const value = await response.json();
-      if (!response.ok) throw new Error(value.error || 'Could not prepare this session.');
       if (choiceVersion !== request) return;
-      prepared = value as PreparedLaunch; renderPrepared(prepared);
+      prepared = value; renderPrepared(prepared);
     } catch (error) {
       if (choiceVersion === request) { command.placeholder = 'Command unavailable'; status.textContent = error instanceof Error ? error.message : 'Could not prepare this session.'; }
     }
@@ -127,12 +126,10 @@ export function createSessionLauncher(onVisibility: () => void) {
     const request = version;
     terminal.disabled = select.disabled = directory.disabled = true; status.textContent = 'Opening Terminal…';
     try {
-      const response = await fetch(`/api/sessiongraph/session/${encodeURIComponent(current.id)}/open-terminal`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'open-terminal' },
+      await requestLocal(`/api/sessiongraph/session/${encodeURIComponent(current.id)}/open-terminal`, 'Could not open Terminal. Copy the command instead.', {
+        method: 'POST', signal: AbortSignal.timeout(30_000), headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'open-terminal' },
         body: JSON.stringify({ target: select.value, directory: prepared.directory }),
       });
-      const value = await response.json();
-      if (!response.ok) throw new Error(value.error || 'Could not open Terminal.');
       if (version === request) status.textContent = 'Session sent to Terminal.';
     } catch (error) { if (version === request) status.textContent = error instanceof Error ? error.message : 'Could not open Terminal. Copy the command instead.'; }
     finally { if (version === request) { select.disabled = directory.disabled = false; terminal.disabled = !prepared?.terminalAvailable; } }
@@ -159,9 +156,7 @@ export function createSessionLauncher(onVisibility: () => void) {
       if (!dialog.open) dialog.showModal();
       onVisibility(); focusSelect(select); void prepare();
       try {
-        const response = await fetch(`/api/sessiongraph/session/${encodeURIComponent(session.id)}/connection`, { signal: connectionController.signal });
-        if (!response.ok) throw new Error('Connection unavailable');
-        const value = await response.json() as LaunchConnection;
+        const value = await requestLocal<LaunchConnection>(`/api/sessiongraph/session/${encodeURIComponent(session.id)}/connection`, 'Could not check OpenCode.', { signal: AbortSignal.any([connectionController.signal, AbortSignal.timeout(15_000)]) });
         if (version !== request) return;
         connection = value;
         for (const harness of HARNESSES) {
@@ -169,7 +164,7 @@ export function createSessionLauncher(onVisibility: () => void) {
           select.querySelector<HTMLOptionElement>(`[value="${harness.id}"]`)!.textContent = `${harness.name}${available ? '' : ' · CLI not found'}`;
         }
         if (select.value === 'web') renderWeb();
-      } catch { if (version === request && select.value === 'web') status.textContent = 'OpenCode is unavailable. Choose another app to use the saved conversation.'; }
+      } catch (error) { if (version === request && select.value === 'web') status.textContent = error instanceof Error ? error.message : 'Could not check OpenCode.'; }
     },
     dispose() { version++; connectionController?.abort(); invalidate(); events.abort(); dialog.remove(); },
   };

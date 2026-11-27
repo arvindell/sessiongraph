@@ -17,10 +17,12 @@ export function createUpdateIndicator(backend: UpdateBackend) {
   const render = (state: UpdateState) => {
     const busy = ['downloading', 'installing', 'restarting'].includes(state.phase);
     const ready = state.phase === 'ready' || (state.phase === 'error' && state.retry !== 'download');
+    const failure = state.retry === 'restart' ? 'Restart failed' : state.retry === 'install' ? 'Install failed'
+      : /\b(?:signature|verification)\b/i.test(state.error || '') ? 'Update verification failed' : 'Download failed';
     const label = state.phase === 'downloading' ? state.progress === undefined ? 'Downloading' : `${state.progress}%`
       : state.phase === 'installing' ? 'Installing' : state.phase === 'restarting' ? 'Restarting'
-      : ready ? 'Restart' : state.phase === 'error' ? 'Retry update' : 'Update';
-    const title = state.phase === 'error' ? `${state.retry === 'restart' ? 'Could not restart SessionGraph.' : `Could not ${state.retry === 'download' ? 'download or verify' : 'install'} the update.`} ${state.error || ''} Click to try again.`
+      : state.phase === 'error' ? `${failure} · Retry` : ready ? 'Restart' : 'Update';
+    const title = state.phase === 'error' ? label
       : state.phase === 'restarting' ? `Restarting SessionGraph ${state.version}` : ready ? `Restart to install SessionGraph ${state.version}` : `Update to SessionGraph ${state.version}`;
     button.hidden = state.phase === 'hidden'; button.disabled = busy;
     button.dataset.phase = state.phase;

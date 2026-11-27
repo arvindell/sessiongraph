@@ -1,5 +1,6 @@
 import type { SessionCommits } from '@sessiongraph/core/commits';
 import { abbreviatedSHA } from '@sessiongraph/core/commits';
+import { requestLocal } from './local-api';
 
 /** Lazy indexed pages; selecting a session never scans messages for commits. */
 export function showCommitHistory(container: HTMLElement, sessionID: string, openEvidence: (id: string, revision: string) => void) {
@@ -14,9 +15,7 @@ export function showCommitHistory(container: HTMLElement, sessionID: string, ope
     more.disabled = true;
     try {
       const query = new URLSearchParams({ limit: '30', ...(cursor ? { cursor } : {}) });
-      const response = await fetch(`/api/sessiongraph/session/${encodeURIComponent(sessionID)}/commits?${query}`, { signal: controller.signal });
-      const page = await response.json() as SessionCommits & { error?: string };
-      if (!response.ok) throw new Error(page.error || 'Commit index unavailable.');
+      const page = await requestLocal<SessionCommits>(`/api/sessiongraph/session/${encodeURIComponent(sessionID)}/commits?${query}`, 'Could not load commits.', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]) });
       if (controller.signal.aborted) return;
       revision = page.revision;
       total.textContent = page.total ? page.total.toLocaleString() : '';

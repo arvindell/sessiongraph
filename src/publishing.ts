@@ -5,6 +5,7 @@ import { externalWebUrl, openDesktopUrl } from './external-links';
 import { iconElement } from '@sessiongraph/core/icons';
 import { shareHeader } from './share-modes';
 import type { preloadPublishingAccount } from './publishing-account';
+import { requestLocal } from './local-api';
 
 export function createPublishing(visibility: () => void, exportAnimation: () => void, account: ReturnType<typeof preloadPublishingAccount>) {
   const dialog = document.createElement('dialog'); dialog.className = 'publishing-dialog'; dialog.setAttribute('aria-labelledby', 'publishing-title');
@@ -28,10 +29,8 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
   let loginBusy = false, loginAttempt = 0, connectionUrl: string | undefined;
   let previewController: AbortController | undefined;
   const notice = (text: string) => { $('.publishing-status').textContent = text; };
-  const api = async (action: string, method = 'GET', body?: unknown, signal?: AbortSignal) => {
-    const response = await fetch(`/api/sessiongraph/publishing/${action}`, { method, signal, headers: { 'Content-Type': 'application/json', 'x-sessiongraph-action': '1' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    const data = await response.json(); if (!response.ok) throw Object.assign(new Error(data.error || 'Please try again.'), { status: response.status }); return data;
-  };
+  const api = (action: string, method = 'GET', body?: unknown, signal?: AbortSignal) => requestLocal<any>(`/api/sessiongraph/publishing/${action}`,
+    'Could not reach publishing.', { method, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000), headers: { 'Content-Type': 'application/json', 'x-sessiongraph-action': '1' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   function controls() {
     const accountReady = accountState === 'ready';
     $<HTMLButtonElement>('[data-publish]').disabled = busy || !preview || !accountReady || !username || submitted;

@@ -8,12 +8,13 @@ export type SaveState = 'saved' | 'saving' | 'error';
 export class LibrarySettingsSaver {
   revision = 0;
   state: SaveState = 'saved';
+  error?: string;
   private queued?: LibrarySettingsPatch;
   private task?: Promise<void>;
   private disposed = false;
   constructor(private write: (patch: LibrarySettingsPatch) => Promise<void>, private changed: (state: SaveState) => void) {}
   get pending() { return Boolean(this.queued || this.task); }
-  private set(state: SaveState) { this.state = state; if (!this.disposed) this.changed(state); }
+  private set(state: SaveState, error?: string) { this.state = state; this.error = error; if (!this.disposed) this.changed(state); }
   save(patch: LibrarySettingsPatch) {
     if (this.disposed) return;
     this.revision++; this.queued = { ...this.queued, ...patch }; this.set('saving');
@@ -28,8 +29,8 @@ export class LibrarySettingsSaver {
       this.task = undefined;
       if (this.queued) return this.flush();
       this.set('saved');
-    }, () => {
-      this.queued = { ...patch, ...this.queued }; this.task = undefined; this.set('error');
+    }, error => {
+      this.queued = { ...patch, ...this.queued }; this.task = undefined; this.set('error', error instanceof Error ? error.message : undefined);
     });
     return this.task;
   }

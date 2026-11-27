@@ -103,7 +103,7 @@ test('automatic imports require opt-in, refresh all selected sources, and keep t
     other.setting('autoImport', true);
     importer.start(undefined, true);
     assert.equal(importer.start(undefined, true), importer.status);
-    assert.throws(() => new Importer(other, [adapter]).start(undefined, true), /Another SessionGraph window/);
+    assert.throws(() => new Importer(other, [adapter]).start(undefined, true), { code: 'IMPORT_BUSY' });
     await importer.settled();
     assert.equal(importer.status.imported, 3); assert.equal(store.content('test:first').fragments[0].text, 'v2');
     assert.equal(store.content('second:first').fragments[0].text, 'v2');

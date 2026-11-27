@@ -146,7 +146,7 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
       dialog.querySelector('.settings-import-progress')!.textContent = status.running ? `Importing · ${status.imported.toLocaleString()} saved` : `${status.imported.toLocaleString()} imported · ${status.unchanged.toLocaleString()} unchanged${status.failed ? ` · ${status.failed} unavailable` : ''}${status.errors.length ? ` · ${status.errors[0]}` : ''}`;
       if (wasRunning && !status.running && dialog.open && active === 'sources') void loadSources();
     },
-    render(values: Preferences, saved: boolean, saving: SaveState = 'saved') {
+    render(values: Preferences, saved: boolean, saving: SaveState = 'saved', error?: string) {
       archived.checked = callbacks.getArchived();
       for (const control of dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-pref]')) {
         const key = control.dataset.pref as keyof Preferences;
@@ -156,7 +156,7 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
         if (output) output.value = `${values[key]}${output.dataset.unit}`;
         control.disabled = (key === 'bloom' && values.quality === 'performance') || (key === 'trailSpeed' && (!values.trailFlow || values.trails === 'off' || values.motion === 'off'));
       }
-      dialog.querySelector('.settings-save-status')!.textContent = saving === 'saving' ? 'Saving preferences…' : saving === 'error' ? 'Changes applied; could not save to the local library.' : saved ? 'Saved on this device · changes apply live.' : 'Applied for this visit; storage is unavailable.';
+      dialog.querySelector('.settings-save-status')!.textContent = saving === 'saving' ? 'Saving preferences…' : saving === 'error' ? error || 'Could not save preferences.' : saved ? 'Saved on this device.' : 'Preferences storage is unavailable.';
       (dialog.querySelector('.settings-preview') as HTMLButtonElement).disabled = values.muted || !values.clickSounds || !values.clickVolume;
       refreshSelects(dialog);
     },

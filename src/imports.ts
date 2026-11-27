@@ -1,6 +1,7 @@
 import { icon } from '@sessiongraph/core/icons';
 import type { ImportStatus, SourceStatus } from '@sessiongraph/core/types';
 import { sourceName, sourceOption, sortSources } from '@sessiongraph/core/sources';
+import { LocalApiError, requestLocal } from './local-api';
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 export function createImports(onChange: (background: boolean) => Promise<void>, onVisibility: () => void, notice: (message: string) => void) {
@@ -20,10 +21,15 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
     dialog.querySelectorAll<HTMLInputElement>('input').forEach(input => { input.disabled = running || starting; });
   }
   async function request<T>(path: string, options?: RequestInit): Promise<T> {
-    const response = await fetch(`/api/sessiongraph/${path}`, { ...options, signal: AbortSignal.any([requests.signal, AbortSignal.timeout(30_000)]) }), value = await response.json();
-    if (response.status === 409 && path === 'import' && options?.method === 'POST') return request<T>('import');
-    if (!response.ok) throw new Error(value.error || 'Import unavailable.');
-    return value;
+    try {
+      const fallback = path === 'sources' ? 'Could not load sources.' : options?.method === 'POST' ? 'Could not start the import.' : 'Could not load import status.';
+      return await requestLocal<T>(`/api/sessiongraph/${path}`, fallback, {
+        ...options, signal: AbortSignal.any([requests.signal, AbortSignal.timeout(30_000)]),
+      });
+    } catch (error) {
+      if (error instanceof LocalApiError && error.code === 'IMPORT_RUNNING' && options?.method === 'POST') return request<T>('import');
+      throw error;
+    }
   }
   function renderProgress(status: ImportStatus) {
     running = status.running;
@@ -46,9 +52,8 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
       else {
         const completedSetup = setupImport; setupImport = false;
         await onChange(background);
-        if (!disposed && completedSetup) notice(status.failed
-          ? 'Import finished with some unavailable history. Open Manage sources for details or to retry.'
-          : status.imported + status.unchanged ? 'Your sessions are ready to explore.' : 'No conversations found. You can choose other sources in Manage sources.');
+        if (!disposed && !background && !dialog.open && status.failed) notice(status.errors[0] || 'Import failed.');
+        else if (!disposed && completedSetup && !status.failed) notice(status.imported + status.unchanged ? 'Your sessions are ready to explore.' : 'No conversations found. Choose other sources in Manage sources.');
       }
     } catch (error) { failure(error); }
     finally { polling = false; }
@@ -59,7 +64,7 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
     const message = error instanceof Error ? error.message : 'Import unavailable.';
     renderProgress({ running: false, discovered: 0, imported: 0, unchanged: 0, failed: 1, errors: [message] });
     $('.imports-progress').textContent = message;
-    if (!dialog.open) notice(`${message} Open Manage sources to retry.`);
+    if (!dialog.open && !background) notice(message);
   }
   async function start(sources?: string[], automatic = false) {
     if (disposed || automatic && dialog.open) return;
