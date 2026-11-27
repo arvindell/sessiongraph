@@ -62,6 +62,36 @@ Never use a `VITE_` prefix for these values. Infrastructure provisioning, IAM po
 
 The schema uses DSQL-compatible UUIDs and application-managed relationships. Mutating transactions retry optimistic concurrency conflicts. Migrations require a separate administrative connection; the runtime role only needs application-schema CRUD access. Index builds must finish before serving traffic. Expired logins, device grants, invitations, and rate-limit records are removed in bounded daily batches.
 
+## Public-page performance
+
+`/explore` is rendered by the API using Vite's compiled HTML template. The first twelve cards, search form, sort selection, and pagination link are usable without JavaScript. The small client script enhances search and sorting, cancels superseded requests, and appends later pages. The gallery never loads Three.js. Profile pages download their interactive renderer concurrently with their graph snapshot.
+
+Publishing computes counts and a bounded SVG thumbnail once and stores them in `PublicationPreview`, atomically with the graph. Gallery queries read scalar metadata, apply username substring search and a global sort, then paginate. Unknown/hidden token totals remain null and sort last. Thumbnails read the stored SVG without decompressing or laying out the graph.
+
+Public HTML, JSON, and SVG responses are cached on Vercel for five minutes and tagged by gallery/profile. Browsers must revalidate; intermediary CDNs are not allowed to cache these snapshots. Publish, unpublish, and GitHub username changes await foreground tag eviction. There is no stale-while-revalidate window for revoked snapshots. Errors and authenticated account data remain uncached. Cache tags and their actual regional eviction must be verified in a deployment.
+
+### Existing-publication migration
+
+Apply `202611270001_publication_previews`, wait for its indexes, and backfill **before routing traffic to this version**:
+
+```sh
+pnpm --filter sessiongraph-site generate
+pnpm --filter sessiongraph-site db:backfill-publications
+```
+
+Run the command in the existing server-side database environment. It uses bounded batches, preserves original publication timestamps, and does not overwrite newer derived records. Quiesce publication writes during the cutover, or repeat the backfill after old application instances drain. Gallery/thumbnail reads require a matching derived record; an incomplete backfill would omit those publications. The local `dev:setup` command also applies this additive migration and backfills existing public snapshots.
+
+The build moves the compiled Explore template into `dist-api/explore.html`, which is explicitly included in the Function bundle. Do not restore a public `dist/explore.html` that could shadow the dynamic route.
+
+### Verification and measurements
+
+```sh
+TEST_DATABASE_URL=postgresql://sessiongraph@127.0.0.1:55439/sessiongraph_test \
+  pnpm --filter sessiongraph-site test:browser
+```
+
+This rebuilds only the dedicated test database and uses synthetic publications. Set `PERF_BASELINE=547db1f` to compare the previous API on the same fixture. Results and screenshots stay under ignored `tmp/performance/public/`. See [performance measurements](../../docs/performance.md#public-pages).
+
 ## Deployment hold
 
 This feature is PR-only until explicitly approved. Preview deployments are paused in the hosting project, and `vercel.json` also disables Git deployments for `feat/public-profiles`. Merging to `main` triggers website deployment and the repository's desktop/npm release workflow; see [release behavior](../../docs/releases.md).

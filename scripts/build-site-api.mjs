@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { readFile } from 'node:fs/promises';
+import { readFile, copyFile, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -16,3 +16,9 @@ await build({
   // Bundle workspace TypeScript and generated Prisma code; Vercel traces npm dependencies.
   external: Object.keys(dependencies).filter(name => name !== '@sessiongraph/core'),
 });
+if (process.argv.includes('--pages')) {
+  // Keep the compiled shell inside the Function bundle; a static /explore.html
+  // must not shadow the cached server-rendered /explore route.
+  await copyFile(new URL('../packages/site/dist/explore.html', import.meta.url), new URL('../packages/site/dist-api/explore.html', import.meta.url));
+  await rm(new URL('../packages/site/dist/explore.html', import.meta.url));
+}
