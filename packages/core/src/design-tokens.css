@@ -1,0 +1,42 @@
+/* Shared by the app, website, and public graph. Keep palette values here and
+   use semantic roles in components. Graph data colors are separate. */
+:root {
+  --radius-none: 0;
+  --radius-2: 2px;
+  --radius-4: 4px;
+  --radius-5: 5px;
+  --radius-6: 6px;
+  --radius-7: 7px;
+  --radius-8: 8px;
+  --radius-9: 9px;
+  --radius-10: 10px;
+  --radius-12: 12px;
+  --radius-14: 14px;
+  --radius-16: 16px;
+  --radius-17: 17px;
+  --radius-18: 18px;
+  --radius-20: 20px;
+  --radius-round: 50%;
+
+  --color-canvas: #080e13;
+  --color-panel: #0c161b;
+  --color-panel-glass: color-mix(in srgb, var(--color-panel) 90%, transparent);
+  --color-panel-border: #d6eee119;
+  --color-text: #dbe7e3;
+  --color-text-secondary: #bdcec6;
+  --color-muted-app: #82978f;
+  --color-muted-site: #94a69f;
+  --color-divider: #c9e3db;
+  --color-accent: #b0e9d6;
+  --color-on-accent: #182e29;
+  --color-focus: color-mix(in srgb, var(--color-accent) 67%, transparent);
+  --color-selected: color-mix(in srgb, var(--color-accent) 5%, transparent);
+  --color-inset: #0b141b;
+  --color-error: #e7b29b;
+
+  --mint: var(--color-accent);
+  --control-bg: #122321;
+  --control-border: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  --control-hover: color-mix(in srgb, var(--color-accent) 6.3%, transparent);
+  --popover-bg: #0e1c20;
+}

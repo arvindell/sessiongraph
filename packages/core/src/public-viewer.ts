@@ -22,7 +22,7 @@ const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFracti
 let viewerSequence = 0;
 
 /** Shared desktop publication preview and web explorer. All inspection is in-memory public data. */
-export function createPublicViewer(host: HTMLElement, input: PublicGraph, options: { fullscreen?: boolean; sourceIconBase?: string } = {}) {
+export function createPublicViewer(host: HTMLElement, input: PublicGraph, options: { fullscreen?: boolean; sourceIconBase?: string; profileCard?: HTMLElement } = {}) {
   let value = validatePublicGraph(input);
   let graph = publicGraphLayout(value);
   let projects = new Map(graph.lanes.flatMap(lane => lane.nodes.map(node => [Number(node.session.projectID), lane.label] as const)));
@@ -32,7 +32,6 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
   host.classList.toggle('public-viewer-full', Boolean(options.fullscreen));
   host.innerHTML = `
     <div class="public-canvas" aria-label="Interactive public session graph"></div>
-    <div class="public-toolbar">${graphButton('search', 'Toggle sessions', { 'data-sessions': true, 'aria-expanded': 'true' }, 'Sessions', 'Sessions')}</div>
     <nav class="public-view-controls" aria-label="Graph controls">
       ${graphButton('center-focus', 'Fit view', { 'data-fit': true }, 'Fit view (F)')}
       ${graphButton('clock', 'Toggle timeline', { 'data-timeline': true, 'aria-expanded': 'true' }, 'Timeline')}
@@ -40,11 +39,14 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
       ${graphButton('circle-help', 'Help', { 'data-help': true, 'aria-haspopup': 'dialog' })}
       ${graphButton('volume-2', 'Mute sound', { 'data-mute': true, 'data-sound': 'none', 'aria-pressed': 'false' })}
     </nav>
+    <div class="public-left">
+    <div class="public-toolbar">${graphButton('search', 'Toggle sessions', { 'data-sessions': true, 'aria-expanded': 'true' }, 'Sessions', 'Sessions')}</div>
     <aside class="public-browser public-panel" aria-label="Sessions">
       <div class="public-panel-heading"><h2>Sessions <span data-count></span></h2>${graphButton('x', 'Close sessions', { 'data-close-list': true })}</div>
       <div class="public-filters"><div class="public-filter" data-harness-filter><select data-harness data-source-icons="${escapeMarkup(options.sourceIconBase || '/sources')}" aria-label="Session source"><option value="">All sources</option></select></div><div class="public-filter">${icon('folder')}<select data-project aria-label="Project"><option value="">All projects</option></select></div></div>
       <div class="public-list" role="list" aria-label="Sessions"></div>
     </aside>
+    </div>
     <aside class="public-session public-panel" aria-label="Session details" hidden><div class="public-panel-heading"><h2 data-session-heading></h2>${graphButton('crosshair', 'Focus node', { 'data-focus': true })}${graphButton('x', 'Close session details', { 'data-close-detail': true })}</div><div class="public-session-data"></div></aside>
     <div class="public-tooltip" hidden></div>
     <section class="public-playback public-panel timeline-controls" aria-label="Timeline controls">${playbackControls(`<span class="public-period-label">${icon('clock')}<span data-range-label>Timeline</span></span><div class="range-buttons" role="group" aria-label="Date range"><button type="button" data-days="7">7D</button><button type="button" data-days="30">30D</button><button type="button" data-days="90">90D</button><button type="button" data-days="0" aria-pressed="true">All</button></div><select data-speed aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>${graphButton('x', 'Close timeline', { 'data-close-timeline': true })}`, {}, { showCoverage: false })}</section>
@@ -52,6 +54,7 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
     ${graphHelp(helpID, ['fit', 'clear'])}
     <p class="public-announcement" role="status"></p>`;
   const $ = <T extends HTMLElement = HTMLElement>(selector: string) => host.querySelector<T>(selector)!;
+  if (options.profileCard) $('.public-left').prepend(options.profileCard);
   const part = (name: string) => $(`[data-playback=${name}]`);
   const canvas = $('.public-canvas'), details = $('.public-session'), body = $('.public-session-data'), list = $('.public-list'), browser = $('.public-browser'), timeline = $('.public-playback');
   const project = $<HTMLSelectElement>('[data-project]'), harness = $<HTMLSelectElement>('[data-harness]'), speed = $<HTMLSelectElement>('[data-speed]');
@@ -164,7 +167,7 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
       },
       onEvent: id => { const marker = markers.find(m => m.id === id); if (marker) { scene?.focusEvent(marker); announce(date(marker.time)); } },
       onEventHover() {},
-    }, { panels: [browser, details, timeline], focusTop: 80 });
+    }, { panels: [browser, details, timeline, ...(options.profileCard ? [options.profileCard] : [])], focusTop: 80 });
     scene.applyPreferences(preferences);
   } catch {
     canvas.textContent = '3D rendering is unavailable. Explore sessions in the panel.';

@@ -5,15 +5,17 @@
     <a class="skip-link" href="#public-graph">Skip to graph</a>
     <header class="graph-header">
       <a class="brand" href="/" aria-label="SessionGraph home"><img src="/assets/brand/mark.svg" width="28" height="28" alt=""><span>SessionGraph</span></a>
-      <div class="profile-card">
+      <nav aria-label="Main navigation"><a href="/explore">Explore graphs</a><a href="/#download">Create yours ↗</a></nav>
+    </header>
+    <template id="profile-card-template">
+      <section class="profile-card" aria-labelledby="profile-name">
         <div class="profile-identity">
           <h1 id="profile-name">Public graph</h1>
           <p id="profile-tokens" hidden><strong></strong> <span></span></p>
         </div>
-        <a id="profile-github" class="profile-github" target="_blank" rel="noopener noreferrer" hidden><!-- icon:github --><span>GitHub</span><!-- icon:arrow-up-right --></a>
-      </div>
-      <nav aria-label="Main navigation"><a href="/explore">Explore graphs</a><a href="/#download">Create yours ↗</a></nav>
-    </header>
+        <a id="profile-github" class="profile-github" target="_blank" rel="noopener noreferrer"><!-- icon:github --><span>GitHub</span><!-- icon:arrow-up-right --></a>
+      </section>
+    </template>
     <div class="graph-loading" id="profile-loading" data-state="loading" aria-busy="true">
       <div class="graph-skeleton" aria-hidden="true">
         <div class="graph-skeleton-toolbar"><span class="skeleton"></span><span class="skeleton"></span></div>

@@ -2,13 +2,13 @@
 .gallery-heading { margin-bottom: 36px; }
 .gallery-heading h1 { font-size: clamp(38px, 5vw, 62px); }
 .graph-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
-.graph-card { min-width: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #0b141a; transition: border-color .2s, transform .2s; }
+.graph-card { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-12); overflow: hidden; background: #0b141a; transition: border-color .2s, transform .2s; }
 .graph-card:hover { border-color: #b0e9d655; transform: translateY(-3px); }
 .graph-card-preview { aspect-ratio: 16 / 9; display: grid; place-items: center; background: #0a141b; border-bottom: 1px solid var(--line); overflow: hidden; color: var(--muted); font-size: 12px; }
 .graph-card-preview { position: relative; }
-.graph-thumbnail-skeleton { position: absolute; inset: 0; border-radius: 0; }
+.graph-thumbnail-skeleton { position: absolute; inset: 0; border-radius: var(--radius-none); }
 .graph-card-preview.is-loading img { opacity: 0; }
-.graph-card-skeleton .graph-card-preview { border-radius: 0; background: #ffffff04; }
+.graph-card-skeleton .graph-card-preview { border-radius: var(--radius-none); background: #ffffff04; }
 .graph-card-skeleton .graph-card-body { min-height: 136px; }
 .graph-card-skeleton .skeleton-title { margin-bottom: 18px; }
 .graph-card-skeleton:hover { transform: none; border-color: var(--line); }

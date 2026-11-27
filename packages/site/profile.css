@@ -1,13 +1,12 @@
 .graph-page { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 .graph-header { display: flex; align-items: center; gap: 18px; min-height: 64px; padding: 10px 22px; border-bottom: 1px solid var(--line); background: #0b141a; }
 .graph-header .brand { font-size: 19px; }
-.profile-card { display: flex; align-items: center; gap: 16px; min-width: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: #b0e9d606; }
+.profile-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; padding: 8px 12px; border-radius: var(--radius-10, 10px); }
 .profile-identity { min-width: 0; }
-.profile-identity h1 { margin: 0; font-size: clamp(16px, 2vw, 21px); font-weight: 640; letter-spacing: -.025em; line-height: 1.15; overflow-wrap: anywhere; }
+.profile-identity h1 { margin: 0; font-size: clamp(16px, 2vw, 21px); font-weight: 640; letter-spacing: -.025em; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #profile-tokens { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 #profile-tokens strong { color: var(--mint); font-variant-numeric: tabular-nums; }
-.profile-github { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 6px 8px; border-radius: 6px; color: #b5c9be; font-size: 11px; }
-.profile-github[hidden] { display: none; }
+.profile-github { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 6px 8px; border-radius: var(--radius-6); color: #b5c9be; font-size: 11px; }
 .profile-github:hover { color: var(--mint); background: #b0e9d611; }
 .profile-github .ui-icon { width: 15px; height: 15px; }
 .profile-github .ui-icon:last-child { width: 11px; height: 11px; }
@@ -21,11 +20,11 @@
 .graph-loading a { color: var(--mint); font-size: 13px; }
 .graph-loading[data-state=loading] { position: relative; padding: 0; }
 .graph-loading:not([data-state=loading]) .graph-skeleton { display: none; }
-.graph-skeleton { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(ellipse at 65% 45%, #b0e9d603, transparent 65%), #080e13; }
+.graph-skeleton { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(ellipse at 65% 45%, #b0e9d603, transparent 65%), var(--color-canvas); }
 .graph-skeleton-toolbar { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; }
-.graph-skeleton-toolbar > span { width: 170px; height: 44px; border-radius: 10px; }
+.graph-skeleton-toolbar > span { width: 170px; height: 44px; border-radius: var(--radius-10); }
 .graph-skeleton-toolbar > span:last-child { width: 280px; }
-.graph-skeleton-panel, .graph-skeleton-timeline { position: absolute; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #0b141a; }
+.graph-skeleton-panel, .graph-skeleton-timeline { position: absolute; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-12); background: #0b141a; }
 .graph-skeleton-panel { top: 76px; left: 16px; width: 265px; bottom: 180px; max-height: 520px; overflow: hidden; }
 .graph-skeleton-panel .skeleton-title { margin-bottom: 22px; }
 .graph-skeleton-search { height: 34px; margin-bottom: 28px; }
