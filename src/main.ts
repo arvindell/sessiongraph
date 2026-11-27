@@ -477,7 +477,7 @@ function renderHistogram() {
   updateScrubber();
 }
 
-function updateScrubber() {
+function updateScrubber(scrubbing = false) {
   $<HTMLInputElement>('#scrubber').value = String(Math.round(playback * 1000));
   $('#timeline-cursor').style.left = `${playback * 100}%`;
   $('#histogram').style.setProperty('--progress', `${playback * 100}%`);
@@ -496,7 +496,7 @@ function updateScrubber() {
     $('#playback-token-coverage').textContent = tokenPlayback.recorded ? `${count(usage.sessions)} / ${count(tokenPlayback.recorded)} with recorded usage` : 'Usage unavailable';
     $('#playback-summary').title = `${count(sessions)} sessions started. ${tokenPlayback.recorded ? `${count(usage.tokens)} burnt tokens` : 'Token usage unavailable'}. Token totals are added at the latest saved message, including cache where reported. ${count(tokenPlayback.missing)} sessions have no recorded total.${tokenPlayback.partial ? ` ${count(tokenPlayback.partial)} recorded totals are partial.` : ''}${tokenPlayback.untimed ? ` ${count(tokenPlayback.untimed)} totals have no message timestamp and are included only at the end.` : ''}`;
   }
-  scene?.setCutoff(playback);
+  scene?.setCutoff(playback, scrubbing);
 }
 
 function stopPlayback() {
@@ -717,7 +717,7 @@ $('#children').addEventListener('change', (event) => { includeChildren = (event.
 document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.addEventListener('click', () => { days = Number(button.dataset.days); fromDate = ''; toDate = ''; updateFilters(true); }));
 $('#reset-camera').addEventListener('click', () => updateFilters(true));
 $('#refresh').addEventListener('click', () => { if (data?.onboarding) void imports.open(true); else void imports.refresh(); });
-$('#scrubber').addEventListener('input', (event) => { stopPlayback(); playback = Number((event.target as HTMLInputElement).value) / 1000; updateScrubber(); });
+$('#scrubber').addEventListener('input', (event) => { stopPlayback(); playback = Number((event.target as HTMLInputElement).value) / 1000; updateScrubber(true); });
 $('#play').addEventListener('click', () => {
   if (!filtered.length) return;
   if (playing) return stopPlayback();

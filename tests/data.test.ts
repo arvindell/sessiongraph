@@ -43,6 +43,39 @@ test('equal timestamps and malformed relationship cycles keep finite positions',
   assert.equal(makeGraph([], []).nodes.length, 0);
 });
 
+test('token usage creates clearly different sphere sizes while keeping extreme and unknown counts bounded', () => {
+  const counts = [0, 1000, 10_000, 100_000, 1_000_000, 10_000_000];
+  const sessions = counts.map((tokens, index) => session(`size-${index}`, 1000 + index, { tokens }));
+  const graph = makeGraph(sessions, []);
+  const radii = sessions.map(s => graph.nodes.find(node => node.session.id === s.id)!.radius);
+  assert.ok(radii.every((radius, index) => index === 0 || radius > radii[index - 1]));
+  assert.ok(radii[4] > radii[2] * 2.4, 'high-usage sessions are visibly larger, not just slightly heavier');
+  assert.ok(radii[5] > radii[1] * 5);
+  for (const tokens of [null, NaN, Infinity, -Infinity, -100]) {
+    const input = session('unknown', 1000, { tokens });
+    assert.equal(makeGraph([input], []).nodes[0].radius, radii[0]);
+    assert.ok(Object.is(input.tokens, tokens), 'appearance does not rewrite unknown or invalid usage');
+  }
+  for (const tokens of [100_000_000, Number.MAX_VALUE]) {
+    const radius = makeGraph([session('extreme', 1000, { tokens })], []).nodes[0].radius;
+    assert.ok(Number.isFinite(radius) && radius <= 3.2);
+    assert.ok(radius >= radii.at(-1)!);
+  }
+});
+
+test('token-driven sizes are stable across filters and usage refreshes preserve graph coordinates', () => {
+  const target = session('target', 1000, { tokens: 100_000 }), neighbor = session('neighbor', 2000, { tokens: 10_000_000 });
+  const original = makeGraph([target, neighbor], []), before = structuredClone(original);
+  const node = original.nodes.find(n => n.session.id === target.id)!;
+  assert.equal(makeGraph([target], []).nodes[0].radius, node.radius, 'sizing does not normalize against visible sessions');
+  const refreshed = makeGraph([{ ...target, tokens: 1_000_000 }, neighbor], [], original);
+  const next = refreshed.nodes.find(n => n.session.id === target.id)!;
+  assert.ok(next.radius > node.radius);
+  assert.deepEqual(next.position, node.position);
+  assert.deepEqual(next.startPosition, node.startPosition);
+  assert.deepEqual(original, before);
+});
+
 test('full directories share streams across harness projects while distinct paths and worktrees stay separate', () => {
   const sessions = [
     session('cursor:a', 1, { source: 'cursor', projectID: 'cursor:project' }),

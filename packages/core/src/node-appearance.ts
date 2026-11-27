@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { hash } from './layout';
 
-export type FocusUniforms = Record<'uSelected' | 'uHovered' | 'uFocus', THREE.IUniform<number>>;
+export type FocusUniforms = Record<'uSelected' | 'uHovered' | 'uFocus' | 'uFamilyTime', THREE.IUniform<number>>;
 
 // Shared by the solid nodes and their halos so dimmed nodes don't keep glowing.
 export const nodeEmphasisShader = `
@@ -9,11 +9,14 @@ export const nodeEmphasisShader = `
   uniform float uSelected;
   uniform float uHovered;
   uniform float uFocus;
+  attribute float familyDepth;
+  uniform float uFamilyTime;
   varying float vNodeEmphasis;
   float nodeEmphasis() {
     if (abs(nodeIndex - uSelected) < .5) return 1.12;
     if (abs(nodeIndex - uHovered) < .5) return 1.2;
-    return mix(1.0, .12, uFocus);
+    float family = step(-.5, familyDepth) * smoothstep(familyDepth*.12, familyDepth*.12+.35, uFamilyTime);
+    return mix(mix(1.0, .12, uFocus), mix(1.0, .85, uFocus), family);
   }
 `;
 

@@ -93,9 +93,9 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
         position: [x, y + wave + (seed - 0.5) * spread, z + (hash(session.id + 'z') - 0.5) * spread],
         startPosition: [startX, 0, 0],
         color,
-        // A little more weight for recorded usage, with logarithmic growth and
-        // a firm cap so very large sessions don't overwhelm their neighbors.
-        radius: 0.35 + Math.min(0.9, Math.log10(1 + tokens) * 0.11),
+        // Cube-root growth gives recorded usage a visible influence on sphere
+        // volume. Keep an absolute scale across filters and cap extreme outliers.
+        radius: 0.35 + Math.min(2.85, Math.cbrt(tokens / 100_000) * 0.55),
       };
       nodes.push(node);
       lane.nodes.push(node);

@@ -108,8 +108,8 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
     if (!visible.length) list.textContent = 'No sessions match these filters.';
     $('[data-more]').hidden = listLimit >= visible.length;
   }
-  function update() {
-    scene?.setCutoff(progress); scrubber.value = String(Math.round(progress * 1000));
+  function update(scrubbing = false) {
+    scene?.setCutoff(progress, scrubbing); scrubber.value = String(Math.round(progress * 1000));
     const time = graph.start + (graph.end - graph.start) * progress, count = sessionCount(time, progress === 1);
     part('date').textContent = value.settings.timestamps && graph.nodes.length ? shortDate(time) : `${number(count)} sessions`;
     part('period').textContent = value.settings.timestamps && graph.nodes.length ? playbackDate(time, graph.end - graph.start) : 'All time';
@@ -180,7 +180,7 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
     playing = true; outro = 0; last = performance.now(); update(); scene?.setPlaying(true);
     play.innerHTML = icon(Pause); play.setAttribute('aria-label', 'Pause timeline'); frame = requestAnimationFrame(animate);
   };
-  scrubber.oninput = () => { stop(); progress = Number(scrubber.value) / 1000; update(); };
+  scrubber.oninput = () => { stop(); progress = Number(scrubber.value) / 1000; update(true); };
   host.tabIndex = -1;
   host.addEventListener('keydown', event => {
     if ((event.target as HTMLElement).matches('input, select, textarea') || event.metaKey || event.ctrlKey || event.altKey) return;

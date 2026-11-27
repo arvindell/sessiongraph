@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-type Link = { curve: THREE.CubicBezierCurve3; color: THREE.Color; child: number };
+type Link = { curve: THREE.CubicBezierCurve3; color: THREE.Color; child: number; delay?: number };
 
 /** Screen-width ribbons retain the relationship color, with a glowing travelling tip. */
 export class ForkLinks {
@@ -46,8 +46,8 @@ export class ForkLinks {
     ribbon.frustumCulled = false; this.group.add(ribbon);
   }
 
-  update(reveals: Float32Array) {
-    this.links.forEach((link, index) => this.progress.setX(index, reveals[link.child]));
+  update(reveals: Float32Array, elapsed = Infinity) {
+    this.links.forEach((link, index) => this.progress.setX(index, reveals[link.child] * (Number.isFinite(elapsed) ? THREE.MathUtils.smoothstep(elapsed - (link.delay || 0), 0, .4) : 1)));
     this.progress.needsUpdate = true;
   }
 
