@@ -12,6 +12,7 @@ import { publishingSettings } from '@sessiongraph/core/public-graph';
 import { withSourcePaths } from './source-paths';
 import { LibraryError } from './library-query';
 import { annotateGitCheckouts } from './git-checkouts';
+import { storageFailure } from './local-errors';
 
 const publishing = new PublishingClient();
 
@@ -29,8 +30,9 @@ export function library() {
 }
 async function body(req: IncomingMessage): Promise<any> {
   let size = 0; const chunks: Buffer[] = [];
-  for await (const chunk of req) { size += chunk.length; if (size > 512_000) throw new Error('Request too large.'); chunks.push(chunk); }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+  for await (const chunk of req) { size += chunk.length; if (size > 512_000) throw new LibraryError('REQUEST_TOO_LARGE', 'Request exceeds 512 KB.', 2); chunks.push(chunk); }
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); }
+  catch { throw new LibraryError('INVALID_ARGUMENT', 'Invalid request JSON.', 2); }
 }
 
 export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerResponse, next: () => void) {
@@ -80,7 +82,7 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
         if (!value || typeof value !== 'object' || Array.isArray(value)) return json(400, { error: 'Invalid import request.' });
         if (value.sources !== undefined && (!Array.isArray(value.sources) || value.sources.some((s: unknown) => typeof s !== 'string'))) return json(400, { error: 'Choose valid sources.' });
         if (value.automatic !== undefined && (typeof value.automatic !== 'boolean' || value.sources !== undefined)) return json(400, { error: 'Automatic imports use saved sources.' });
-        if (importer.status.running) return json(409, { error: 'An import is already running.' });
+        if (importer.status.running) return json(409, { code: 'IMPORT_RUNNING', error: 'An import is already running.' });
         return json(202, importer.start(value.sources, value.automatic));
       }
     }
@@ -105,11 +107,9 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
         if (!value || typeof value !== 'object' || Array.isArray(value)) return json(400, { error: 'Invalid launch request.' });
         const target = value.target ?? session.source ?? 'opencode';
         if (!isHarness(target)) return json(400, { error: 'Choose a supported destination app.' });
-        try {
-          const prepared = await prepareLaunch(store, session, target, value.directory);
-          if (match[2] === 'open-terminal') await launchTerminal(session, prepared);
-          return json(200, prepared);
-        } catch (error) { return json(400, { error: error instanceof Error ? error.message : 'Could not prepare this session.' }); }
+        const prepared = await prepareLaunch(store, session, target, value.directory);
+        if (match[2] === 'open-terminal') await launchTerminal(session, prepared);
+        return json(200, prepared);
       }
       if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
       if (['prepare-launch', 'open-terminal'].includes(match[2])) return json(405, { error: 'Method not allowed.' });
@@ -126,8 +126,14 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
   } catch (error) {
     if (error instanceof PublishingError) return json(error.status, { error: error.message });
     if (error instanceof EventReadError) return json(error.status, { error: error.message });
-    if (error instanceof LibraryError) return json(error.code === 'STALE_CURSOR' ? 409 : 400, { error: error.message });
+    const failure = storageFailure(error);
+    if (failure) {
+      const status = failure.code === 'LIBRARY_VERSION' || failure.code === 'STALE_CURSOR' || failure.code === 'IMPORT_BUSY' ? 409
+        : failure.code === 'LIBRARY_BUSY' ? 503 : failure.code === 'DISK_FULL' ? 507 : failure.code === 'REQUEST_TOO_LARGE' ? 413
+          : failure.code === 'NOT_FOUND' ? 404 : failure.exitCode === 2 ? 400 : 500;
+      return json(status, { code: failure.code, error: failure.message });
+    }
     console.error('[sessiongraph] Local operation failed:', error instanceof Error ? error.name : 'Unknown error');
-    return json(500, { error: 'Local operation failed. Check the import status or retry.' });
+    return json(500, { code: 'OPERATION_FAILED', error: 'Local operation failed.' });
   }
 }

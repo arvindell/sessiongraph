@@ -4,6 +4,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import { externalWebUrl, openDesktopUrl } from './external-links';
 import { createElement, Github } from 'lucide';
 import { shareHeader } from './share-modes';
+import { requestLocal } from './local-api';
 
 export function createPublishing(visibility: () => void, exportAnimation: () => void) {
   const dialog = document.createElement('dialog'); dialog.className = 'publishing-dialog'; dialog.setAttribute('aria-labelledby', 'publishing-title');
@@ -26,10 +27,8 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
   let generation = 0, busy = false, preparing = false, submitted = false, timer = 0, pollBusy = false;
   let loginBusy = false, loginAttempt = 0, connectionUrl: string | undefined;
   const notice = (text: string) => { $('.publishing-status').textContent = text; };
-  const api = async (action: string, method = 'GET', body?: unknown) => {
-    const response = await fetch(`/api/sessiongraph/publishing/${action}`, { method, headers: { 'Content-Type': 'application/json', 'x-sessiongraph-action': '1' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    const data = await response.json(); if (!response.ok) throw Object.assign(new Error(data.error || 'Please try again.'), { status: response.status }); return data;
-  };
+  const api = (action: string, method = 'GET', body?: unknown) => requestLocal<any>(`/api/sessiongraph/publishing/${action}`,
+    'Could not reach publishing.', { method, signal: AbortSignal.timeout(30_000), headers: { 'Content-Type': 'application/json', 'x-sessiongraph-action': '1' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   function controls() {
     $<HTMLButtonElement>('[data-publish]').disabled = busy || !preview || !username || submitted;
     $<HTMLButtonElement>('[data-publish]').textContent = preparing ? 'Preparing…' : submitted ? 'Published' : published ? 'Update graph' : 'Publish graph';

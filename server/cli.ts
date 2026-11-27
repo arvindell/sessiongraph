@@ -2,6 +2,7 @@ import { databasePath } from './config';
 import { SessionGraphStore } from './store';
 import { LibraryService } from './library-service';
 import { EventReadError } from './event-store';
+import { storageFailure } from './local-errors';
 import { invalid, LibraryError, localPath, pageLimit, parseDate, type SessionFilters } from './library-query';
 import { commands, help, manifest, markdownDocs, parseCLI, resolveCommand } from './cli-schema';
 
@@ -110,8 +111,8 @@ export async function runCli(argv: string[], io: CLIOptions = {}): Promise<numbe
     emit(data);
     return command === 'sources sync' && (data as { failed: number }).failed > 0 || command === 'doctor' && !(data as { ok: boolean }).ok ? 1 : 0;
   } catch (error) {
-    const failure = error instanceof LibraryError ? error : error instanceof EventReadError ? new LibraryError(error.status === 409 ? 'STALE_CURSOR' : error.status === 404 ? 'NOT_FOUND' : 'INVALID_ARGUMENT', error.message, error.status === 400 ? 2 : 1)
-      : new LibraryError('OPERATION_FAILED', error instanceof Error ? error.message : 'Local operation failed.');
+    const failure = storageFailure(error) ?? (error instanceof EventReadError ? new LibraryError(error.status === 409 ? 'STALE_CURSOR' : error.status === 404 ? 'NOT_FOUND' : 'INVALID_ARGUMENT', error.message, error.status === 400 ? 2 : 1)
+      : new LibraryError('OPERATION_FAILED', 'Local operation failed.'));
     if (json) stdout(JSON.stringify({ schemaVersion: 1, command, error: { code: failure.code, message: failure.message } }) + '\n');
     else stderr(`sessiongraph: ${cell(failure.message)}\n`);
     return failure.exitCode;

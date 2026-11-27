@@ -7,6 +7,7 @@ import { createSessionLauncher } from './launcher';
 import { createImports } from './imports';
 import { AutoImportScheduler, AUTO_IMPORT_INTERVAL } from './auto-import';
 import { LibrarySettingsSaver, type LibrarySettingsPatch } from './library-settings';
+import { LocalApiError, requestLocal } from './local-api';
 import { DEFAULT_VIEW_STATE, normalizeViewState, viewDateBounds, type ViewState } from '@sessiongraph/core/view-state';
 import { playbackTokens } from './playback-tokens';
 import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, playbackDate, playbackSessions, timelineBuckets } from '@sessiongraph/core/playback';
@@ -163,7 +164,7 @@ function applyPreferences() {
   document.documentElement.style.setProperty('--panel-opacity', `${preferences.panelOpacity}%`);
   $('#motion').setAttribute('aria-pressed', String(motionEnabled(preferences, reducedMotion.matches)));
   const mute = $('#mute-audio'); mute.setAttribute('aria-pressed', String(preferences.muted)); mute.setAttribute('aria-label', preferences.muted ? 'Unmute sound' : 'Mute sound'); mute.title = preferences.muted ? 'Unmute sound' : 'Mute sound'; mute.innerHTML = icon(preferences.muted ? 'volume-x' : 'volume-2');
-  settings.render(preferences, preferencesSaved || settingsHydrated, settingsSaver?.state || 'saved'); refreshIcons();
+  settings.render(preferences, preferencesSaved || settingsHydrated, settingsSaver?.state || 'saved', settingsSaver?.error); refreshIcons();
 }
 function changePreferences(patch: Partial<Preferences>) {
   const changedImport = patch.autoImport !== undefined && patch.autoImport !== preferences.autoImport;
@@ -182,11 +183,10 @@ const onPreferencesStorage = (event: StorageEvent) => { if (event.key === PREFER
 window.addEventListener('storage', onPreferencesStorage);
 applyPreferences();
 settingsSaver = new LibrarySettingsSaver(async (patch) => {
-  const response = await fetch('/api/sessiongraph/settings', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'settings' }, body: JSON.stringify(patch), signal: AbortSignal.timeout(15_000), keepalive: true });
-  if (!response.ok) throw new Error('Could not save library settings.');
+  await requestLocal('/api/sessiongraph/settings', 'Could not save settings.', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': 'settings' }, body: JSON.stringify(patch), signal: AbortSignal.timeout(15_000), keepalive: true });
 }, (state) => {
-  settings.render(preferences, preferencesSaved || settingsHydrated, state);
-  if (state === 'error') showToast('Changes applied, but could not save to the local library. Retrying when you return.');
+  settings.render(preferences, preferencesSaved || settingsHydrated, state, settingsSaver?.error);
+  if (state === 'error') showToast(settingsSaver?.error || 'Could not save settings.');
   if (state === 'saved') void autoImport?.check();
 });
 const launcher = createSessionLauncher(modalVisibility);
@@ -209,7 +209,7 @@ document.addEventListener('sessiongraph-import-status', (event) => {
   if (data) data.importing = status.running;
   if (!filtered.length) renderGraphMessage();
   $('#refresh').classList.toggle('spinning', status.running);
-  $('.connection').title = status.running ? `Importing ${sourceName(status.source)} · ${status.imported} sessions saved` : status.failed ? 'Import unavailable · open Manage sources for details' : 'Local library · SQLite';
+  $('.connection').title = status.running ? `Importing ${sourceName(status.source)} · ${status.imported} sessions saved` : status.failed ? status.errors[0] || 'Import failed.' : 'Local library · SQLite';
 }, { signal: autoImportEvents.signal });
 const sessionSearch = createSessionSearch(selectSession, modalVisibility, (session) => void launcher.open(session));
 $('#search').addEventListener('click', sessionSearch.open);
@@ -285,12 +285,9 @@ async function initializeScene() { try {
 void initializeScene();
 $('#scene').addEventListener('scene-error', (event) => showToast((event as CustomEvent<string>).detail));
 
-async function fetchJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
+async function fetchJSON<T>(url: string, signal?: AbortSignal, fallback = 'Could not load session details.'): Promise<T> {
   const timeout = AbortSignal.timeout(180_000);
-  const response = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Request failed.');
-  return result as T;
+  return requestLocal<T>(url, fallback, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
 }
 
 async function load(background = false) {
@@ -299,7 +296,7 @@ async function load(background = false) {
   refresh.classList.add('spinning');
   try {
     const preferenceRevision = settingsSaver?.revision;
-    const next = await fetchJSON<SessionGraphData>('/api/sessiongraph');
+    const next = await fetchJSON<SessionGraphData>('/api/sessiongraph', undefined, 'Could not load the library.');
     const previous = data, previousSelected = selectedID ? sessionsByID.get(selectedID) : undefined;
     const preserve = Boolean(previous && graph.nodes.length);
     data = next;
@@ -353,13 +350,15 @@ async function load(background = false) {
     if (!background && data.warnings.length) showToast(data.warnings.join(' '));
     if (!background && data.onboarding) void imports.open(true);
   } catch (error) {
-    if (background && data) { $('.connection').title = 'Library refresh unavailable · retry with Refresh sessions'; return; }
+    const message = error instanceof LocalApiError ? error.message : 'Could not load the library.';
+    if (background && data) { $('.connection').title = message; return; }
     $('#connection-label').textContent = 'Connection unavailable';
     $('.connection').title = 'Connection unavailable';
     $('.connection').classList.remove('connected');
     $('#graph-message').hidden = false;
-    $('#graph-message').innerHTML = `${icon('terminal')}<h3>Local library unavailable</h3><p>${escape(error instanceof Error ? error.message : 'Unable to connect.')}</p><button class="primary-button" id="retry">Retry ${icon('arrow-right')}</button>`;
-    $('#retry').addEventListener('click', () => { void load().then(checkAutoImport); });
+    const versionMismatch = error instanceof LocalApiError && error.code === 'LIBRARY_VERSION';
+    $('#graph-message').innerHTML = `${icon('terminal')}<h3>Local library unavailable</h3><p role="alert">${escape(message)}</p>${versionMismatch ? '' : `<button class="primary-button" id="retry">Retry ${icon('arrow-right')}</button>`}`;
+    $('#retry')?.addEventListener('click', () => { void load().then(checkAutoImport); });
     if (!data) { $('#session-list').innerHTML = '<p class="empty-list">Your sessions will appear here once connected.</p>'; $('#list-count').textContent = 'Offline'; }
     refreshIcons();
   } finally {
@@ -629,12 +628,13 @@ async function loadTimeline(session: Session, refocus = false) {
   const request = ++timelineRequest;
   timelineController?.abort(); const controller = new AbortController(); timelineController = controller;
   try {
-    const timeline = await fetchJSON<TimelineMarkers>(`/api/sessiongraph/session/${encodeURIComponent(session.id)}/event-markers`, controller.signal);
+    const timeline = await fetchJSON<TimelineMarkers>(`/api/sessiongraph/session/${encodeURIComponent(session.id)}/event-markers`, controller.signal, 'Could not load message markers.');
     if (controller.signal.aborted || request !== timelineRequest || selectedID !== session.id) return;
     selectedTimeline = timeline; scene?.setEvents(timeline.items, refocus); renderTimeline(timeline);
-  } catch {
+  } catch (error) {
     if (controller.signal.aborted || request !== timelineRequest || selectedID !== session.id) return;
-    $('#message-detail').innerHTML = '<div class="section-label">Session timeline</div><p class="coverage-note">Message timing unavailable.</p><button class="secondary-button explore-events">Explore messages</button><button class="load-more" id="retry-timeline">Retry message markers</button>';
+    const message = error instanceof LocalApiError ? error.message : 'Could not load message markers.';
+    $('#message-detail').innerHTML = `<div class="section-label">Session timeline</div><p class="coverage-note" role="alert">${escape(message)}</p><button class="secondary-button explore-events">Explore messages</button><button class="load-more" id="retry-timeline">Retry message markers</button>`;
     $('.explore-events').addEventListener('click', () => openEvents());
     $('#retry-timeline').addEventListener('click', () => void loadTimeline(session));
   }

@@ -31,7 +31,7 @@ test('handoffs preserve the original request and latest chronological context wi
     assert.ok(bounded.text.length < 170_000); assert.ok(bounded.text.includes('prefix-')); assert.ok(bounded.text.includes('-suffix'));
     assert.equal(bounded.partial, true); assert.match(bounded.note, /shortened/); assert.match(bounded.note, /Interrupted history/);
     store.replace(c, [], false);
-    assert.throws(() => handoffDocument(store.handoff(c.session.id)), /Import this session/);
+    assert.throws(() => handoffDocument(store.handoff(c.session.id)), { code: 'INVALID_ARGUMENT', message: 'Import the conversation before continuing.' });
   } finally { store.close(); }
 });
 
@@ -66,7 +66,7 @@ test('all harness pairs prepare native resumes or saved-context launches without
     assert.equal((await prepareLaunch(store, child, 'claude-code')).mode, 'handoff');
     await assert.rejects(prepareLaunch(store, child, 'invalid' as HarnessID), /supported destination/);
     await assert.rejects(prepareLaunch(store, child, 'codex', 'relative'), /absolute working directory/);
-    await assert.rejects(prepareLaunch(store, child, 'codex', join(dir, 'missing')), /unavailable/);
-    await assert.rejects(prepareLaunch(store, { ...child, nativeID: '--help', parentID: undefined }, 'claude-code'), /cannot be resumed/);
+    await assert.rejects(prepareLaunch(store, child, 'codex', join(dir, 'missing')), { code: 'INVALID_ARGUMENT', message: 'Choose an accessible working directory.' });
+    await assert.rejects(prepareLaunch(store, { ...child, nativeID: '--help', parentID: undefined }, 'claude-code'), { code: 'INVALID_ARGUMENT', message: 'Choose another app to continue this session.' });
   } finally { store.close(); await rm(dir, { recursive: true }); }
 });

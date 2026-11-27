@@ -3,11 +3,12 @@ import { mkdir, writeFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SessionGraphStore } from './store';
 import { messageTime } from './activity';
+import { invalid } from './library-query';
 
 type Snapshot = ReturnType<SessionGraphStore['handoff']>;
 export function handoffDocument(snapshot: Snapshot) {
   const { session, messages, firstUser, totalMessages } = snapshot;
-  if (!messages.length) throw new Error('Import this session’s conversation before continuing in another app.');
+  if (!messages.length) invalid('Import the conversation before continuing.');
   let shortened = false;
   const clip = (text: string, limit: number) => {
     if (text.length <= limit) return text;

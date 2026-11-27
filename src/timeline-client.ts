@@ -1,4 +1,5 @@
 import type { TimelinePage } from '@sessiongraph/core/timeline';
+import { LocalApiError, requestLocal } from './local-api';
 
 export type EventQuery = { item?: string; cursor?: string; filter?: string; revision?: string };
 type Pending = { controller: AbortController; promise: Promise<TimelinePage>; readers: number };
@@ -26,9 +27,10 @@ export class TimelineClient {
     if (!pending) {
       const controller = new AbortController(), generation = this.generation;
       const params = new URLSearchParams({ filter, ...query });
-      const promise = this.request(`/api/sessiongraph/session/${encodeURIComponent(sessionID)}/events?${params}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]) }).then(async (response) => {
-        const page = await response.json();
-        if (!response.ok) { if (response.status === 409) this.clear(); throw new Error(page.error || 'Could not load events.'); }
+      const promise = requestLocal<TimelinePage>(`/api/sessiongraph/session/${encodeURIComponent(sessionID)}/events?${params}`, 'Could not load events.', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]) }, this.request).catch(error => {
+        if (error instanceof LocalApiError && error.status === 409 && (!error.code || error.code === 'STALE_CURSOR')) this.clear();
+        throw error;
+      }).then(page => {
         if (controller.signal.aborted || generation !== this.generation) throw new DOMException('Request cancelled', 'AbortError');
         if (page.sessionID !== sessionID || (query.revision && page.revision !== query.revision)) throw new Error('Saved history changed. Reload the event explorer.');
         const cacheKey = JSON.stringify([sessionID, page.revision, filter, query.item, query.cursor]);
