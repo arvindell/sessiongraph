@@ -10,7 +10,7 @@
   <a href="docs/releases.md">Releases</a>
 </p>
 
-[![SessionGraph in action: zoom, playback, messages, search, and twelve sources using synthetic sessions](docs/sessiongraph-demo.gif)](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4)
+[![SessionGraph in action: orbit a branching graph, explore messages, play the timeline, and search synthetic sessions](docs/sessiongraph-demo.gif)](https://raw.githubusercontent.com/arvindell/sessiongraph/main/docs/sessiongraph-demo.mp4)
 
 Explore local history from **OpenCode, Claude Code, Codex, T3 Code, Cursor, Gemini, Pi, and more** in one app. Search conversations, browse messages, and inspect changed files.
 
