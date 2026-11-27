@@ -5,7 +5,7 @@ import type { Graph, Session } from './types';
 
 export const PUBLIC_FIELDS = {
   tokens: 'Tokens', timestamps: 'Session times', messageCounts: 'Message counts',
-  messageTimestamps: 'Message times', model: 'Models', harness: 'Apps',
+  messageTimestamps: 'Message times', model: 'Models', harness: 'Harness',
 } as const;
 export type PublishingSettings = Record<keyof typeof PUBLIC_FIELDS, boolean>;
 export const DEFAULT_PUBLISHING: PublishingSettings = { tokens: true, timestamps: true, messageCounts: true, messageTimestamps: true, model: true, harness: true };

@@ -24,11 +24,14 @@ import { TimelineClient } from './timeline-client';
 import { createDesktopUpdater } from './updater';
 import { createDateRange } from './date-range';
 import { observeSelects, refreshSelects } from './controls';
+import { createPublishing } from './publishing';
+import { preloadPublishingAccount } from './publishing-account';
 import type { TimelineMarkers } from '@sessiongraph/core/timeline';
 import type { SessionGraphData, Graph, Session, SessionDetail } from '@sessiongraph/core/types';
 import './style.css';
 import './publishing.css';
 
+const publishingAccount = preloadPublishingAccount();
 const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2, Cpu, Bot, Coins, DollarSign };
 const refreshIcons = () => { createIcons({ icons, attrs: { 'stroke-width': 1.5 } }); refreshSelects(); };
 const icon = (name: string, cls = '') => `<i data-lucide="${name}" class="${cls}" aria-hidden="true"></i>`;
@@ -77,7 +80,7 @@ let tokenPlayback = playbackTokens([]), tokenDisplay = '';
 let sessionPlayback = playbackSessions([]);
 let playbackPanels: { explorer: boolean; inspector: boolean } | undefined;
 let playbackShare: ReturnType<typeof import('./share').createPlaybackShare> | undefined;
-let publishingDialog: ReturnType<typeof import('./publishing').createPublishing> | undefined;
+let publishingDialog: ReturnType<typeof createPublishing> | undefined;
 let shareRevealTimer = 0, shareReady = false;
 let preferences: Preferences = { ...DEFAULT_PREFERENCES }, preferencesSaved = true;
 let autoImport: AutoImportScheduler | undefined;
@@ -807,7 +810,7 @@ async function exportAnimation() {
 }
 async function openPublishing() {
   try {
-    if (!publishingDialog) { const { createPublishing } = await import('./publishing'); publishingDialog = createPublishing(modalVisibility, () => void exportAnimation()); }
+    publishingDialog ??= createPublishing(modalVisibility, () => void exportAnimation(), publishingAccount);
     await publishingDialog.open(filtered.map(session => session.id));
   } catch { showToast('Could not open publishing. Please try again.'); }
 }
