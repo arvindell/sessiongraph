@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { SessionGraphData, Session, SessionDetail, SessionTimeline, SourceStatus } from '@sessiongraph/core/types';
+import type { SessionGraphData, Session, SessionDetail, SessionPullRequest, SessionTimeline, SourceStatus } from '@sessiongraph/core/types';
 import type { ContentPage } from '../src/search/types';
 import { MAX_CHARACTERS, validRecord, type CachedContent } from '../src/search/persistence';
 import type { Candidate, ImportedMessage } from './adapters/types';
@@ -27,7 +27,7 @@ export class SessionGraphStore {
     if (path !== ':memory:') chmodSync(path, 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
-    if (version > 7) throw new Error('This SessionGraph database requires a newer version of the app.');
+    if (version > 8) throw new Error('This SessionGraph database requires a newer version of the app.');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, last_import INTEGER, error TEXT);
@@ -101,6 +101,17 @@ export class SessionGraphStore {
       try { this.db.exec(`${MESSAGE_TIME_INDEX} PRAGMA user_version=7; COMMIT;`); }
       catch (error) { this.db.exec('ROLLBACK'); throw error; }
     }
+    if (version < 8) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        this.db.exec(`${MESSAGE_TIME_INDEX} CREATE TABLE IF NOT EXISTS session_pull_requests (
+          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          host TEXT NOT NULL, repository TEXT NOT NULL, number INTEGER NOT NULL CHECK(number > 0),
+          url TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('manual', 'created', 'agent', 'stack')),
+          PRIMARY KEY(session_id, host, repository, number)
+        ) STRICT; PRAGMA user_version=8; COMMIT;`);
+      } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    }
     if (!this.setting('libraryID')) this.setting('libraryID', randomUUID());
     // An interrupted import never exposes staged/half-replaced messages.
   }
@@ -110,7 +121,7 @@ export class SessionGraphStore {
     return row ? JSON.parse(String(row.value)) : undefined;
   }
   selected() { return this.setting<string[]>('selected') || []; }
-  autoImportEnabled() { return this.setting<boolean>('autoImport') !== false; }
+  autoImportEnabled() { return this.setting<boolean>('autoImport') === true; }
   acquireImport() {
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -131,6 +142,11 @@ export class SessionGraphStore {
   }
   revision(id: string) { return this.db.prepare('SELECT imported_revision FROM sessions WHERE id=?').get(id)?.imported_revision; }
   commitsCurrent(id: string) { return this.getSession(id)?.commits?.version === COMMIT_EXTRACTOR_VERSION; }
+  historyLimitedByOldBudget(session: Session) {
+    if (session.coverage?.note?.match(/Import limited to 50,000 messages \/ 16 million text characters \/ 2,000 pages\.|Session import limit reached\./)) return true;
+    const timeline = this.db.prepare('SELECT note FROM timeline_coverage WHERE session_id=?').get(session.id);
+    return String(timeline?.note || '').includes('Event history limited to 200,000 items / 32 MB per session.');
+  }
   upsert(candidate: Candidate) {
     const s = candidate.session, previous = this.getSession(s.id);
     const metadata = { ...s, model: s.model === 'Unknown model' ? previous?.model || s.model : s.model,
@@ -153,6 +169,11 @@ export class SessionGraphStore {
       messages.forEach((message, i) => insert.run(s.id, message.id, i, JSON.stringify(message), message.eventOnly ? null : messageTime(message.time), Number(isUserMessage(message))));
       writeEvents(this.db, s.id, this.db.prepare('SELECT data FROM messages WHERE session_id=? ORDER BY ordinal').iterate(s.id));
       const commits = writeCommits(this.db, s);
+      if (candidate.pullRequests !== undefined) {
+        this.db.prepare('DELETE FROM session_pull_requests WHERE session_id=?').run(s.id);
+        const insertPR = this.db.prepare('INSERT INTO session_pull_requests VALUES (?,?,?,?,?,?)');
+        for (const pr of candidate.pullRequests) insertPR.run(s.id, pr.host, pr.repository, pr.number, pr.url, pr.source);
+      }
       const activity = this.db.prepare(activitySQL).get(s.id);
       this.db.prepare('UPDATE sessions SET metadata=?, imported_revision=?, locator=? WHERE id=?').run(JSON.stringify({ ...s, activity, commits }), candidate.revision, JSON.stringify(candidate.locator), s.id);
       this.db.prepare('DELETE FROM search_cache WHERE id=?').run(s.id);
@@ -277,7 +298,13 @@ export class SessionGraphStore {
         message.tools.forEach((tool) => tools.set(tool, (tools.get(tool) || 0) + 1));
         for (const location of message.locations || []) if (locations.length < 200 && messageTime(location.time) !== null) locations.push(location);
       }
-      return { id, revision: session.revision, files: [...files.values()].sort((a, b) => b.steps - a.steps), tools: [...tools].map(([name, count]) => ({ name, count })), locations, messagesScanned: page.messages.length,
+      const pullRequests = !cursor
+        ? this.db.prepare('SELECT host, repository, number, url, source FROM session_pull_requests WHERE session_id=? ORDER BY host, repository, number').all(id)
+          .map(({ host, repository, number, url, source }): SessionPullRequest => ({
+            host: String(host), repository: String(repository), number: Number(number), url: String(url), source: source as SessionPullRequest['source'],
+          }))
+        : undefined;
+      return { id, revision: session.revision, pullRequests: pullRequests?.length ? pullRequests : undefined, files: [...files.values()].sort((a, b) => b.steps - a.steps), tools: [...tools].map(([name, count]) => ({ name, count })), locations, messagesScanned: page.messages.length,
         snapshotSteps: page.messages.reduce((n, m) => n + (m.snapshots || 0), 0), nextCursor: page.next, partial: Boolean(page.next) || session.coverage?.history !== 'complete', loadedAt: Date.now(), note: session.coverage?.note || (session.coverage?.history === 'pending' ? 'Waiting for import.' : undefined) };
     });
   }

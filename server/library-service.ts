@@ -8,6 +8,7 @@ import { filterSessions, fingerprint, invalid, LibraryError, localPath, nextCurs
 import { SessionSearchIndex, parseQuery } from '../src/search/engine';
 import { MAX_CHARACTERS, SESSION_CHARACTERS } from '../src/search/persistence';
 import { sampleContent } from '../src/search/sampling';
+import { MAX_SESSION_RECORDS } from './history-limits';
 
 export class LibraryService {
   readonly importer: Importer;
@@ -98,7 +99,7 @@ export class LibraryService {
   getEvents(id: string, options: Parameters<SessionGraphStore['events']>[1] = {}) { this.getSession(id); return this.store.events(id, options); }
   getFileChanges(id: string, cursor?: string) {
     this.getSession(id);
-    if (cursor && (!/^\d{1,9}$/.test(cursor) || Number(cursor) > 50_000)) invalid('Invalid file cursor. Use nextCursor from the previous page.');
+    if (cursor && (!/^\d{1,9}$/.test(cursor) || Number(cursor) > MAX_SESSION_RECORDS)) invalid('Invalid file cursor. Use nextCursor from the previous page.');
     return this.store.detail(id, cursor);
   }
   getRelationships(id: string, options: PageOptions = {}) {

@@ -20,6 +20,8 @@ import { InteractionAudio } from '@sessiongraph/core/audio';
 import { createEventExplorer } from './event-explorer';
 import { createEventHover } from './event-hover';
 import { showCommitHistory } from './commit-history';
+import { isTauri } from '@tauri-apps/api/core';
+import { openDesktopUrl } from './external-links';
 import { TimelineClient } from './timeline-client';
 import { createDesktopUpdater } from './updater';
 import { createDateRange } from './date-range';
@@ -316,7 +318,7 @@ async function load(background = false) {
     const preserve = Boolean(previous && graph.nodes.length);
     data = next;
     if (!settingsSaver?.pending && preferenceRevision === settingsSaver?.revision) {
-      preferences = { ...normalizePreferences(next.preferences || preferences), autoImport: next.autoImport !== false };
+      preferences = { ...normalizePreferences(next.preferences || preferences), autoImport: next.autoImport === true };
       try { preferencesSaved = savePreferences(localStorage, preferences); } catch { preferencesSaved = false; }
       if (!settingsHydrated) {
         const view = normalizeViewState(next.viewState);
@@ -605,6 +607,7 @@ function renderInspector(session: Session, reveal = true) {
       <section id="message-detail" class="detail-section"></section>
       ${sessionInfo(infoRows, `<div class="directory-card"><span>${icon(isWorktree ? 'git-branch' : 'folder')}${isWorktree ? 'Worktree' : 'Directory'}</span><code>${escape(session.directory)}</code></div>`, infoOpen)}
       <section id="commit-detail" class="detail-section"></section>
+      <section id="pull-request-detail" class="detail-section" hidden></section>
       ${session.linkedSessionIDs?.length ? `<section class="detail-section"><div class="section-label">Linked provider history</div>${session.linkedSessionIDs.map(id => `<button class="relation" data-history="${escape(id)}">${sourceIcon(id.split(':')[0])}<span>${escape(sourceName(id.split(':')[0]))}</span>${icon('arrow-up-right')}</button>`).join('')}</section>` : ''}
       <div id="file-detail"><section class="detail-section"><div class="section-label">Changed files</div><div class="detail-loading">${icon('loader-circle', 'spinning')}Loading changes…</div></section></div>
       <section id="session-connections" class="detail-section"></section>
@@ -658,10 +661,19 @@ function mergeDetail(previous: SessionDetail, next: SessionDetail): SessionDetai
   }
   const tools = new Map(previous.tools.map((tool) => [tool.name, tool.count]));
   next.tools.forEach((tool) => tools.set(tool.name, (tools.get(tool.name) || 0) + tool.count));
-  return { ...next, files: [...files.values()].sort((a, b) => b.steps - a.steps || a.path.localeCompare(b.path)), tools: [...tools].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count), locations: [...previous.locations, ...next.locations], messagesScanned: previous.messagesScanned + next.messagesScanned, snapshotSteps: previous.snapshotSteps + next.snapshotSteps };
+  return { ...next, pullRequests: next.pullRequests ?? previous.pullRequests, files: [...files.values()].sort((a, b) => b.steps - a.steps || a.path.localeCompare(b.path)), tools: [...tools].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count), locations: [...previous.locations, ...next.locations], messagesScanned: previous.messagesScanned + next.messagesScanned, snapshotSteps: previous.snapshotSteps + next.snapshotSteps };
 }
 
 function renderDetail(detail: SessionDetail) {
+  const prSection = $('#pull-request-detail'), prs = detail.pullRequests || [];
+  prSection.hidden = !prs.length;
+  prSection.innerHTML = prs.length ? `<div class="section-label">Pull requests<span>${count(prs.length)}</span></div>${prs.map(pr =>
+    `<a class="relation" href="${escape(pr.url)}" target="_blank" rel="noopener noreferrer">${icon('git-branch')}<span><small>${escape(pr.host)}</small><strong>${escape(pr.repository)} #${pr.number}</strong></span>${icon('arrow-up-right')}</a>`
+  ).join('')}` : '';
+  if (isTauri()) prSection.querySelectorAll<HTMLAnchorElement>('a').forEach(link => link.addEventListener('click', event => {
+    event.preventDefault();
+    void openDesktopUrl(link.href).catch(() => showToast('Could not open the pull request in your browser.'));
+  }));
   const files = detail.files;
   const root = $('#file-detail');
   const toolsRoot = $('#session-tools');

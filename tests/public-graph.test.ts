@@ -177,7 +177,7 @@ test('message-time index upgrades saved libraries without rewriting history and 
     const plan = store.db.prepare("EXPLAIN QUERY PLAN SELECT time FROM timeline_items WHERE session_id=? AND kind='message' AND role IN ('user','assistant') AND time IS NOT NULL ORDER BY time,ordinal LIMIT 2000").all(candidate.session.id);
     assert.match(JSON.stringify(plan), /timeline_messages_time/);
     assert.doesNotMatch(JSON.stringify(plan), /TEMP B-TREE/);
-    assert.equal(store.db.prepare('PRAGMA user_version').get()!.user_version, 7);
+    assert.equal(store.db.prepare('PRAGMA user_version').get()!.user_version, 8);
   } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
