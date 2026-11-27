@@ -108,7 +108,7 @@ const sdkClaudeAdapter: SessionAdapter = {
         if (!child.isFile() || !/^agent-[\w-]+\.jsonl$/.test(child.name)) continue;
         try {
           const agent = child.name.slice(6, -6), path = join(file.children, child.name), stats = await stat(path);
-          sessions.push({ session: { ...s, id: identity('claude-code', `${info.sessionId}/agent/${agent}`), nativeID: `${info.sessionId}/agent/${agent}`, title: `Subagent ${agent}`, created: stats.birthtimeMs || s.created, updated: stats.mtimeMs, parentID: s.id, agent }, revision: await revision(path), locator: { path, dir: info.cwd || '', parent: info.sessionId, agent } });
+          sessions.push({ session: { ...s, id: identity('claude-code', `${info.sessionId}/agent/${agent}`), nativeID: `${info.sessionId}/agent/${agent}`, title: `Subagent ${agent}`, created: stats.birthtimeMs || s.created, updated: stats.mtimeMs, parentID: s.id, origin: 'automated', agent }, revision: await revision(path), locator: { path, dir: info.cwd || '', parent: info.sessionId, agent } });
         } catch { unreadable++; }
       }
     }

@@ -124,7 +124,7 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
           if (kind !== 'transcript' && !meta.latestRootBlobId) return; // No committed conversation yet.
           const session = blankSession('cursor', native, cwd(meta.cwd) || cwd(extra.cwd) || directory);
           session.agent = kind === 'cli' ? 'Cursor Agent' : kind === 'acp' ? 'Cursor ACP' : parent ? 'Cursor subagent' : 'Cursor IDE';
-          if (parent) session.parentID = identity('cursor', parent);
+          if (parent) { session.parentID = identity('cursor', parent); session.origin = 'automated'; }
           session.title = typeof meta.name === 'string' && meta.name.trim() ? meta.name : typeof extra.title === 'string' && extra.title.trim() ? extra.title : 'Cursor session';
           session.title = session.title.slice(0, 300);
           session.created = cursorTime(meta.createdAt) || cursorTime(extra.createdAtMs);
