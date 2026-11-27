@@ -12,26 +12,27 @@
 
 [![SessionGraph in action: zoom, playback, messages, search, and twelve sources using synthetic sessions](docs/sessiongraph-demo.gif)](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4)
 
-[Watch the 60 FPS demo →](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-demo.mp4)
+Explore local history from **OpenCode, Claude Code, Codex, T3 Code, Cursor, Gemini, Pi, and more** in one app. Search conversations, browse messages, and inspect changed files.
 
-Explore local history from **OpenCode, Claude Code, Codex, T3 Code, Cursor, Gemini, Pi, OpenClaw, Hermes, Kiro, Mux, and many more** in one app. [Source-by-source coverage →](docs/import-coverage.md)
-Search conversations, explore user and assistant messages, inspect changed files, and continue in another harness.
-Hover to preview messages, click to focus, and click empty space to deselect. Tune the glowing map, trails, and click sounds in Settings.
-During playback, session orbs travel through time, leaving trails behind them. Message dots match their session's color.
-Stardust reacts to your cursor, new sessions and forks bloom with sparks, and selected sessions gain orbiting satellites. Scrub the timeline to sweep a gust through the map. Effects follow your motion and rendering-quality settings; turn off Stars to hide ambient dust.
-Importing, searching, and visualization stay on your computer.
+- **Session orbs** show your conversations over time.
+- **Fork connections** show where sessions branched or spawned subagents.
+- **Clusters** group sessions by project directory, even across harnesses.
 
 ### Your history stays local
 
-**No account needed for local use. No automatic cloud sync.** SessionGraph reads your selected sources and keeps imported conversations and the search index on your computer. Importing and exploring history never starts an AI agent or sends conversations to a model provider.
-
-Desktop update checks and downloads contact GitHub without session content; npm installation contacts the npm registry. Explicitly continuing a session opens your chosen harness, which follows its own network and privacy settings. Saved history is not encrypted by SessionGraph; device access and backups affect its confidentiality.
-
-[See what stays local and what publishing shares →](PRIVACY.md)
+**No account needed.** SessionGraph reads your local history without changing it. Imported conversations and search stay on your computer.
 
 ### Install
 
-Download the latest desktop app — no Node.js required:
+Run the desktop app with **Node.js 24+**:
+
+```sh
+npx sessiongraph
+```
+
+Prefer your browser? Run `npx sessiongraph --browser`.
+
+Or download an installer — no Node.js required:
 
 | Platform | Direct downloads |
 | --- | --- |
@@ -41,48 +42,26 @@ Download the latest desktop app — no Node.js required:
 | Linux · x64 | [AppImage](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-x64.AppImage) · [DEB](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-x64.deb) · [RPM](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-x64.rpm) |
 | Linux · ARM64 | [AppImage](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-arm64.AppImage) · [DEB](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-arm64.deb) · [RPM](https://github.com/arvindell/sessiongraph/releases/latest/download/sessiongraph-linux-arm64.rpm) |
 
-Desktop updates appear as a small **Update** pill. Download and verify, then click **Restart** when you're ready.
-
-The npm launcher requires **Node.js 24+**:
-
-```sh
-npx sessiongraph
-npx sessiongraph --browser
-```
-
-- **`sessiongraph`** opens the native desktop app for your OS, with its own local backend and bundled runtime.
-- **`sessiongraph --browser`** starts an authenticated localhost server and opens the same explorer in your default browser. Keep the terminal running; **Ctrl+C** stops it.
-- Both use the same saved local library. Import once, explore in either mode.
-
 ### Harness support
 
-| Harness | Import from | Continue sessions |
-| --- | --- | --- |
-| <img src="public/sources/opencode.svg" width="14" alt=""/> **OpenCode** | Authenticated local API; run OpenCode when importing | Native resume / saved-context handoff |
-| <img src="public/sources/claude.svg" width="14" alt=""/> **Claude Code** | Local projects, worktrees, and subagents via SDK | Native resume / saved-context handoff |
-| <img src="public/sources/openai.svg" width="14" alt=""/> **Codex** | Active and archived local rollouts | Native resume / saved-context handoff |
-| <img src="public/sources/t3.svg" width="14" alt=""/> **T3 Code** | Local server SQLite threads and activity | Saved-context handoff to a supported CLI |
-| <img src="public/sources/cursor.svg" width="14" alt=""/> **Cursor** | IDE transcripts, legacy Composer, CLI and ACP stores | CLI resume where supported / saved-context handoff |
-| <img src="public/sources/gemini.svg" width="14" alt=""/> **Gemini CLI** | Local JSON and append-only JSONL chats | Native resume / saved-context handoff |
-| <img src="public/sources/qwen.svg" width="14" alt=""/> **Qwen Code** | Local project chat records | Native resume / saved-context handoff |
-| <img src="public/sources/pi.svg" width="14" alt=""/> **Pi** | Local JSONL session trees | Native resume / saved-context handoff |
-| <img src="public/sources/copilot.svg" width="14" alt=""/> **GitHub Copilot CLI** | Local persisted session events | Native resume / saved-context handoff |
-| <img src="public/sources/copilot.svg" width="14" alt=""/> **GitHub Copilot Chat (VS Code)** | VS Code / Insiders saved Chat UI history on Windows, macOS, and Linux | Saved-context handoff to a supported CLI |
-| <img src="public/sources/cline.svg" width="14" alt=""/> **Cline** | Extension tasks and CLI/SDK message snapshots | Saved-context handoff to a supported CLI |
-| <img src="public/sources/roo.svg" width="14" alt=""/> **Roo Code** | Local extension task histories | Saved-context handoff to a supported CLI |
-| <img src="public/sources/kilo.svg" width="14" alt=""/> **Kilo Code / CLI** | Extension task JSON; separate Kilo CLI SQLite source | Saved-context handoff to a supported CLI |
-| <img src="public/sources/continue.svg" width="14" alt=""/> **Continue** | Local IDE and CLI session JSON | Saved-context handoff to a supported CLI |
+| Harness | Local history |
+| --- | --- |
+| <img src="public/sources/opencode.svg" width="14" alt=""/> **OpenCode** | Run OpenCode when importing |
+| <img src="public/sources/claude.svg" width="14" alt=""/> **Claude Code** | Projects, worktrees, and subagents |
+| <img src="public/sources/openai.svg" width="14" alt=""/> **Codex** | Active and archived sessions |
+| <img src="public/sources/t3.svg" width="14" alt=""/> **T3 Code** | Threads and activity |
+| <img src="public/sources/cursor.svg" width="14" alt=""/> **Cursor** | IDE and CLI conversations |
+| <img src="public/sources/gemini.svg" width="14" alt=""/> **Gemini CLI** | Saved chats |
+| <img src="public/sources/qwen.svg" width="14" alt=""/> **Qwen Code** | Project chats |
+| <img src="public/sources/pi.svg" width="14" alt=""/> **Pi** | Session trees |
+| <img src="public/sources/copilot.svg" width="14" alt=""/> **GitHub Copilot CLI** | Saved sessions |
+| <img src="public/sources/copilot.svg" width="14" alt=""/> **GitHub Copilot Chat (VS Code)** | Saved IDE chats |
+| <img src="public/sources/cline.svg" width="14" alt=""/> **Cline** | Tasks and messages |
+| <img src="public/sources/roo.svg" width="14" alt=""/> **Roo Code** | Task history |
+| <img src="public/sources/kilo.svg" width="14" alt=""/> **Kilo Code / CLI** | Extension and CLI sessions |
+| <img src="public/sources/continue.svg" width="14" alt=""/> **Continue** | IDE and CLI sessions |
 
-Import is read-only. Saved sessions remain available when a harness is offline. [Coverage and limitations →](docs/guide.md#source-coverage)
-
-Additional sources include OpenClaw, Prime Agent, Oh My Pi, Senpi, Kimchi, Gajae, Hermes, Amp, Droid, Codebuff/Freebuff, Kimi, Grok, Jcode, Cherry Studio, Command Code, ZCode, CodeBuddy, WorkBuddy, Proma, DeepSeek Harness, Aside, Vibe, Goose, Zed, Devin CLI/Desktop, Crush, Octofriend, MiMo Code/Desktop, Unsloth, and Kiro/Mux. Junie, Muse, Augment, and OpenCodeReview have partial event coverage. Fx and Antigravity expose session metadata and dates only. Sources that cannot provide session identities and dates are excluded. See the [format matrix](docs/import-coverage.md) for paths and remaining gaps.
-
-Choose harnesses in **Settings → Sources** or **Manage sources** next to the source filter. **Auto-import is on by default**: SessionGraph checks for new and changed sessions on startup, when you return, and every minute while visible. Turn it off in **Settings → Sources → Auto-import sessions**. **Refresh sessions** also works manually.
-
-Your time range, source/project/directory filters, archived and child-session toggles, and appearance preferences are saved with the local library and restored after restarting.
-The default range is **All time**, with archived sessions hidden. Enable them in **Settings → Interface → Show archived sessions**.
-
-Manual and automatic refresh preserve your map position, zoom, and selection. New history keeps existing layout positions stable; use **Fit view (F)** to reframe the whole map.
+Also supports OpenClaw, Hermes, Kiro, Mux, and more. [Full source list and coverage →](docs/import-coverage.md)
 
 ### Develop
 
@@ -92,9 +71,6 @@ portless sessiongraph pnpm dev
 ```
 
 `pnpm desktop:dev` runs the native app. `pnpm test` runs the tests.
-See the [guide](docs/guide.md) for source coverage, shortcuts, storage, and building locally.
-
-Shared graph code and the website are organized as pnpm workspace packages in [`packages/`](packages/README.md). The website lives in [`packages/site/`](packages/site/README.md) and serves [sessiongraph.ai](https://sessiongraph.ai).
 
 ### License
 
