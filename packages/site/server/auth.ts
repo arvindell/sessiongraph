@@ -2,6 +2,7 @@ import type { DB } from './db';
 import { transaction } from './db';
 import { HttpError, cookie, cookieValue, digest, json, origin, randomToken, readBody, redirect, requireMutation, seal, unseal, validChallenge, validUsername } from './security';
 import { createHash } from 'node:crypto';
+import { purgePublicCache } from './public-cache';
 
 const SESSION_COOKIE = '__Host-sessiongraph';
 const STATE_COOKIE = '__Host-sessiongraph-oauth';
@@ -49,15 +50,19 @@ export async function authRoute(request: Request, db: DB, path: string): Promise
     const user = await githubUser('user', data.access_token);
     // OAuth access/refresh tokens are discarded; SessionGraph never needs repository access.
     const token = randomToken();
-    await transaction(db, async tx => {
+    const previousNames = await transaction(db, async tx => {
+      const existing = await tx.account.findUnique({ where: { id: user.id }, select: { username: true } });
       const previous = await tx.account.findUnique({ where: { username: user.username } });
       if (previous && previous.id !== user.id) {
         await tx.account.update({ where: { id: previous.id }, data: { username: null } });
         await tx.publication.deleteMany({ where: { accountId: previous.id } });
+        await tx.publicationPreview.deleteMany({ where: { accountId: previous.id } });
       }
       await tx.account.upsert({ where: { id: user.id }, create: user, update: { username: user.username } });
       await tx.loginSession.create({ data: { hash: digest(token), accountId: user.id, kind: 'web', expiresAt: new Date(Date.now() + SESSION_SECONDS * 1000) } });
+      return [user.username, ...(existing?.username ? [existing.username] : [])];
     });
+    await purgePublicCache(previousNames);
     return redirect(`${origin()}/account${state.device ? `?device=${state.device}` : ''}`, [clear, cookieValue(SESSION_COOKIE, token, SESSION_SECONDS)]);
   }
   if (path === '/api/auth/device/approve' && request.method === 'POST') {

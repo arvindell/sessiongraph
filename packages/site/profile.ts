@@ -24,11 +24,14 @@ async function load() {
   try {
     if (!name) { showError('Profile not found.'); return; }
     document.title = `@${name} — SessionGraph`;
-    const response = await fetch(`/api/profiles/${encodeURIComponent(name)}`, { cache: 'no-store', credentials: 'omit' });
+    // Download the renderer concurrently with the snapshot, not after the API.
+    const renderer = import('@sessiongraph/core/public-viewer');
+    void renderer.catch(() => {});
+    const response = await fetch(`/api/profiles/${encodeURIComponent(name)}`, { credentials: 'omit' });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Could not load this graph.');
     const graph = validatePublicGraph(result.graph);
-    const { createPublicViewer } = await import('@sessiongraph/core/public-viewer');
+    const { createPublicViewer } = await renderer;
     const username = typeof result.username === 'string' && validUsername.test(result.username) ? result.username : name;
     const card = cardTemplate.content.firstElementChild!.cloneNode(true) as HTMLElement;
     const heading = card.querySelector<HTMLElement>('#profile-name')!;

@@ -4,21 +4,24 @@
   "type": "module",
   "scripts": {
     "generate": "prisma generate",
-    "build": "pnpm generate && vite build && node ../../scripts/build-site-api.mjs",
+    "build": "pnpm generate && vite build && node ../../scripts/build-site-api.mjs --pages",
     "dev": "vite --host 127.0.0.1 --port 5190",
     "dev:setup": "pnpm generate && tsx dev/setup.ts",
     "typecheck": "pnpm generate && tsc --noEmit",
     "test": "pnpm generate && tsx --test tests/*.test.ts",
-    "db:migrate": "PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=1 prisma migrate deploy"
+    "test:browser": "pnpm build && tsx tests/browser.ts",
+    "db:migrate": "PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=1 prisma migrate deploy",
+    "db:backfill-publications": "tsx server/backfill-publications.ts"
   },
   "engines": {
     "node": "24.x"
   },
   "dependencies": {
-    "@sessiongraph/core": "workspace:*",
     "@aws/aurora-dsql-node-postgres-connector": "^0.1.9",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
+    "@sessiongraph/core": "workspace:*",
+    "@vercel/functions": "^3.11.4",
     "@vercel/oidc-aws-credentials-provider": "^3.3.18",
     "pg": "^8.23.1"
   },

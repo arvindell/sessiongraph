@@ -99,3 +99,66 @@ The runner builds production assets without the local API plugin. Every API requ
 - `src/publishing.ts` / `packages/core/src/public-viewer.ts`: update the existing preview renderer and virtualized session list, and cancel superseded preview requests.
 
 Timing thresholds are deliberately kept out of unit tests. Structural assertions catch regressions reliably; use repeated benchmark comparisons to evaluate latency changes.
+
+## Public pages
+
+Measured November 27, 2026. Public production GETs only; no changes to the hosted site. Three fresh Chromium contexts per route, 1440×1000, DPR 2, unthrottled from this workstation. These are lab samples, not field Core Web Vitals or percentile guarantees.
+
+### Live baseline
+
+| Measurement | Median |
+| --- | ---: |
+| Landing page FCP / LCP | 632 / 632 ms |
+| Explore listings usable | 2,282 ms |
+| Explore LCP | 3,124 ms |
+| Sample public profile canvas ready | 2,907 ms |
+| Explore HTML, warm HTTP connection | 93 ms |
+| Gallery API complete response | 1,200 ms |
+| Sample profile API complete response | 1,273 ms |
+| Sample thumbnail API complete response | 965 ms |
+
+The static HTML returned `x-vercel-cache: HIT`. Every sampled public JSON/SVG response returned `MISS` and `Cache-Control: no-store`. The gallery fetched data only after JavaScript loaded; thumbnails then made another uncached request. One thumbnail failed to load in two of the three browser runs. The measurements do not establish the failure's cause.
+
+Previews were already inert SVGs, bounded to about 600 visible nodes, not live WebGL canvases. The waste was server work: gallery reads decompressed every selected graph for totals, and thumbnail reads decompressed and laid out the graph again. The sample profile response was about 2 MB decoded; its renderer download started only after that response.
+
+### Local before/after
+
+Seven API repetitions against the same local PostgreSQL fixture: 18 synthetic publications with 4,000–4,850 sessions each. Baseline API code comes from `547db1f`; the shared graph implementation and database are held constant. These results include the handler/rate limiter and response consumption, but not WAN latency or Vercel's CDN.
+
+| API | Before median | After median |
+| --- | ---: | ---: |
+| Gallery, twelve cards | 113.9 ms | 14.5 ms |
+| One SVG thumbnail | 69.3 ms | 9.5 ms |
+
+One production-asset browser run loaded the populated local Explore page in 189 ms. This is a localhost observation, **not** an estimate of deployed page speed. Real CDN hit latency, cache eviction, and cold function behavior must be measured after deployment.
+
+### Changes
+
+- Precompute summary metadata and bounded SVGs during publication; store them separately from compressed graphs and replace both atomically.
+- Render the first Explore page as complete HTML and cache it at Vercel's CDN, with no React hydration or bootstrap data request.
+- Keep a small progressively enhanced client: username substring search, sorting by recorded tokens/session count/recent update, server-side pagination, and cancellation.
+- Cache public JSON/SVG responses too. ETags support revalidation; tagged foreground deletion covers publication edits, removal, and old/new GitHub usernames. Browser caches must revalidate, and revoked content has no SWR grace period.
+- Download the profile renderer and graph concurrently; give content-hashed static assets a one-year immutable browser lifetime.
+- Retain the distributed rate limit while removing explicit BEGIN/COMMIT round trips around its single atomic UPSERT. Attach the database pool to Vercel's Fluid lifecycle.
+
+This is on-demand rendering plus CDN caching, with the same warm-path benefit sought from ISR. Build-time SSG for all usernames/searches would require rebuilding for publications and deletions; the cache-tag approach handles those changes directly. The existing Vite/static architecture remains lightweight.
+
+### Vercel domain-search research
+
+Vercel's [domain-search launch](https://vercel.com/changelog/vercel-domains-at-cost-pricing-and-the-fastest-on-the-web) explicitly describes streaming results, structured concurrency, layered caching, Bloom filters, and partitioned batching. The transferable ideas here are doing expensive work ahead of reads, layering caches, and overlapping independent work. Domain-availability Bloom filters and registrar batching address a different workload; this gallery can use an indexed database query over compact publication metadata.
+
+Implementation references: [Vercel cache headers](https://vercel.com/docs/caching/cache-control-headers) and [Function cache-tag eviction/pool lifecycle APIs](https://vercel.com/docs/functions/functions-api-reference/vercel-functions-package).
+
+### Rerun
+
+```sh
+# Read-only live-page measurements. Output contains timings/resource paths only.
+SITE_PATHS='/,/explore,/@username' PERF_RUNS=3 \
+  node scripts/benchmark-public-site.mjs
+
+# Local synthetic API comparison and browser correctness.
+TEST_DATABASE_URL=postgresql://sessiongraph@127.0.0.1:55439/sessiongraph_test \
+  PERF_BASELINE=547db1f pnpm --filter sessiongraph-site test:browser
+```
+
+The local checks cover usable HTML without JavaScript, no gallery WebGL download, no initial API waterfall, cross-page username search, global sorting, null token totals, stable ties, pagination, search cancellation, and narrow screens. API tests also cover ETags, changed/revoked publications, metadata-only reads, additive backfill, and cache invalidation arguments. Rollout requires the additive schema migration and backfill described in the [website README](../packages/site/README.md#existing-publication-migration).

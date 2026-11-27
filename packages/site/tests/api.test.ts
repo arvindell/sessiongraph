@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
@@ -9,6 +9,7 @@ import { digest, randomToken, unseal } from '../server/security';
 import { DEFAULT_PUBLISHING, publishableGraph } from '@sessiongraph/core/public-graph';
 import { blankSession } from '../../../server/adapters/common';
 import { gzipSync } from 'node:zlib';
+import { backfillPublicationPreviews } from '../server/publication-preview';
 
 test('public API authentication, ownership, publication and organization lifecycle', { skip: !process.env.TEST_DATABASE_URL }, async t => {
   const connectionString = process.env.TEST_DATABASE_URL!;
@@ -17,11 +18,14 @@ test('public API authentication, ownership, publication and organization lifecyc
   const pool = new pg.Pool({ connectionString });
   await pool.query('DROP SCHEMA IF EXISTS sessiongraph CASCADE');
   for (const table of ['Account', 'LoginSession', 'DeviceGrant', 'Publication', 'RateLimit', 'Organization', 'Membership', 'Invitation']) await pool.query(`DROP TABLE IF EXISTS public."${table}"`);
-  for (const migration of ['202611040001_public_profiles', '202611040002_application_schema']) {
+  const migrations = await readdir(new URL('../prisma/migrations/', import.meta.url), { withFileTypes: true });
+  for (const migration of migrations.filter(entry => entry.isDirectory()).map(entry => entry.name).sort()) {
     const sql = await readFile(new URL(`../prisma/migrations/${migration}/migration.sql`, import.meta.url), 'utf8');
     await pool.query(sql.replaceAll('INDEX ASYNC', 'INDEX'));
   }
-  const db = new PrismaClient({ adapter: new PrismaPg(pool, { schema: 'sessiongraph' }) });
+  const queries: string[] = [];
+  const db = new PrismaClient({ adapter: new PrismaPg(pool, { schema: 'sessiongraph' }), log: [{ level: 'query', emit: 'event' }] });
+  db.$on('query', event => queries.push(event.query));
   process.env.AUTH_SECRET = 'test-only-secret-with-at-least-32-characters';
   process.env.GITHUB_CLIENT_ID = 'test-client'; process.env.GITHUB_CLIENT_SECRET = 'test-secret';
   const originalFetch = globalThis.fetch;
@@ -51,15 +55,23 @@ test('public API authentication, ownership, publication and organization lifecyc
     });
     await t.test('publishing replaces only the authenticated account; disabled fields disappear and unpublish removes the public API', async () => {
       assert.equal((await request('publication', 'PUT', { confirmed: true, graph }, 'alice')).status, 200);
-      const publicResponse = await request('profiles/ALICE'); assert.equal(publicResponse.status, 200); assert.equal(publicResponse.headers.get('cache-control'), 'no-store');
+      const publicResponse = await request('profiles/ALICE'); assert.equal(publicResponse.status, 200); assert.equal(publicResponse.headers.get('cache-control'), 'public, max-age=0, must-revalidate');
+      assert.equal(publicResponse.headers.get('vercel-cdn-cache-control'), 'public, max-age=300');
+      assert.equal(publicResponse.headers.get('vercel-cache-tag'), 'public-profile:alice');
+      assert.equal(publicResponse.headers.get('set-cookie'), null);
+      const etag = publicResponse.headers.get('etag')!;
+      assert.equal((await request('profiles/alice', 'GET', undefined, undefined, { 'If-None-Match': etag })).status, 304);
       assert.deepEqual((await publicResponse.json()).graph, graph);
       assert.equal((await request('publication', 'DELETE', undefined, 'bob')).status, 200);
       assert.equal((await request('profiles/alice')).status, 200);
       const hidden = publishableGraph([blankSession('opencode', 'private')], { ...DEFAULT_PUBLISHING, tokens: false, timestamps: false, model: false });
       assert.equal((await request('publication', 'PUT', { confirmed: true, graph: hidden }, 'alice')).status, 200);
+      assert.equal((await request('profiles/alice', 'GET', undefined, undefined, { 'If-None-Match': etag })).status, 200);
       const updated = (await (await request('profiles/alice')).json()).graph;
       assert.equal('tokens' in updated.sessions[0], false); assert.equal('timestamps' in updated.sessions[0], false); assert.equal('messageTimes' in updated.sessions[0], false);
       await request('publication', 'DELETE', undefined, 'alice'); assert.equal((await request('profiles/alice')).status, 404);
+      assert.equal((await request('profiles/alice', 'GET', undefined, undefined, { 'If-None-Match': etag })).status, 404);
+      assert.equal(await db.publicationPreview.count(), 0);
     });
     await t.test('gallery pagination and thumbnails expose only current public snapshots and honor disabled fields', async () => {
       assert.deepEqual(await (await request('graphs')).json(), { graphs: [], nextPage: null });
@@ -71,21 +83,42 @@ test('public API authentication, ownership, publication and organization lifecyc
         await db.account.create({ data: { id: `gallery-${i}`, username: `gallery-${i}` } });
         await db.publication.create({ data: { accountId: `gallery-${i}`, graph: gzipSync(JSON.stringify(graph)) } });
       }
-      const first = await request('graphs'); assert.equal(first.headers.get('cache-control'), 'no-store');
+      const beforeBackfill = await db.publication.findMany({ orderBy: { accountId: 'asc' }, select: { accountId: true, updatedAt: true } });
+      await backfillPublicationPreviews(db);
+      assert.deepEqual(await db.publication.findMany({ orderBy: { accountId: 'asc' }, select: { accountId: true, updatedAt: true } }), beforeBackfill);
+      assert.equal(await db.publicationPreview.count(), 13);
+      assert.equal(await backfillPublicationPreviews(db), 0, 'backfill is idempotent');
+      queries.length = 0;
+      const first = await request('graphs'); assert.equal(first.headers.get('vercel-cache-tag'), 'public-gallery');
       const a = await first.json(), b = await (await request(`graphs?page=${a.nextPage}`)).json();
       assert.equal(a.graphs.length, 12); assert.equal(a.nextPage, 1); assert.equal(b.graphs.length, 1); assert.equal(b.nextPage, null);
       const rows = [...a.graphs, ...b.graphs]; assert.equal(new Set(rows.map(r => r.username)).size, 13);
-      for (const row of rows) assert.deepEqual(Object.keys(row).sort(), ['sessionCount', 'tokenCount', 'tokensPartial', 'updatedAt', 'username']);
+      for (const row of rows) assert.deepEqual(Object.keys(row).sort(), ['revision', 'sessionCount', 'tokenCount', 'tokensPartial', 'updatedAt', 'username']);
       assert.equal(rows.find(r => r.username === 'alice').tokenCount, 123); assert.equal(rows.find(r => r.username === 'alice').tokensPartial, true);
       assert.equal(rows.find(r => r.username === 'bob').tokenCount, null);
       assert.doesNotMatch(JSON.stringify(rows), /secret-a|secret-b|private|accountId|graph"|hash/);
-      const image = await request('profiles/alice/thumbnail.svg'); assert.equal(image.status, 200); assert.equal(image.headers.get('cache-control'), 'no-store');
+      const image = await request('profiles/alice/thumbnail.svg'); assert.equal(image.status, 200); assert.equal(image.headers.get('vercel-cache-tag'), 'public-profile:alice');
       assert.equal(image.headers.get('content-type'), 'image/svg+xml'); assert.match(await image.text(), /^<svg/);
+      assert.equal(queries.some(sql => /\."graph"/.test(sql)), false, 'gallery and thumbnail reads never fetch compressed graphs');
+      const search = await (await request('graphs?q=%40ALIce')).json();
+      assert.deepEqual(search.graphs.map((r: any) => r.username), ['alice']);
+      assert.deepEqual((await (await request('graphs?q=lice')).json()).graphs.map((r: any) => r.username), ['alice']);
+      assert.equal((await (await request('graphs?q=missing')).json()).graphs.length, 0);
+      const bySessions = await (await request('graphs?sort=sessions')).json();
+      assert.equal(bySessions.graphs[0].username, 'alice');
+      const byTokens = await (await request('graphs?sort=tokens')).json();
+      const lastTokens = await (await request(`graphs?sort=tokens&page=${byTokens.nextPage}`)).json();
+      assert.equal(lastTokens.graphs.at(-1).username, 'bob', 'unknown token totals sort after known totals');
+      const secondTokens = await (await request('graphs?sort=tokens')).json();
+      assert.deepEqual(byTokens, secondTokens, 'ties are deterministic');
+      const sparseSearch = await (await request('graphs?q=bob&sort=sessions')).json();
+      assert.equal(sparseSearch.graphs[0].username, 'bob', 'search runs before pagination');
       for (const page of ['-1', 'abc', '1.5', '999999']) assert.equal((await request(`graphs?page=${page}`)).status, 400);
+      for (const query of ['q=%25', 'q=a_b', `q=${'a'.repeat(40)}`, 'sort=arbitrary']) assert.equal((await request(`graphs?${query}`)).status, 400);
       await request('publication', 'DELETE', undefined, 'alice');
       assert.equal((await request('profiles/alice/thumbnail.svg')).status, 404);
       assert.equal((await (await request('graphs')).json()).graphs.some((r: any) => r.username === 'alice'), false);
-      await db.publication.deleteMany(); await db.account.deleteMany({ where: { id: { startsWith: 'gallery-' } } });
+      await db.publication.deleteMany(); await db.publicationPreview.deleteMany(); await db.account.deleteMany({ where: { id: { startsWith: 'gallery-' } } });
     });
     await t.test('desktop exchange requires browser approval, consumes grants once and persists only token hashes', async () => {
       const verifier = randomToken(), challenge = digest(verifier);
@@ -143,6 +176,7 @@ test('public API authentication, ownership, publication and organization lifecyc
       assert.equal((await db.account.findUnique({ where: { id: '200' } }))?.username, null);
       assert.equal((await request('profiles/reused-name')).status, 404);
       assert.equal(await db.publication.count(), 0);
+      assert.equal(await db.publicationPreview.count(), 0);
     });
     await t.test('logout revokes server credentials immediately', async () => {
       assert.equal((await request('auth/logout', 'POST', {}, 'alice')).status, 200);
