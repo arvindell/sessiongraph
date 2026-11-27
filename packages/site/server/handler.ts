@@ -1,18 +1,21 @@
 import { gzipSync } from 'node:zlib';
-import { database, transaction, type DB } from './db';
+import { database, retryWrite, transaction, type DB } from './db';
 import { authenticate, authRoute } from './auth';
 import { organizationRoute } from './organizations';
 import { HttpError, digest, json, readBody } from './security';
 import { PUBLIC_GRAPH_MAX_BYTES, validatePublicGraph } from '@sessiongraph/core/public-graph';
 import { publicRoute } from './publications';
+import { publicationPreview } from './publication-preview';
+import { purgePublicCache } from './public-cache';
 
 async function limit(request: Request, db: DB, path: string) {
   // Vercel overwrites x-real-ip. Locally all callers intentionally share a bucket.
   const ip = request.headers.get('x-real-ip') || 'local';
   const bucket = Math.floor(Date.now() / 60_000);
-  const reading = path.startsWith('/api/profiles/') || path === '/api/graphs';
+  const reading = path.startsWith('/api/profiles/') || path === '/api/graphs' || path === '/explore';
   const key = digest(`${ip}:${bucket}:${reading ? 'read' : 'write'}`);
-  const count = await transaction(db, tx => tx.rateLimit.upsert({ where: { key }, create: { key, count: 1, expiresAt: new Date((bucket + 2) * 60_000) }, update: { count: { increment: 1 } } }));
+  // This is one atomic UPSERT. Avoid BEGIN/COMMIT network round trips on reads.
+  const count = await retryWrite(() => db.rateLimit.upsert({ where: { key }, create: { key, count: 1, expiresAt: new Date((bucket + 2) * 60_000) }, update: { count: { increment: 1 } } }));
   if (count.count > (reading ? 120 : 60)) throw new HttpError(429, 'Too many requests. Please try again in a minute.');
 }
 export async function handle(request: Request, provided?: DB): Promise<Response> {
@@ -56,11 +59,21 @@ export async function handle(request: Request, provided?: DB): Promise<Response>
         try { graph = validatePublicGraph(body.graph); } catch (error) { throw new HttpError(400, (error as Error).message); }
         const compressed = gzipSync(JSON.stringify(graph));
         if (compressed.length > 1_000_000) throw new HttpError(413, 'This graph is too large. Choose a smaller date range.');
-        const publication = await transaction(db, tx => tx.publication.upsert({ where: { accountId: account.id }, create: { accountId: account.id, graph: compressed }, update: { graph: compressed }, select: { updatedAt: true } }));
+        const preview = publicationPreview(graph), updatedAt = new Date();
+        const publication = await transaction(db, async tx => {
+          const result = await tx.publication.upsert({ where: { accountId: account.id }, create: { accountId: account.id, graph: compressed, updatedAt }, update: { graph: compressed, updatedAt }, select: { updatedAt: true } });
+          await tx.publicationPreview.upsert({ where: { accountId: account.id }, create: { accountId: account.id, updatedAt, ...preview }, update: { updatedAt, ...preview } });
+          return result;
+        });
+        await purgePublicCache([account.username!]);
         return json({ username: account.username, publication });
       }
       if (request.method === 'DELETE') {
-        await db.publication.deleteMany({ where: { accountId: account.id } });
+        await transaction(db, async tx => {
+          await tx.publication.deleteMany({ where: { accountId: account.id } });
+          await tx.publicationPreview.deleteMany({ where: { accountId: account.id } });
+        });
+        await purgePublicCache([account.username!]);
         return json({ unpublished: true });
       }
       throw new HttpError(405, 'Method not allowed.');

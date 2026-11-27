@@ -21,11 +21,14 @@ async function load() {
     if (!name) { showError('Profile not found.'); return; }
     document.querySelector('#profile-name')!.textContent = `@${name}`;
     document.title = `@${name} — SessionGraph`;
-    const response = await fetch(`/api/profiles/${encodeURIComponent(name)}`, { cache: 'no-store', credentials: 'omit' });
+    // Download the renderer concurrently with the snapshot, not after the API.
+    const renderer = import('@sessiongraph/core/public-viewer');
+    void renderer.catch(() => {});
+    const response = await fetch(`/api/profiles/${encodeURIComponent(name)}`, { credentials: 'omit' });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Could not load this graph.');
     const graph = validatePublicGraph(result.graph);
-    const { createPublicViewer } = await import('@sessiongraph/core/public-viewer');
+    const { createPublicViewer } = await renderer;
     document.querySelector('#profile-name')!.textContent = `@${result.username}`;
     summary.textContent = publicSummary(graph);
     loading.hidden = true; host.hidden = false;

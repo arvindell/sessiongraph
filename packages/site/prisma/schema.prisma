@@ -46,6 +46,23 @@ model Publication {
   @@schema("sessiongraph")
 }
 
+// Derived only from the confirmed public snapshot. Separate from the compressed
+// graph so it stays below DSQL's row limit and gallery scans never read blobs.
+model PublicationPreview {
+  accountId     String   @id
+  sessionCount  Int
+  tokenCount    BigInt?
+  tokensPartial Boolean
+  revision      String
+  thumbnail     String
+  updatedAt     DateTime
+
+  @@index([updatedAt, accountId])
+  @@index([sessionCount, accountId])
+  @@index([tokenCount, accountId])
+  @@schema("sessiongraph")
+}
+
 model RateLimit {
   key       String   @id
   count     Int

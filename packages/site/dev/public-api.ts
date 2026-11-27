@@ -1,6 +1,8 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
-import { publicRoute } from '../server/publications';
+import { galleryQuery, publicRoute, readGallery } from '../server/publications';
+import { explorePage } from '../server/explore-page';
+import { readFile } from 'node:fs/promises';
 import { HttpError, json } from '../server/security';
 import type { Connect, ViteDevServer } from 'vite';
 import { DEFAULT_PUBLISHING, validatePublicGraph } from '@sessiongraph/core/public-graph';
@@ -35,14 +37,19 @@ export function mountPublicApi(server: ViteDevServer) {
   let db: PrismaClient | undefined;
   const middleware: Connect.NextHandleFunction = async (req, res, next) => {
     const path = (req.url || '').split('?')[0];
-    if (path !== '/api/graphs' && !path.startsWith('/api/profiles/')) return next();
+    if (path !== '/explore' && path !== '/api/graphs' && !path.startsWith('/api/profiles/')) return next();
     let response: Response;
     try {
       if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
       if (path === '/api/profiles/demo-preview') response = json(demoProfile());
       else {
         db ??= new PrismaClient({ adapter: new PrismaPg({ connectionString: localDatabaseUrl() }, { schema: 'sessiongraph' }) });
-        response = await publicRoute(new Request(`http://localhost${req.url}`), db, path) ?? json({ error: 'Not found.' }, 404);
+        const request = new Request(`http://localhost${req.url}`);
+        if (path === '/explore') {
+          const query = galleryQuery(new URL(request.url));
+          const template = await server.transformIndexHtml('/explore', await readFile(new URL('../explore.html', import.meta.url), 'utf8'));
+          response = await explorePage(request, await readGallery(db, query), query, template);
+        } else response = await publicRoute(request, db, path) ?? json({ error: 'Not found.' }, 404);
       }
     } catch (error) {
       response = error instanceof HttpError ? json({ error: error.message }, error.status) : json({ error: 'Local public graph database unavailable. Run docker compose up -d --wait and pnpm --filter sessiongraph-site dev:setup.' }, 503);

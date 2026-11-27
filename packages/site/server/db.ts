@@ -2,6 +2,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { AuroraDSQLPool } from '@aws/aurora-dsql-node-postgres-connector';
 import { awsCredentialsProvider } from '@vercel/oidc-aws-credentials-provider';
 import { PrismaClient, Prisma } from '../generated/prisma/client';
+import { attachDatabasePool } from '@vercel/functions';
 
 let client: PrismaClient | undefined;
 export function database() {
@@ -13,6 +14,7 @@ export function database() {
     ssl: { rejectUnauthorized: true },
     ...(process.env.AWS_ROLE_ARN ? { customCredentialsProvider: awsCredentialsProvider({ roleArn: process.env.AWS_ROLE_ARN }) } : {}),
   });
+  attachDatabasePool(pool);
   client = new PrismaClient({ adapter: new PrismaPg(pool, { schema: 'sessiongraph' }) });
   return client;
 }
@@ -21,8 +23,12 @@ export type Transaction = Prisma.TransactionClient;
 
 /** Retry the entire transaction on DSQL optimistic conflicts, never individual statements. */
 export async function transaction<T>(db: DB, work: (tx: Transaction) => Promise<T>): Promise<T> {
+  return retryWrite(() => db.$transaction(work));
+}
+
+export async function retryWrite<T>(work: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt++) {
-    try { return await db.$transaction(work); }
+    try { return await work(); }
     catch (error) {
       const text = error instanceof Error ? error.message : '';
       if (attempt >= 3 || !(/OC000|OC001|40001|write conflict|deadlock/i.test(text) || (error as { code?: string }).code === 'P2034')) throw error;

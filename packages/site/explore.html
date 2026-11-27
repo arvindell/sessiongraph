@@ -12,6 +12,12 @@
       <header class="header"><a class="brand" href="/"><img src="/assets/brand/mark.svg" width="32" height="32" alt="">SessionGraph</a><nav aria-label="Main navigation"><a href="/account">Sign in</a><a class="nav-download" href="/#download">Create yours <span aria-hidden="true">↗</span></a></nav></header>
       <main id="main" class="gallery-main">
         <div class="gallery-heading"><h1>Explore graphs</h1></div>
+        <form id="gallery-controls" class="gallery-controls" action="/explore" method="get" role="search">
+          <label class="gallery-search"><span class="sr-only">Search usernames</span><span aria-hidden="true">@</span><input id="gallery-search" type="search" name="q" placeholder="Search usernames" maxlength="40" autocomplete="off" spellcheck="false" aria-controls="graph-gallery"></label>
+          <label class="gallery-sort"><span>Sort by</span><select id="gallery-sort" name="sort" aria-controls="graph-gallery"><option value="updated">Recently updated</option><option value="tokens">Most tokens</option><option value="sessions">Most sessions</option></select></label>
+          <button class="button gallery-submit" type="submit">Search</button>
+        </form>
+        <template id="gallery-data"></template>
         <div id="graph-gallery" class="graph-gallery" aria-busy="true" hidden></div>
         <div id="gallery-loading" class="graph-gallery" aria-hidden="true">
           <div class="graph-card graph-card-skeleton"><div class="graph-card-preview skeleton"></div><div class="graph-card-body"><span class="skeleton skeleton-line skeleton-title"></span><span class="skeleton skeleton-line"></span><span class="skeleton skeleton-line skeleton-short"></span></div></div>
@@ -21,7 +27,7 @@
           <div class="graph-card graph-card-skeleton"><div class="graph-card-preview skeleton"></div><div class="graph-card-body"><span class="skeleton skeleton-line skeleton-title"></span><span class="skeleton skeleton-line"></span><span class="skeleton skeleton-line skeleton-short"></span></div></div>
           <div class="graph-card graph-card-skeleton"><div class="graph-card-preview skeleton"></div><div class="graph-card-body"><span class="skeleton skeleton-line skeleton-title"></span><span class="skeleton skeleton-line"></span><span class="skeleton skeleton-line skeleton-short"></span></div></div>
         </div>
-        <div class="gallery-state"><p id="gallery-status" class="sr-only" role="status">Loading public graphs…</p><button id="gallery-more" class="button" hidden>Show more graphs</button><a id="gallery-create" class="text-link" href="/#download" hidden>Create your first graph <span aria-hidden="true">↗</span></a></div>
+        <div class="gallery-state"><p id="gallery-status" class="sr-only" role="status">Loading public graphs…</p><a id="gallery-more" class="button" href="/explore?page=1" hidden>Show more graphs</a><a id="gallery-create" class="text-link" href="/#download" hidden>Create your first graph <span aria-hidden="true">↗</span></a></div>
       </main>
       <footer class="footer"><a class="brand footer-brand" href="/" aria-label="SessionGraph home"><img src="/assets/brand/mark.svg" width="28" height="28" alt="">SessionGraph</a><p>Only what you choose to share.</p><div><a href="https://github.com/arvindell/sessiongraph">GitHub ↗</a><a href="/privacy">Privacy</a></div></footer>
     </div>
