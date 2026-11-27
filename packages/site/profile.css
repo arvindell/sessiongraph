@@ -18,6 +18,7 @@
 .graph-loading { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 30px; text-align: center; }
 .graph-loading p { color: var(--muted); }
 .graph-loading a { color: var(--mint); font-size: 13px; }
+#profile-preview { max-width: 100%; height: auto; max-height: 45vh; object-fit: contain; }
 .graph-loading[data-state=loading] { position: relative; padding: 0; }
 .graph-loading:not([data-state=loading]) .graph-skeleton { display: none; }
 .graph-skeleton { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(ellipse at 65% 45%, #b0e9d603, transparent 65%), var(--color-canvas); }

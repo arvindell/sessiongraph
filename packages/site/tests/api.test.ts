@@ -55,6 +55,11 @@ test('public API authentication, ownership, publication and organization lifecyc
     });
     await t.test('publishing replaces only the authenticated account; disabled fields disappear and unpublish removes the public API', async () => {
       assert.equal((await request('publication', 'PUT', { confirmed: true, graph }, 'alice')).status, 200);
+      const saved = await db.publication.findUniqueOrThrow({ where: { accountId: '101' } });
+      const preview = await db.publicationPreview.findUniqueOrThrow({ where: { accountId: '101' } });
+      assert.equal(preview.updatedAt.getTime(), saved.updatedAt.getTime());
+      assert.equal(preview.sessionCount, graph.sessions.length);
+      assert.match(preview.thumbnail, /^<svg/);
       const publicResponse = await request('profiles/ALICE'); assert.equal(publicResponse.status, 200); assert.equal(publicResponse.headers.get('cache-control'), 'public, max-age=0, must-revalidate');
       assert.equal(publicResponse.headers.get('vercel-cdn-cache-control'), 'public, max-age=300');
       assert.equal(publicResponse.headers.get('vercel-cache-tag'), 'public-profile:alice');
@@ -119,6 +124,53 @@ test('public API authentication, ownership, publication and organization lifecyc
       assert.equal((await request('profiles/alice/thumbnail.svg')).status, 404);
       assert.equal((await (await request('graphs')).json()).graphs.some((r: any) => r.username === 'alice'), false);
       await db.publication.deleteMany(); await db.publicationPreview.deleteMany(); await db.account.deleteMany({ where: { id: { startsWith: 'gallery-' } } });
+    });
+    await t.test('missing, stale, or unavailable previews never hide published graphs or serve stale statistics', async () => {
+      await db.rateLimit.deleteMany();
+      await request('publication', 'PUT', { confirmed: true, graph }, 'alice');
+      await request('publication', 'PUT', { confirmed: true, graph }, 'bob');
+      await db.publicationPreview.delete({ where: { accountId: '101' } });
+      await db.publicationPreview.update({ where: { accountId: '102' }, data: { updatedAt: new Date(0), tokenCount: 999_999n } });
+      for (const sort of ['updated', 'sessions', 'tokens']) {
+        const response = await request(`graphs?sort=${sort}`);
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get('vercel-cdn-cache-control'), 'no-store');
+        const data = await response.json();
+        assert.equal(data.graphs.length, 2);
+        assert.equal(data.previewsPending, true);
+        for (const row of data.graphs) {
+          assert.equal(row.sessionCount, null); assert.equal(row.tokenCount, null); assert.equal(row.revision, null);
+        }
+      }
+      const thumbnail = await request('profiles/alice/thumbnail.svg');
+      assert.equal(thumbnail.status, 200);
+      assert.equal(thumbnail.headers.get('vercel-cdn-cache-control'), 'no-store');
+      assert.match(await thumbnail.text(), /Open graph to explore/);
+      assert.deepEqual((await (await request('profiles/alice')).json()).graph, graph);
+
+      // Simulate an old schema during rollout. The primary data remains readable.
+      await pool.query('ALTER TABLE sessiongraph."PublicationPreview" RENAME TO "UnavailablePreview"');
+      try {
+        const response = await request('graphs?q=ali&sort=tokens');
+        assert.equal(response.status, 200);
+        const data = await response.json();
+        assert.deepEqual(data.graphs.map((row: any) => row.username), ['alice']);
+        assert.equal(data.graphs[0].sessionCount, null);
+        assert.equal((await request('profiles/alice/thumbnail.svg')).status, 200);
+        assert.equal((await request('profiles/missing/thumbnail.svg')).status, 404);
+        assert.deepEqual((await (await request('profiles/alice')).json()).graph, graph);
+        const before = await db.publication.findUniqueOrThrow({ where: { accountId: '101' } });
+        assert.equal((await request('publication', 'PUT', { confirmed: true, graph }, 'alice')).status, 503);
+        const after = await db.publication.findUniqueOrThrow({ where: { accountId: '101' } });
+        assert.equal(after.updatedAt.getTime(), before.updatedAt.getTime(), 'a failed preview write rolls back the upload');
+        assert.deepEqual(after.graph, before.graph);
+      } finally { await pool.query('ALTER TABLE sessiongraph."UnavailablePreview" RENAME TO "PublicationPreview"'); }
+      assert.equal(await backfillPublicationPreviews(db), 2);
+      assert.equal((await request('graphs')).headers.get('vercel-cdn-cache-control'), 'public, max-age=300');
+      await request('publication', 'DELETE', undefined, 'alice');
+      await request('publication', 'DELETE', undefined, 'bob');
+      assert.equal((await request('profiles/alice/thumbnail.svg')).status, 404);
+      assert.equal(await db.publicationPreview.count(), 0);
     });
     await t.test('desktop exchange requires browser approval, consumes grants once and persists only token hashes', async () => {
       const verifier = randomToken(), challenge = digest(verifier);
