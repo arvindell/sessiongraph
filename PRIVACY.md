@@ -54,7 +54,7 @@ New installations use:
 - **Windows:** `%LOCALAPPDATA%/SessionGraph/sessiongraph.sqlite`
 - **Linux:** `$XDG_DATA_HOME/sessiongraph/sessiongraph.sqlite`, defaulting to `~/.local/share/sessiongraph/sessiongraph.sqlite`
 
-`SESSIONGRAPH_DATA_DIR` overrides the location. Existing Session Atlas or Atlas libraries can be reused in place; see [storage resolution](docs/guide.md#local-storage-and-privacy). SQLite may also create `-wal` and `-shm` companion files. Saved-context Markdown files live in the library directory's `handoffs/` folder.
+`SESSIONGRAPH_DATA_DIR` overrides the location. Existing libraries from earlier app versions can be reused in place; see [storage resolution](docs/guide.md#local-storage-and-privacy). SQLite may also create `-wal` and `-shm` companion files. Saved-context Markdown files live in the library directory's `handoffs/` folder.
 
 Optional desktop login credentials live in `account.json` beside the library. The backend writes this file with owner-only permissions where supported and never returns its bearer token to the UI. The file is not encrypted; protect it like other local credentials. Signing out revokes the token remotely and removes the file; if revocation fails, the app keeps it so you can retry. Publishing field preferences are saved in the local library.
 

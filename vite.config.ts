@@ -19,8 +19,7 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: Number(process.env.PORT) || 5173,
-    // Keep existing local bookmarks working after the rename.
-    allowedHosts: ['sessiongraph.localhost', 'session-atlas.localhost', 'atlas.localhost', 'opencode-atlas.localhost'],
+    allowedHosts: ['sessiongraph.localhost'],
   },
-  preview: { host: '127.0.0.1', allowedHosts: ['sessiongraph.localhost', 'session-atlas.localhost', 'atlas.localhost', 'opencode-atlas.localhost'] },
+  preview: { host: '127.0.0.1', allowedHosts: ['sessiongraph.localhost'] },
 });
