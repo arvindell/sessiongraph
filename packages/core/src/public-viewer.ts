@@ -4,7 +4,7 @@ import { InteractionAudio } from './audio';
 import { TimelineScene } from './scene';
 import { observeSelects } from './controls';
 import { DEFAULT_PREFERENCES } from './preferences';
-import { publicGraphLayout, validatePublicGraph, type PublicGraph } from './public-graph';
+import { newestPublicSessionFirst, publicGraphLayout, publicSessionRecency, validatePublicGraph, type PublicGraph } from './public-graph';
 import { playbackControls } from './playback-controls';
 import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, playbackDate, playbackSessions, timelineBuckets } from './playback';
 import { playbackTokens, validTokenCount } from './playback-tokens';
@@ -147,8 +147,8 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
   }
   function filter(reuseLayout = false) {
     stop(); progress = 1;
-    const cutoff = value.settings.timestamps && days ? Math.max(...value.sessions.map(s => Math.max(s.timestamps!.created, s.timestamps!.lastMessageAt ?? 0))) - days * 86400_000 : 0;
-    visible = value.sessions.filter(s => (!project.value || String(s.group) === project.value) && (!harness.value || s.harness === harness.value) && (!cutoff || Math.max(s.timestamps!.created, s.timestamps!.lastMessageAt ?? 0) >= cutoff));
+    const cutoff = value.settings.timestamps && days ? Math.max(...value.sessions.map(publicSessionRecency)) - days * 86400_000 : 0;
+    visible = value.sessions.filter(s => (!project.value || String(s.group) === project.value) && (!harness.value || s.harness === harness.value) && (!cutoff || publicSessionRecency(s) >= cutoff)).sort(newestPublicSessionFirst);
     if (!reuseLayout) graph = publicGraphLayout(value, new Set(visible.map(s => s.id)));
     sessionCount = playbackSessions(graph.nodes.map(n => n.session)); tokens = playbackTokens(graph.nodes.map(n => n.session), { allSources: true });
     scene?.setGraph(graph, true); select(null);

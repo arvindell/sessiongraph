@@ -34,6 +34,15 @@ export interface PublicSession {
 }
 /** The entire public wire format: settings determine the exact keys allowed. */
 export interface PublicGraph { version: 1; settings: PublishingSettings; sessions: PublicSession[] }
+
+/** Anonymous IDs are assigned in creation order, even when timestamps are hidden. */
+export function publicSessionRecency(session: PublicSession) {
+  return session.timestamps ? Math.max(session.timestamps.created, session.timestamps.lastMessageAt ?? 0) : 0;
+}
+
+export function newestPublicSessionFirst(a: PublicSession, b: PublicSession) {
+  return publicSessionRecency(b) - publicSessionRecency(a) || b.id - a.id;
+}
 export const PUBLIC_GRAPH_MAX_SESSIONS = 10_000;
 export const PUBLIC_GRAPH_MAX_BYTES = 2_000_000;
 export const PUBLIC_GRAPH_MAX_MESSAGE_TIMES = 100_000;

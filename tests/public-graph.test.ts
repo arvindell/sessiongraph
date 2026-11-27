@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes, createHash } from 'node:crypto';
-import { DEFAULT_PUBLISHING, PUBLIC_FIELDS, PUBLIC_GRAPH_MAX_BYTES, PUBLIC_GRAPH_MAX_MESSAGE_TIMES, publishableGraph, publishingSettings, validatePublicGraph, publicGraphLayout } from '@sessiongraph/core/public-graph';
+import { DEFAULT_PUBLISHING, PUBLIC_FIELDS, PUBLIC_GRAPH_MAX_BYTES, PUBLIC_GRAPH_MAX_MESSAGE_TIMES, newestPublicSessionFirst, publishableGraph, publishingSettings, validatePublicGraph, publicGraphLayout } from '@sessiongraph/core/public-graph';
 import { PublishingClient, preparePublicGraph } from '../server/publishing';
 import { SessionGraphStore } from '../server/store';
 import { blankSession, blankMessage } from '../server/adapters/common';
@@ -71,6 +71,20 @@ test('public filtering preserves anonymous IDs, original groups across harnesses
   assert.equal(filtered.nodes[0].session.id, '1'); assert.equal(filtered.nodes[0].session.source, 'codex');
   assert.equal(filtered.edges.length, 0);
   assert.equal(publicGraphLayout(graph, new Set()).nodes.length, 0);
+});
+
+test('public session lists order by latest activity, or newest anonymous ID without timestamps', () => {
+  const base = secretSession('a');
+  const sessions = [
+    { ...base, activity: { ...base.activity, lastMessageAt: base.created + 5000 } },
+    { ...secretSession('b'), created: base.created + 1000, activity: undefined },
+    { ...secretSession('c'), created: base.created + 2000, activity: undefined },
+  ];
+  const timed = publishableGraph(sessions, DEFAULT_PUBLISHING);
+  const untimed = publishableGraph(sessions, { ...DEFAULT_PUBLISHING, timestamps: false });
+  assert.deepEqual(timed.sessions.toSorted(newestPublicSessionFirst).map(s => s.id), [0, 2, 1]);
+  assert.deepEqual(untimed.sessions.toSorted(newestPublicSessionFirst).map(s => s.id), [2, 1, 0]);
+  assert.deepEqual(timed.sessions.map(s => s.id), [0, 1, 2]);
 });
 
 test('public thumbnails use only validated metadata and remain bounded for large graphs', () => {
