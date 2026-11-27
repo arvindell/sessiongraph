@@ -18,15 +18,18 @@ const table = (headers: string[], rows: unknown[][]) => [headers.join('\t'), ...
 function human(command: string, data: any): string {
   const continuation = (value: { nextCursor?: string | null }) => value.nextCursor ? `\nNext page: --cursor ${value.nextCursor}` : '';
   if (command === 'sessions') return `${table(['ID', 'SOURCE', 'TITLE', 'DIRECTORY'], data.items.map((s: any) => [s.id, s.source, s.title, s.directory]))}\n${data.total} sessions.${continuation(data)}`;
-  if (command === 'search') return `${table(['ID', 'MATCH', 'TITLE', 'EXCERPT'], data.hits.map((h: any) => [h.id, h.source, h.session.title, h.excerpt]))}\n${data.total} matches; ${data.coverage.complete}/${data.coverage.sessions} sessions fully indexed.${continuation(data)}\n${data.note}`;
-  if (command === 'sources list') return `${table(['SOURCE', 'SELECTED', 'AVAILABLE', 'SESSIONS', 'PATH'], data.sources.map((s: any) => [s.id, s.selected ? 'yes' : 'no', s.available ? 'yes' : 'no', s.sessions, s.path || '(automatic)']))}\n${data.sources.length} supported sources. Auto-import: ${data.autoImport ? 'on' : 'off'}.\nUse --json for capabilities, import errors, and path hints.`;
-  if (command === 'sources setup' || command === 'sources remove') return `Selected sources: ${data.selected.join(', ') || '(none)'}\nAuto-import: ${data.autoImport ? 'on' : 'off'}\nSaved history retained. Run sessiongraph sources sync to refresh.`;
-  if (command === 'sources sync') return `Imported ${data.imported}; unchanged ${data.unchanged}; failed ${data.failed}; discovered ${data.discovered}.\n${data.errors.map(cell).join('\n')}`;
+  if (command === 'search') return `${table(['ID', 'MATCH', 'TITLE', 'EXCERPT'], data.hits.map((h: any) => [h.id, h.source, h.session.title, h.excerpt]))}\n${data.total} matches.${continuation(data)}${data.coverage.limited ? `\nPartial search coverage (${data.coverage.complete}/${data.coverage.sessions} sessions complete). ${data.note}` : ''}`;
+  if (command === 'sources list') return `${table(['SOURCE', 'SELECTED', 'AVAILABLE', 'SESSIONS', 'PATH'], data.sources.map((s: any) => [s.id, s.selected ? 'yes' : 'no', s.available ? 'yes' : 'no', s.sessions, s.path || '(automatic)']))}\nAuto-import: ${data.autoImport ? 'on' : 'off'}.`;
+  if (command === 'sources setup' || command === 'sources remove') {
+    const status = `Sources: ${data.selected.join(', ') || '(none)'}\nAuto-import: ${data.autoImport ? 'on' : 'off'}`;
+    return status + (command === 'sources remove' ? '\nSaved history kept.' : data.selected.length ? '\nRun sessiongraph sync to import sessions.' : '');
+  }
+  if (command === 'sources sync') return `Imported ${data.imported}; unchanged ${data.unchanged}; failed ${data.failed}; discovered ${data.discovered}.${data.errors.length ? `\n${data.errors.map(cell).join('\n')}` : ''}`;
   if (command === 'stats') {
     const metric = (v: any) => `${v.knownTotal ?? 'unknown'} (${v.unknownSessions} unknown)`;
     return `${data.totals.sessions} sessions\n${table([data.groupBy.toUpperCase(), 'SESSIONS', 'TOKENS', 'COST'], data.groups.items.map((g: any) => [g.key, g.sessions, metric(g.tokens), metric(g.cost)]))}${continuation(data.groups)}\n${data.note}`;
   }
-  if (command === 'messages') return `${data.messages.map((m: any) => `[${cell(m.id)}] ${cell(m.role)} · ${m.time ? new Date(m.time).toISOString() : 'time unknown'}\n${m.fragments.map((f: any) => `${cell(f.kind)}: ${cell(f.text)}${f.truncated ? ' [truncated]' : ''}`).join('\n')}`).join('\n\n')}${continuation(data)}${data.partial ? '\nPartial saved history or shortened content. Inspect events for structured details.' : ''}`;
+  if (command === 'messages') return `${data.messages.map((m: any) => `[${cell(m.id)}] ${cell(m.role)} · ${m.time ? new Date(m.time).toISOString() : 'time unknown'}\n${m.fragments.map((f: any) => `${cell(f.kind)}: ${cell(f.text)}${f.truncated ? ' [truncated]' : ''}`).join('\n')}`).join('\n\n')}${continuation(data)}${data.partial ? '\nPartial history or truncated text. Use events for details.' : ''}`;
   if (command === 'doctor') return `${data.ok ? 'OK' : 'Needs attention'} — ${cell(data.database)}\n${table(['CHECK', 'STATUS', 'DETAIL'], data.checks.map((c: any) => [c.name, c.ok ? 'ok' : 'failed', c.message]))}\n${data.next}`;
   if (command === 'commands') return table(['COMMAND', 'EFFECT', 'DESCRIPTION'], commands.map(c => [c.name, c.effect, c.summary]));
   return JSON.stringify(data, null, 2).replace(/[\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, cell);

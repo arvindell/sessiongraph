@@ -49,6 +49,94 @@ test('CLI help, catalog and docs are discoverable without opening a library or d
 
 async function capture(args: string[]) { let output = ''; await runCli(args, { stdout: s => output += s }); return output; }
 
+test('CLI help and generated docs are concise while JSON retains command schemas', async () => {
+  const boilerplate = /Never starts agents|No background daemon|Does not import|No command publishes|No library access|without opening the library|without importing/;
+  for (const args of [['--help'], ['docs'], ...commands.map(c => [...c.name.split(' '), '--help'])]) {
+    const output = await capture(args);
+    assert.doesNotMatch(output, boilerplate, args.join(' '));
+    assert.doesNotMatch(output, /^(Effect|Result):/m, args.join(' '));
+  }
+  const show = await capture(['show', '--help']);
+  assert.match(show, /Usage: sessiongraph show <session-id>/);
+  assert.match(show, /Show session details\./);
+  assert.match(show, /--json/);
+  const sync = await capture(['sync', '--help']);
+  assert.match(sync, /Refresh sessions from configured sources\./);
+  assert.match(sync, /Aliases: sync, import/);
+  const sessions = await capture(['sessions', '--help']);
+  assert.match(sessions, /Results per page, 1–200\. Default: 50\./);
+  assert.match(sessions, /may double-count usage/);
+  const schema = JSON.parse(await capture(['help', 'show', '--json']));
+  assert.equal(schema.schemaVersion, 1);
+  assert.equal(schema.data.commands[0].effect, 'read');
+  assert.match(schema.data.commands[0].result, /Session/);
+  const docs = JSON.parse(await capture(['docs', 'sources', 'setup', '--json']));
+  assert.match(docs.data.markdown, /Configure session sources\./);
+  assert.doesNotMatch(docs.data.markdown, boilerplate);
+});
+
+async function fixtureCli(path: string, args: string[]) {
+  let out = '', err = '';
+  const code = await runCli(args, { stdout: s => out += s, stderr: s => err += s,
+    openLibrary: () => new LibraryService(new SessionGraphStore(path), [adapter('codex')]) });
+  return { code, out, err };
+}
+
+test('CLI source output gives next steps for setup and retention details for removal', async t => {
+  const dir = await directory(t), path = join(dir, 'library.sqlite'), store = new SessionGraphStore(path);
+  save(store, 'retained'); store.close();
+  assert.deepEqual(await fixtureCli(path, ['sources', 'setup', '--auto-import', 'off']),
+    { code: 0, out: 'Sources: (none)\nAuto-import: off\n', err: '' });
+  assert.deepEqual(await fixtureCli(path, ['sources', 'setup', 'codex']),
+    { code: 0, out: 'Sources: codex\nAuto-import: off\nRun sessiongraph sync to import sessions.\n', err: '' });
+  const sources = await fixtureCli(path, ['sources']);
+  assert.equal(sources.code, 0); assert.equal(sources.err, '');
+  assert.match(sources.out, /codex\tyes\tyes/);
+  assert.doesNotMatch(sources.out, /Use --json|Saved history/);
+  assert.deepEqual(await fixtureCli(path, ['sync']),
+    { code: 0, out: 'Imported 0; unchanged 0; failed 0; discovered 0.\n', err: 'Syncing local sources…\n' });
+  const setup = await fixtureCli(path, ['sources', 'setup', 'codex', '--json']);
+  assert.equal(setup.code, 0); assert.equal(setup.err, '');
+  assert.deepEqual(JSON.parse(setup.out), { schemaVersion: 1, command: 'sources setup',
+    data: { selected: ['codex'], paths: {}, autoImport: false, historyRetained: true } });
+  assert.deepEqual(await fixtureCli(path, ['sources', 'remove', '--all']),
+    { code: 0, out: 'Sources: (none)\nAuto-import: off\nSaved history kept.\n', err: '' });
+  const retained = await fixtureCli(path, ['show', 'codex:retained', '--json']);
+  assert.equal(retained.code, 0);
+  assert.equal(JSON.parse(retained.out).data.id, 'codex:retained');
+});
+
+test('CLI keeps coverage and lifetime usage notes without repeating search guidance on complete results', async t => {
+  const dir = await directory(t), path = join(dir, 'library.sqlite');
+  let store = new SessionGraphStore(path);
+  save(store, 'complete', { tokens: null, cost: null }, ['OAuth callback']); store.close();
+  const complete = await fixtureCli(path, ['search', 'OAuth']);
+  assert.equal(complete.code, 0); assert.equal(complete.err, '');
+  assert.match(complete.out, /1 matches\.\n$/);
+  assert.doesNotMatch(complete.out, /coverage|Search samples|messages\/events/);
+  const empty = await fixtureCli(path, ['search', 'missing']);
+  assert.equal(empty.code, 0); assert.match(empty.out, /0 matches\.\n$/);
+  assert.doesNotMatch(empty.out, /coverage|Search samples/);
+  store = new SessionGraphStore(path);
+  save(store, 'long', { tokens: null, cost: null }, ['x'.repeat(90000)]); store.close();
+  const partial = await fixtureCli(path, ['search', 'OAuth']);
+  assert.equal(partial.code, 0);
+  assert.match(partial.out, /Partial search coverage \(1\/2 sessions complete\)/);
+  assert.match(partial.out, /Narrow filters for more coverage/);
+  const json = await fixtureCli(path, ['search', 'OAuth', '--json']);
+  assert.equal(json.code, 0); assert.equal(json.err, '');
+  assert.equal(JSON.parse(json.out).data.coverage.limited, true);
+  assert.match(JSON.parse(json.out).data.note, /Search samples saved content/);
+  const messages = await fixtureCli(path, ['messages', 'codex:long']);
+  assert.equal(messages.code, 0);
+  assert.match(messages.out, /\[truncated\]/);
+  assert.match(messages.out, /Partial history or truncated text\. Use events for details\./);
+  const stats = await fixtureCli(path, ['stats']);
+  assert.equal(stats.code, 0);
+  assert.match(stats.out, /unknown \(2 unknown\)/);
+  assert.match(stats.out, /Totals use matched sessions’ lifetime usage\. Unknown usage is reported separately\./);
+});
+
 test('v5 source retirement clears obsolete configuration, preserves history, and keeps default sync working', async t => {
   const dir = await directory(t), path = join(dir, 'library.sqlite');
   let store = new SessionGraphStore(path);

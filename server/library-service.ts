@@ -141,7 +141,7 @@ export class LibraryService {
       return { query, hits: result.hits.map(hit => ({ ...hit, session: byID.get(hit.id)! })), total: result.total,
         nextCursor: offset + limit < result.total ? nextCursor(key, offset + limit) : null,
         coverage: { sessions: sessions.length, complete, partial: sessions.length - complete, characters, limited: complete < sessions.length },
-        note: 'Search samples saved content using the app search limits (8 pages and up to 48,000 characters per session, 24 million overall). Narrow filters for more coverage; use messages/events for details.' };
+        note: 'Search samples saved content. Narrow filters for more coverage; use messages/events for details.' };
     });
   }
   getStats(filters: SessionFilters = {}, groupBy = 'source', options: PageOptions = {}) {
@@ -159,7 +159,7 @@ export class LibraryService {
       for (const s of sessions) { const key = (groupBy === 'project' ? s.projectID : s[groupBy as 'source' | 'model' | 'directory']) || 'unknown'; if (!grouped.has(key)) grouped.set(key, []); grouped.get(key)!.push(s); }
       const groups = [...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([key, values]) => ({ key, ...summary(values) }));
       return { totals: summary(sessions), groupBy, groups: page(groups, this.key('stats', sessions, [filters, groupBy]), options), filters,
-        note: 'Date filters select sessions overlapping the window; usage is recorded lifetime usage for those sessions, not usage spent within the window. Groups use the primary source; unknown usage is not zero.' };
+        note: 'Totals use matched sessions’ lifetime usage. Unknown usage is reported separately.' };
     });
   }
   getGraph(filters: SessionFilters = {}) {
@@ -177,6 +177,6 @@ export class LibraryService {
     const lock = this.store.db.prepare('SELECT pid,heartbeat FROM import_lock WHERE id=1').get();
     return { ok: checks.every(c => c.ok), database: this.store.path, node: process.versions.node, configured: sources.configured, selected: this.store.selected(), autoImport: sources.autoImport,
       importLock: lock ? { pid: Number(lock.pid), heartbeat: Number(lock.heartbeat) } : null, checks,
-      next: !this.store.selected().length ? 'Run sessiongraph sources setup <source...>, then sessiongraph sources sync.' : 'Run sessiongraph sources sync to refresh saved history.' };
+      next: !this.store.selected().length ? 'Run sessiongraph sources setup <source...>, then sessiongraph sync.' : 'Run sessiongraph sync to refresh sessions.' };
   }
 }
