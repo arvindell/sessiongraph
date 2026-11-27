@@ -1,8 +1,10 @@
 import * as select from '@zag-js/select';
 import { VanillaMachine, normalizeProps, spreadProps } from '@zag-js/vanilla';
 import './controls.css';
+import { icon, iconElement } from './icons';
+import { sourceIconElement } from './sources';
 
-const chevron = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>';
+const chevron = icon('chevron-down');
 const controls = new Map<HTMLSelectElement, ReturnType<typeof enhanceSelect>>();
 let sequence = 0;
 
@@ -12,6 +14,10 @@ function enhanceSelect(native: HTMLSelectElement) {
   root.innerHTML = `<button type="button" class="ui-select-trigger"><span></span>${chevron}</button><div class="ui-select-positioner" popover="manual"><div class="ui-select-menu"></div></div>`;
   native.after(root); native.hidden = true;
   const trigger = root.querySelector<HTMLButtonElement>('button')!, label = trigger.querySelector('span')!;
+  const sourceBase = native.dataset.sourceIcons;
+  const sourceGlyph = (value: string) => value ? sourceIconElement(value, sourceBase) : iconElement('terminal');
+  let shownSource: string | undefined;
+  if (sourceBase) root.classList.add('ui-select-with-source');
   const positioner = root.querySelector<HTMLElement>('.ui-select-positioner')!, content = root.querySelector<HTMLElement>('.ui-select-menu')!;
   let items: { value: string; label: string; disabled: boolean }[] = [], fingerprint = '', selected = native.value, disabled = native.disabled;
   const machine = new VanillaMachine(select.machine, {
@@ -33,6 +39,11 @@ function enhanceSelect(native: HTMLSelectElement) {
     spreadProps(content, { ...state.getContentProps(), 'aria-label': native.getAttribute('aria-label'), 'aria-labelledby': undefined });
     const text = native.selectedOptions[0]?.textContent || 'Choose…';
     if (label.textContent !== text) label.textContent = text;
+    if (sourceBase && shownSource !== native.value) {
+      trigger.querySelector('.ui-select-source')?.remove();
+      const glyph = sourceGlyph(native.value);
+      glyph.classList.add('ui-select-source'); trigger.prepend(glyph); shownSource = native.value;
+    }
     items.forEach((item, index) => {
       const row = content.children[index] as HTMLElement;
       spreadProps(row, state.getItemProps({ item }));
@@ -47,7 +58,9 @@ function enhanceSelect(native: HTMLSelectElement) {
     if (key !== fingerprint) {
       fingerprint = key; items = next;
       content.replaceChildren(...items.map((item) => {
-        const row = document.createElement('div'); row.className = 'ui-select-option'; row.textContent = item.label; return row;
+        const row = document.createElement('div'); row.className = 'ui-select-option';
+        if (sourceBase) { const glyph = sourceGlyph(item.value); glyph.classList.add('ui-select-source'); row.append(glyph); }
+        const text = document.createElement('span'); text.textContent = item.label; row.append(text, iconElement('check')); return row;
       }));
       machine.updateProps({ collection: select.collection({ items }) });
     }

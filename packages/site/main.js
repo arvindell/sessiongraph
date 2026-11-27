@@ -30,7 +30,6 @@ if (video) {
 const copyStatus = document.querySelector('#copy-status');
 for (const copy of document.querySelectorAll('[data-copy-command]')) {
   const command = copy.closest('.command-box').querySelector('code');
-  const icon = copy.querySelector('[data-copy-icon]'), originalIcon = icon.innerHTML;
   const hint = copy.querySelector('.command-copy-hint');
   let reset;
   copy.addEventListener('click', async () => {
@@ -39,13 +38,11 @@ for (const copy of document.querySelectorAll('[data-copy-command]')) {
       if (copyStatus) copyStatus.textContent = 'Copied npx sessiongraph to your clipboard. Paste it into your terminal to get started.';
       copy.setAttribute('aria-label', 'Command copied. Copy again');
       copy.dataset.copied = '';
-      icon.innerHTML = '<path d="m4 10 4 4 8-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
       hint.textContent = 'Copied!';
       clearTimeout(reset);
       reset = setTimeout(() => {
         copy.setAttribute('aria-label', 'Copy npx sessiongraph');
         delete copy.dataset.copied;
-        icon.innerHTML = originalIcon;
         hint.textContent = 'Copy command';
       }, 2000);
     } catch {

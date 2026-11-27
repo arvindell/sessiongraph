@@ -1,0 +1,30 @@
+.graph-button { appearance: none; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 7px; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #8ba198; font: inherit; cursor: pointer; }
+.graph-button[hidden] { display: none; }
+.graph-button-labeled { width: auto; padding-inline: 9px; }
+.graph-button .ui-icon { width: 17px; height: 17px; }
+.graph-button:hover { color: #e9fff4; background: #c2e9d90c; }
+.graph-button:focus-visible, .graph-session-info summary:focus-visible { outline: 2px solid #b0e9d6; outline-offset: 2px; }
+.graph-button[aria-expanded=true], .graph-button[aria-pressed=true] { color: #b0e9d6; background: #b0e9d60c; }
+.graph-session-info { padding: 16px 20px; border-top: 1px solid #c9e3db14; }
+.graph-session-info summary { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #9ab4a3; cursor: pointer; font-size: 12px; list-style: none; }
+.graph-session-info summary::-webkit-details-marker { display: none; }
+.graph-session-info[open] summary { margin-bottom: 10px; }
+.graph-session-info[open] summary svg { transform: rotate(180deg); }
+.graph-session-info dl { margin: 0; }
+.graph-session-info dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-block: 5px; font-size: 12px; }
+.graph-session-info dt { color: #829e8d; }
+.graph-session-info dd { margin: 0; text-align: right; overflow-wrap: anywhere; font: 11px var(--mono); color: #c1d7cc; min-width: 0; }
+.graph-session-info dt, .graph-session-info .directory-card > span, .graph-shortcuts > span { display: flex; align-items: center; gap: 6px; }
+.graph-session-info .ui-icon, .graph-shortcuts .ui-icon { width: 13px; height: 13px; flex: none; }
+.graph-shortcuts { display: flex; gap: 10px; color: #82938f; font-size: 10px; pointer-events: none; }
+.graph-shortcuts kbd { min-width: 22px; padding: 2px 4px; border: 1px solid #a3bdb523; border-radius: 4px; color: #a3b5ae; background: #0b141b66; font: 9px var(--mono); text-align: center; }
+.graph-help { position: fixed; width: min(460px, calc(100% - 32px)); max-height: calc(100dvh - 32px); box-sizing: border-box; padding: 24px; border: 1px solid #b0e9d633; border-radius: 14px; background: #0e1c20; color: #dbe7e3; }
+.graph-help::backdrop { background: #050a0d99; }
+.graph-help [data-close-help] { position: absolute; right: 12px; top: 12px; }
+.graph-help h2 { margin: 0 34px 16px 0; font-size: 20px; }
+.graph-help p { font-size: 12px; color: #a7bcb0; line-height: 1.6; }
+.graph-help-rows > div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12px; }
+.graph-help-rows span { display: flex; align-items: center; gap: 6px; }
+.graph-help-rows svg { width: 14px; height: 14px; }
+.scene-labels .scene-label.month-label { padding: 3px 5px; background: #080f1280; letter-spacing: .035em; }
+.scene-labels .scene-label.month-label.visible { opacity: .8; }

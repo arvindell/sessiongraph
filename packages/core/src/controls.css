@@ -8,5 +8,11 @@
 .ui-select-option { position: relative; padding: 9px 30px 9px 10px; border-radius: 6px; color: #a8c3b5; font-size: 12px; line-height: 1.5; cursor: pointer; overflow-wrap: anywhere; }
 .ui-select-option[data-highlighted] { color: #e0f4e9; background: var(--control-hover); }
 .ui-select-option[data-state='checked'] { color: var(--mint); }
-.ui-select-option[data-state='checked']::after { content: '✓'; position: absolute; right: 10px; }
+.ui-select-option > svg:last-child { display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; }
+.ui-select-option[data-state='checked'] > svg:last-child { display: block; }
 .ui-select-option[data-disabled] { opacity: .4; cursor: default; }
+.ui-select-with-source .ui-select-trigger, .ui-select-option:has(.ui-select-source) { display: flex; align-items: center; gap: 8px; }
+.ui-select .ui-select-source, .ui-select-positioner .ui-select-source { width: 15px; height: 15px; flex: 0 0 15px; }
+.ui-select-with-source .ui-select-trigger .ui-select-source { margin: 0; }
+.ui-select-with-source .ui-select-trigger > svg:last-child { margin-left: auto; flex-shrink: 0; }
+.ui-select .ui-select-source.source-icon, .ui-select-positioner .ui-select-source.source-icon { display: inline-block; background: currentColor; mask: var(--source-icon) center / contain no-repeat; }

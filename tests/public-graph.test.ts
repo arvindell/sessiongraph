@@ -13,6 +13,17 @@ import { publicGraphThumbnail } from '@sessiongraph/core/public-thumbnail';
 
 const secretSession = (id = 'native-secret') => ({ ...blankSession('opencode', id), title: 'Secret client', directory: '/private/customer/code', projectID: 'private-project', nativeID: id, model: 'openai/gpt-6-astra', created: 1700000000000, tokens: 123, activity: { firstMessageAt: 1700000000100, lastMessageAt: 1700000000900, userMessages: 1, untimedUserMessages: 0 }, coverage: { history: 'complete' as const } });
 
+test('publishing defaults include every shareable field and use the Harness label', () => {
+  assert.equal(PUBLIC_FIELDS.harness, 'Harness');
+  for (const key of Object.keys(PUBLIC_FIELDS) as (keyof typeof PUBLIC_FIELDS)[]) assert.equal(DEFAULT_PUBLISHING[key], true);
+  assert.deepEqual(publishingSettings(undefined), DEFAULT_PUBLISHING);
+  assert.deepEqual(publishingSettings({}), DEFAULT_PUBLISHING);
+  const settings = publishingSettings(undefined);
+  settings.harness = false;
+  assert.equal(DEFAULT_PUBLISHING.harness, true);
+  assert.equal(publishingSettings(settings).harness, false);
+});
+
 test('all publishing field combinations omit disabled fields and sensitive metadata', () => {
   for (let mask = 0; mask < 64; mask++) {
     const settings = publishingSettings(Object.fromEntries(Object.keys(PUBLIC_FIELDS).map((key, index) => [key, !!(mask & 1 << index)])));

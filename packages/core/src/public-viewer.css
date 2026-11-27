@@ -13,10 +13,6 @@
 .public-toolbar, .public-view-controls { position: absolute; top: 24px; display: flex; gap: 5px; align-items: center; height: 48px; padding: 5px 7px; border-radius: 14px; }
 .public-toolbar { left: 24px; }
 .public-view-controls { right: 24px; }
-.public-toolbar-button { display: flex; align-items: center; gap: 7px; padding: 9px 10px; border-radius: 8px; font-size: 12px; color: #9eafa9; }
-.public-icon-button { width: 34px; height: 34px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: #8ba198; }
-.public-toolbar-button:hover, .public-icon-button:hover { background: #c2e9d90c; color: #e9fff4; }
-.public-toolbar-button[aria-expanded=true], .public-view-controls .public-icon-button[aria-expanded=true], .public-view-controls [aria-pressed=true] { color: #b0e9d6; background: #b0e9d60c; }
 .public-panel { position: absolute; border-radius: 16px; }
 .public-browser { top: 86px; left: 24px; width: 300px; max-height: calc(100% - 290px); display: flex; flex-direction: column; }
 .public-panel-heading { display: flex; align-items: center; gap: 3px; padding: 10px 10px 8px 16px; flex-shrink: 0; }
@@ -27,6 +23,7 @@
 .public-filter > svg { position: absolute; left: 9px; width: 14px; height: 14px; color: #8ea99b; pointer-events: none; z-index: 1; }
 .public-filter .ui-select { width: 100%; }
 .public-filter .ui-select .ui-select-trigger { padding: 7px 9px 7px 32px; background: transparent; border-color: transparent; color: #bdcfc6; }
+.public-filter .ui-select-with-source .ui-select-trigger { padding-left: 9px; }
 .public-filter .ui-select .ui-select-trigger:hover, .public-filter .ui-select .ui-select-trigger[data-state=open] { background: #b0e9d606; }
 .public-list { overflow: auto; overscroll-behavior: contain; min-height: 60px; padding: 6px 8px 10px; }
 .public-list button { display: block; width: 100%; text-align: left; border: 1px solid transparent; border-radius: 9px; padding: 11px 12px; margin-bottom: 2px; }
@@ -40,8 +37,7 @@
 .public-browser > [data-more] { margin: 6px 12px 12px; padding: 8px; flex-shrink: 0; font-size: 11px; color: #b0e9d6; }
 .public-session { right: 24px; top: 86px; width: 320px; max-height: calc(100% - 290px); overflow: auto; }
 .public-session-data { padding: 0 18px 18px; }
-.public-project-name { display: flex; align-items: center; gap: 8px; color: #c7dfd2; margin: 10px 0 14px; font-size: 13px; }
-.public-project-name svg { color: #8ba198; }
+.public-session-data .graph-session-info { margin-inline: -18px; }
 .public-source-badge { display: flex; align-items: center; gap: 7px; color: #91aa9b; font-size: 11px; margin-bottom: 14px; }
 .public-session p { margin: 7px 0; line-height: 1.7; color: #a1b6ad; overflow-wrap: anywhere; font-size: 12px; }
 .public-session strong { font-weight: 450; color: #dbe7e3; }
@@ -73,7 +69,7 @@
   .public-hints { left: 10px; font-size: 8px; }
 }
 @container public-graph (max-width: 480px) {
-  .public-toolbar-button span, .public-period-label, .public-playback [data-close-timeline] { display: none; }
+  .public-toolbar .graph-button span, .public-period-label, .public-playback [data-close-timeline] { display: none; }
   .public-playback .range-buttons { margin-left: 0; margin-right: auto; }
   .public-playback .playback-summary { gap: 12px; }
   .public-playback .playback-summary strong { font-size: 23px; }

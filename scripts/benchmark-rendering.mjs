@@ -62,8 +62,11 @@ try {
     page.on('pageerror', error => errors.push(error.message));
     page.on('requestfailed', request => { if (request.failure()?.errorText !== 'net::ERR_ABORTED') console.error('Request failed:', request.url(), request.failure()); });
     const fixture = await installDemoRoutes(page, { perLane, now: Date.UTC(2026, 10, 27), autoImport: false, preferences: { motion: 'off', muted: true } });
+    const previewGate = Promise.withResolvers();
+    if (!verify) previewGate.resolve();
     await page.route('**/api/sessiongraph/publishing/**', async route => {
       const action = new URL(route.request().url()).pathname.split('/').at(-1);
+      if (action === 'preview') await previewGate.promise;
       const body = action === 'settings' ? DEFAULT_PUBLISHING : action === 'status' ? { username: null, publication: null }
         : action === 'preview' ? { id: 'synthetic-preview', graph: publishableGraph(fixture.sessions, route.request().postDataJSON().settings) } : {};
       await route.fulfill({ json: body });
@@ -154,7 +157,16 @@ try {
     });
     if (verify) { await verifySessionList(page, fixture.sessions); await verifyScene(page); }
     const previewStart = performance.now();
-    await page.click('#open-publishing');
+    if (verify) {
+      try {
+        assert.ok(await page.locator('#open-publishing').evaluate(button => {
+          button.click();
+          return Boolean(document.querySelector('.publishing-dialog:modal'));
+        }), 'Share opens a modal in the click handler');
+        await page.locator('.publishing-dialog').getByText('Preparing preview…', { exact: true }).waitFor();
+        assert.equal(await page.locator('.publishing-preview canvas').count(), 0, 'modal is visible while preview is still loading');
+      } finally { previewGate.resolve(); }
+    } else await page.click('#open-publishing');
     await page.waitForFunction(() => document.querySelector('.publishing-dialog [data-json]')?.disabled === false);
     const previewOpenMs = performance.now() - previewStart;
     const previewChangesMs = [];

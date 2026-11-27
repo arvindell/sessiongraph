@@ -5,7 +5,7 @@ import type { Graph, Session } from './types';
 
 export const PUBLIC_FIELDS = {
   tokens: 'Tokens', timestamps: 'Session times', messageCounts: 'Message counts',
-  messageTimestamps: 'Message times', model: 'Models', harness: 'Apps',
+  messageTimestamps: 'Message times', model: 'Models', harness: 'Harness',
 } as const;
 export type PublishingSettings = Record<keyof typeof PUBLIC_FIELDS, boolean>;
 export const DEFAULT_PUBLISHING: PublishingSettings = { tokens: true, timestamps: true, messageCounts: true, messageTimestamps: true, model: true, harness: true };
@@ -153,6 +153,7 @@ export function publicGraphLayout(value: PublicGraph, included?: ReadonlySet<num
   // Anonymous groups already encode the publisher's grouping. A shared harness
   // field must not split a group that originally spanned several coding agents.
   const layout = makeGraph(sessions.map(s => ({ ...s, source: undefined })), projects);
+  layout.calendarTime = graph.settings.timestamps;
   for (const node of layout.nodes) node.session.source = graph.sessions[Number(node.session.id)].harness ?? undefined;
   return layout;
 }

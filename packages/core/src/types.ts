@@ -138,4 +138,6 @@ export interface Graph {
   end: number;
   /** Coordinate frame stays fixed across imports; start/end describe current data. */
   timeFrame?: { start: number; end: number };
+  /** False when X encodes an anonymous sequence rather than real calendar dates. */
+  calendarTime?: boolean;
 }

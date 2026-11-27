@@ -1,3 +1,4 @@
+import { icon } from '@sessiongraph/core/icons';
 import { excerpt, normalize, parseQuery, words } from './engine';
 import type { SessionGraphData, Session } from '@sessiongraph/core/types';
 import { sourceName, sourceIcon } from '@sessiongraph/core/sources';
@@ -26,7 +27,7 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
   dialog.className = 'search-dialog';
   dialog.setAttribute('aria-label', 'Search sessions');
   dialog.innerHTML = `
-    <div class="search-command"><span class="search-command-icon" aria-hidden="true">⌕</span><input id="session-query" type="search" placeholder="Search sessions, messages, files…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search all sessions" aria-autocomplete="list" aria-expanded="true" aria-controls="search-results"/><button class="icon-button search-close" aria-label="Close search" title="Close (Esc)">×</button></div>
+    <div class="search-command"><span class="search-command-icon" aria-hidden="true">${icon('search')}</span><input id="session-query" type="search" placeholder="Search sessions, messages, files…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search all sessions" aria-autocomplete="list" aria-expanded="true" aria-controls="search-results"/><button class="icon-button search-close" aria-label="Close search" title="Close (Esc)">${icon('x')}</button></div>
     <div class="search-options"><select id="search-scope" aria-label="Search scope" title="Switch scope (Alt+S)"><option value="all">All history</option><option value="view">Current view</option></select><button id="search-conversations" class="search-chip" aria-label="Index conversations" aria-pressed="true" title="Pause or resume background indexing. Indexed messages, tools, and files remain searchable.">Conversations</button><span id="search-index-state" role="status">Loading index…</span></div>
     <div class="search-body"><div id="search-results" class="search-results" role="listbox" aria-label="Matching sessions"><div class="search-results-inner"></div></div><aside id="search-preview" class="search-preview" aria-label="Session preview"></aside></div>
     <div class="search-footer"><span id="search-result-status" role="status">Loading sessions…</span><button id="search-more" hidden>More results</button><details class="search-syntax"><summary title="Search filters and cache">Filters</summary><div><code>project:sessiongraph</code><code>model:claude</code><code>in:files package.json</code><code>is:fork</code><code>after:2026-09-01</code><code>"exact phrase"</code><button id="search-clear-cache" title="Clear saved search text and pause indexing. Titles remain searchable; enable Conversations to rebuild.">Clear saved index</button></div></details><span class="search-keys"><kbd>↑↓</kbd> navigate <kbd>↵</kbd> open</span></div>`;
@@ -105,7 +106,7 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
     preview.querySelector('.search-open')?.addEventListener('click', choose, options);
     if (onOpen) {
       const button = document.createElement('button');
-      button.className = 'text-button search-launch'; button.innerHTML = `${sourceIcon(session.source)}Open in ${escape(sourceName(session.source))} ↗`;
+      button.className = 'text-button search-launch'; button.innerHTML = `${sourceIcon(session.source)}Open in ${escape(sourceName(session.source))}${icon('arrow-up-right')}`;
       button.addEventListener('click', () => onOpen(session), options);
       preview.querySelector('.search-preview-heading')?.append(button);
     }

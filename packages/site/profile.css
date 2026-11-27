@@ -36,3 +36,4 @@
   .graph-skeleton-timeline { bottom: 26px; width: calc(100% - 20px); }
 }
 @media(max-width:720px) { .graph-header { padding-inline: 12px; gap: 12px; } .graph-header .brand span, .graph-header-divider, .graph-header nav a:last-child { display: none; } .graph-header nav { font-size: 11px; } .graph-footer { font-size: 9px; } }
+.graph-page { --app-sans: 'Katagami Sans', Geist, sans-serif; font-family: var(--app-sans); }
