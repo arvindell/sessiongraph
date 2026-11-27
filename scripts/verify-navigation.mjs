@@ -27,8 +27,8 @@ export function verifyNavigation(scene) {
   try {
     scene.select(null);
     scene.applyPreferences({ ...original.preferences, motion: 'off', quality: 'balanced' });
-    for (const flat of [false, true]) for (const damping of [false, true]) {
-      scene.setFlat(flat); scene.controls.enableDamping = damping;
+    for (const damping of [false, true]) {
+      scene.controls.enableDamping = damping;
       scene.renderFrame(1);
       wheel();
       check(!scene.smaa.enabled && !scene.bloom.enabled, 'balanced movement defers fullscreen effects');
@@ -39,8 +39,8 @@ export function verifyNavigation(scene) {
       scene.renderFrame(.2);
       check(draws === before + 1, 'idle scene stops drawing after refinement');
     }
-    for (const quality of ['performance', 'high', 'balanced']) for (const view of ['3d', '2d']) {
-      scene.applyPreferences({ ...scene.preferences, quality, view });
+    for (const quality of ['performance', 'high', 'balanced']) {
+      scene.applyPreferences({ ...scene.preferences, quality });
       scene.reset(); scene.renderFrame(1); wheel();
       const samples = quality === 'performance' ? 0 : Math.min(quality === 'high' ? 4 : 2, scene.renderer.capabilities.maxSamples);
       check(scene.scenePass.target.samples === samples, 'geometry keeps the requested MSAA');
@@ -67,13 +67,13 @@ export function verifyNavigation(scene) {
         if (actual[i] > 40 || actual[i + 1] > 40 || actual[i + 2] > 40) visible++;
       }
       const meanChannelError = total / (actual.length / 4 * 3);
-      comparisons.push({ quality, view, meanChannelError, visiblePixels: visible });
+      comparisons.push({ quality, meanChannelError, visiblePixels: visible });
       reference.dispose();
       check(visible > 100, 'comparison contains visible graph geometry');
-      check(meanChannelError < .1, `settled ${quality}/${view} pixels match the original pipeline (mean error ${meanChannelError})`);
+      check(meanChannelError < .1, `settled ${quality} pixels match the original pipeline (mean error ${meanChannelError})`);
     }
     scene.options.manual = true;
-    scene.applyPreferences({ ...scene.preferences, quality: 'balanced', view: '3d' });
+    scene.applyPreferences({ ...scene.preferences, quality: 'balanced' });
     scene.prepareCapture();
     const canvas = document.createElement('canvas'); canvas.width = 960; canvas.height = 600;
     scene.captureFrame(.5, 1 / 30, canvas.getContext('2d'));

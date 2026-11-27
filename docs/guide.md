@@ -19,6 +19,10 @@ pnpm desktop:build
 
 Installers appear in `src-tauri/target/release/bundle/`. On macOS, open `macos/SessionGraph.app` or install using the DMG. `pnpm desktop:dev` builds and runs the native shell locally. The Rust toolchain is pinned in `rust-toolchain.toml`.
 
+On first launch, desktop releases install the `sessiongraph` and `ssg` commands
+and register their directory in your user PATH. Restart your terminal.
+See the [CLI installation reference](cli.md#install) for paths and shell support.
+
 ### npm launcher
 
 Install and open the public npm launcher with Node 24+:
@@ -30,6 +34,9 @@ npx sessiongraph --browser
 ```
 
 The default command opens the native desktop app from your matching OS/architecture package. `--browser` instead starts a local authenticated server and opens the explorer in your default browser; keep the terminal open and press Ctrl+C to stop it. Both modes share the same saved SQLite library.
+
+`npm install --global sessiongraph` registers both `sessiongraph` and `ssg`
+in npm's global executable directory.
 
 ### Desktop updates
 
@@ -68,7 +75,7 @@ On first launch, choose the apps to import. Change that selection in **Settings 
 
 The auto-import choice is saved in the local SQLite library, so it survives desktop restarts and is shared by browser and desktop instances using that library. Turning it off stops future automatic checks; an import already running can finish. Manual Refresh remains available. There is no background service after the app closes. OpenCode's local service must still be running to import its new history.
 
-Time presets and custom date ranges, source/project/directory filters, the archived and child-session toggles, 2D/3D mode, and the other Settings preferences are also saved in the library. They are restored before the first graph is shown, including when the desktop app starts on a different local port. Existing browser appearance preferences migrate to the library on first use.
+Time presets and custom date ranges, source/project/directory filters, the archived and child-session toggles, and Settings preferences are also saved in the library. They are restored before the first graph is shown, including when the desktop app starts on a different local port. Existing browser appearance preferences migrate to the library on first use.
 
 Onboarding closes automatically after a successful import and library refresh. Import failures remain visible with retry controls.
 
@@ -170,7 +177,7 @@ Desktop update checks and downloads contact GitHub without session content; npm 
 - **Browse messages** opens 60-message pages of the conversation. Details include message text, recorded time, and source provenance. Tool calls, reasoning, and other detailed events are excluded from the dots and message browser. Underlying imported history and file evidence remain saved. Source order is preserved even without timestamps. Nearby markers can overlap; step through them with the navigation controls.
 - When upgrading an older library, events reconstructed from saved messages are marked partial. **Refresh sessions** can add structured events from the original sources. The explorer asks you to reload if an import changes the history you’re viewing.
 - Click a session for changed-file satellites and source evidence. File details load in 120-message batches; the map displays at most 80 files. Evidence describes historical edits, not today's Git diff.
-- **Play** follows new sessions as they appear and ends with an overview. Dragging, zooming, scrubbing, fitting, or opening a dialog pauses playback. 2D pans instead of orbiting; reduced motion keeps the camera still.
+- **Play** follows new sessions as they appear and ends with an overview. Dragging, zooming, scrubbing, fitting, or opening a dialog pauses playback. Reduced motion keeps the camera still.
 - Playback hides the other panels and controls, leaving a borderless timeline, a compact approximate date, large **Sessions** and **Burnt tokens** counters, and a prominent **Share SessionGraph** button. The date shows month and year for histories spanning at least 90 days, and includes the day for shorter ranges; shared animations use the same date. Session counts include every filtered session as its orb appears, regardless of token coverage. Pausing or pressing **Esc** restores the panels immediately. Recorded token totals from OpenCode and Continue accumulate when each session reaches its latest saved message; cache is included where reported. Token counts skip missing/unsupported usage and include totals without message timestamps only at the end. Missing usage displays **—**; no usage is estimated between messages.
 - **Share SessionGraph** has two options: **Publish** for an explicitly confirmed public snapshot, and **Video** for a private MP4 rendered locally. GitHub sign-in opens your browser; confirm the matching code to connect the app. If opening fails, copy the browser link from the dialog. Signing in does not upload your history.
 - **Video** renders at 960×600 and 30 fps: 15 seconds of playback, a 5-second overview orbit, and a 1-second ending hold (630 frames). MP4 uses H.264 with fixed frame timestamps and requires WebCodecs encoding support. Each directory stream gets a unique random two-word alias such as **Project Cosmic Wombat**. A separate export model excludes original names, paths, session titles, native IDs, messages, and file details. Previews and saved videos contain the map, aliases, timeline, date, session count, and known burnt-token totals. Closing the dialog or switching to Publish cancels unfinished rendering and releases its resources.
@@ -183,7 +190,7 @@ Desktop update checks and downloads contact GitHub without session content; npm 
 
 Open **Settings** using the gear button. Changes apply live and persist on this device:
 
-- **Interface:** 2D/3D, system/on/off motion, list density, archived-session visibility, panel transparency, and reset panel positions.
+- **Interface:** system/on/off motion, list density, archived-session visibility, panel transparency, and reset panel positions.
 - **Sound:** procedural interaction tones, volume, chime preview, and mute. Only control interactions produce sound; there is no ambient audio. The speaker button mutes feedback quickly; no audio is downloaded.
 - **Graphics:** performance/balanced/high rendering, glow, node size, stars, labels, and focus dimming. Balanced and high retain antialiasing and bloom with bounded high-DPI buffers; the soft bloom pyramid uses a lower resolution to reduce GPU work.
 - **Trails & playback:** all/selected/hidden lifetime trails, brightness, decorative flow and speed, relationship links, message dots, and 0.25×–3× playback. Flow respects reduced motion and never changes message timestamps or saved trail endpoints.

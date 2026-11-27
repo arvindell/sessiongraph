@@ -13,7 +13,8 @@
   },
   "license": "MIT",
   "bin": {
-    "sessiongraph": "bin/sessiongraph.mjs"
+    "sessiongraph": "bin/sessiongraph.mjs",
+    "ssg": "bin/sessiongraph.mjs"
   },
   "files": [
     "bin/",

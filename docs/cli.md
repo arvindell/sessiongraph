@@ -1,7 +1,39 @@
 # CLI reference
 
-SessionGraph reads your local session library. Use `sync` to import updates.
-Requires Node.js 24+.
+Use `sessiongraph` or `ssg` to read your local session library.
+Use `sync` to import updates.
+
+## Install
+
+With Node.js 24+:
+
+```sh
+npm install --global sessiongraph
+ssg --help
+```
+
+Global npm installs register both commands in npm's global executable directory.
+With a custom npm prefix, include that directory in PATH (`<prefix>/bin` on
+macOS/Linux, `<prefix>` on Windows).
+
+Desktop releases install both commands on first launch using their bundled
+runtime. Restart your terminal after opening the app.
+
+| Platform | CLI directory |
+| --- | --- |
+| macOS | `~/Library/Application Support/SessionGraph/cli/bin` |
+| Windows | `%LOCALAPPDATA%\SessionGraph\cli\bin` |
+| Linux | `$XDG_DATA_HOME/sessiongraph/cli/bin`, defaulting to `~/.local/share/sessiongraph/cli/bin` |
+
+Desktop setup adds this directory to the current user's PATH: zsh, bash, and sh
+profiles; fish's `conf.d`; or Windows' user environment. Existing PATH entries and
+profile content are preserved. Other shells need the directory added manually.
+Versioned CLI files stay outside the app bundle so AppImage commands work after
+the app closes. Development builds leave PATH unchanged.
+To remove the desktop CLI, delete its `cli` directory and its marked shell PATH
+block or Windows user PATH entry.
+
+## Start
 
 ```sh
 sessiongraph sources setup --detected
@@ -9,8 +41,8 @@ sessiongraph sync
 sessiongraph sessions --directory .
 ```
 
-Use `sessiongraph` or `npx sessiongraph` with the installed package. In a source
-checkout, run `pnpm build`, then `node bin/sessiongraph.mjs <command>`.
+Use `npx sessiongraph <command>` for a one-off run. In a source checkout,
+run `pnpm build`, then `node bin/sessiongraph.mjs <command>`.
 Running `sessiongraph` alone opens the desktop app; `--browser` opens the web app.
 
 ## Commands

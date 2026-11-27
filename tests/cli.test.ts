@@ -43,6 +43,7 @@ test('CLI help, catalog and docs are discoverable without opening a library or d
     if (args.includes('--json')) { const data = JSON.parse(output); assert.equal(data.schemaVersion, 1); assert.ok(data.data.commands.length); }
   }
   const catalog = JSON.parse(await capture(['commands', '--json']));
+  assert.deepEqual(catalog.data.executableAliases, ['ssg']);
   assert.deepEqual(catalog.data.commands.map((c: any) => c.name), commands.map(c => c.name));
   assert.ok(catalog.data.commands.every((c: any) => c.result && c.effect && c.examples.length));
 });
@@ -357,7 +358,9 @@ test('standalone npm launcher loads the bundled CLI without native packages or n
   const dir = await directory(t), root = join(dir, 'package'), data = join(dir, 'data');
   await mkdir(join(root, 'bin'), { recursive: true });
   await cp('bin/sessiongraph.mjs', join(root, 'bin', 'sessiongraph.mjs'));
-  await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'sessiongraph', version: '9.8.7', type: 'module' }));
+  const pkg = JSON.parse(await readFile('package.json', 'utf8'));
+  assert.deepEqual(pkg.bin, { sessiongraph: 'bin/sessiongraph.mjs', ssg: 'bin/sessiongraph.mjs' });
+  await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'sessiongraph', version: '9.8.7', type: 'module', bin: pkg.bin }));
   await build({ entryPoints: ['server/cli.ts'], bundle: true, platform: 'node', target: 'node24', format: 'esm', outfile: join(root, 'dist-server', 'cli.mjs'), banner: { js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);" } });
   const exec = promisify(execFile), bin = join(root, 'bin', 'sessiongraph.mjs');
   const options = { env: { ...process.env, SESSIONGRAPH_DATA_DIR: data }, cwd: dir, maxBuffer: 2_000_000 };
@@ -375,4 +378,20 @@ test('standalone npm launcher loads the bundled CLI without native packages or n
   });
   const removed = await exec(process.execPath, [bin, 'sources', 'remove', '--all', '--json'], options);
   assert.deepEqual(JSON.parse(removed.stdout).data.selected, []);
+  const prefix = join(dir, 'global'), globalBin = process.platform === 'win32' ? prefix : join(prefix, 'bin');
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const installedOptions = { ...options, shell: process.platform === 'win32', env: { ...options.env,
+    npm_config_cache: join(dir, 'npm-cache'), npm_config_userconfig: join(dir, 'empty-npmrc'),
+    PATH: `${globalBin}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH || ''}` } };
+  await writeFile(join(dir, 'empty-npmrc'), '');
+  await exec(npm, ['install', '--global', '--prefix', prefix, '--offline', '--ignore-scripts', '--no-audit', '--no-fund', root], installedOptions);
+  for (const name of ['sessiongraph', 'ssg']) {
+    const executable = process.platform === 'win32' ? `${name}.cmd` : name;
+    const result = await exec(executable, ['commands', '--json'], installedOptions);
+    assert.equal(JSON.parse(result.stdout).data.commands.length, commands.length);
+    const version = await exec(executable, ['--version', '--json'], installedOptions);
+    assert.equal(JSON.parse(version.stdout).data.version, '9.8.7');
+  }
+  await exec(npm, ['uninstall', '--global', '--prefix', prefix, '--offline', '--ignore-scripts', '--no-audit', '--no-fund', 'sessiongraph'], installedOptions);
+  for (const name of ['sessiongraph', 'ssg']) await assert.rejects(access(join(globalBin, process.platform === 'win32' ? `${name}.cmd` : name)));
 });

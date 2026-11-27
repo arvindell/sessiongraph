@@ -12,8 +12,8 @@ const verify = process.argv.includes('--verify');
 const output = resolve(process.argv.slice(2).find(arg => arg !== '--verify') || 'tmp/performance/navigation.json');
 const runs = Number(process.env.PERF_RUNS || (verify ? 1 : 3)), frames = Number(process.env.PERF_FRAMES || 120);
 const perLane = Number(process.env.PERF_PER_LANE || 400), outDir = resolve('tmp/performance/navigation-app');
-const quality = process.env.PERF_QUALITY || 'balanced', view = process.env.PERF_VIEW || '3d', motion = process.env.PERF_MOTION || 'off';
-const gestures = view === '2d' ? ['pan', 'zoom'] : ['orbit', 'pan', 'zoom'];
+const quality = process.env.PERF_QUALITY || 'balanced', motion = process.env.PERF_MOTION || 'off';
+const gestures = ['orbit', 'pan', 'zoom'];
 const forceZoomRedraw = Boolean(process.env.PERF_SCENE);
 await build({
   configFile: false, logLevel: 'warn',
@@ -46,7 +46,7 @@ try {
     try {
       const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
       const errors = []; page.on('pageerror', error => errors.push(error.message));
-      await installDemoRoutes(page, { perLane, now: Date.UTC(2026, 10, 27), autoImport: false, preferences: { motion, quality, view, muted: true } });
+      await installDemoRoutes(page, { perLane, now: Date.UTC(2026, 10, 27), autoImport: false, preferences: { motion, quality, muted: true } });
       await page.goto(`http://127.0.0.1:${server.address().port}`);
       await page.waitForFunction(() => window.__benchmarkScene?.graph.nodes.length > 0);
       if (verify) {
@@ -168,7 +168,7 @@ for (const variant of variants) for (const gesture of gestures) {
 await mkdir(resolve(output, '..'), { recursive: true });
 await writeFile(output, JSON.stringify({
   sceneSource: process.env.PERF_SCENE || 'working-tree',
-  environment: { node: process.version, browser: browserVersion, cpu: cpus()[0].model, gpu, sessions: perLane * 6, runs, frames, viewport: [1440, 1000], quality, view, motion, forceZoomRedraw },
+  environment: { node: process.version, browser: browserVersion, cpu: cpus()[0].model, gpu, sessions: perLane * 6, runs, frames, viewport: [1440, 1000], quality, view: '3d', motion, forceZoomRedraw },
   summary, samples,
 }, null, 2) + '\n');
 console.log(JSON.stringify(summary, null, 2)); console.log(`Saved ${output}`);

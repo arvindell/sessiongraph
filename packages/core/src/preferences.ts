@@ -4,7 +4,6 @@ export interface Preferences {
   clickSounds: boolean;
   clickVolume: number;
   motion: 'system' | 'on' | 'off';
-  view: '3d' | '2d';
   density: 'comfortable' | 'compact';
   panelOpacity: number;
   quality: 'performance' | 'balanced' | 'high';
@@ -25,12 +24,12 @@ export interface Preferences {
 export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({
   autoImport: true,
   muted: false, clickSounds: true, clickVolume: 35,
-  motion: 'system', view: '3d', density: 'comfortable', panelOpacity: 90,
+  motion: 'system', density: 'comfortable', panelOpacity: 90,
   quality: 'balanced', bloom: 32, stars: true, labels: true, nodeScale: 100, focusDimming: true,
   trails: 'all', trailOpacity: 34, trailFlow: false, trailSpeed: 25, relationships: true, messageDots: true, playbackSpeed: 1,
 });
 export const PREFERENCES_KEY = 'sessiongraph.preferences';
-const choices = { motion: ['system', 'on', 'off'], view: ['3d', '2d'], density: ['comfortable', 'compact'], quality: ['performance', 'balanced', 'high'], trails: ['all', 'selected', 'off'] };
+const choices = { motion: ['system', 'on', 'off'], density: ['comfortable', 'compact'], quality: ['performance', 'balanced', 'high'], trails: ['all', 'selected', 'off'] };
 const ranges = { clickVolume: [0, 100], panelOpacity: [55, 100], bloom: [0, 75], nodeScale: [60, 180], trailOpacity: [0, 100], trailSpeed: [10, 100], playbackSpeed: [.25, 3] };
 
 export function normalizePreferences(value: unknown): Preferences {

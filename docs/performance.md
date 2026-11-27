@@ -51,8 +51,8 @@ Wheel zoom also exposed a correctness bug: OrbitControls changed the camera insi
 
 - The baseline is the original Git revision's `scene.ts` with the current surrounding app. Baseline zoom frames are explicitly invalidated so the timing comparison measures rendered zoom in both versions; a separate unforced probe records the original zero-draw bug. Optimized zoom uses normal invalidation.
 - Every measured navigation frame must submit geometry. The benchmark cancels the app's automatic render loop and advances controls/rendering once per animation frame.
-- `test:navigation` checks wheel redraws with damping on/off, 2D/3D, idle refinement, quality changes, disabled bloom, and manual capture. Settled pixel comparisons against the original pipeline have mean RGB channel error below 0.001 on a 0–255 scale, across all three quality settings and both views.
-- A separate motion-enabled 2D smoke run verifies pan/zoom. Orbit is intentionally unavailable in 2D.
+- `test:navigation` checks wheel redraws with damping on/off, idle refinement, quality changes, disabled bloom, and manual capture. Settled pixel comparisons against the original pipeline have mean RGB channel error below 0.001 on a 0–255 scale across all three quality settings.
+- The renderer is now 3D-only following integration with `main`; the benchmark exercises orbit, pan, and zoom.
 
 ## Repeat the measurements
 
@@ -83,9 +83,9 @@ pnpm test:navigation
 
 `PERF_RUNS` and `PERF_PER_LANE` control browser repetitions and session counts (six lanes). `PERF_SESSIONS` and `PERF_EVENTS` control the SQLite fixture. On macOS the runner explicitly uses Metal; other platforms record their chosen renderer in the output.
 
-Navigation additionally accepts `PERF_FRAMES`, `PERF_QUALITY`, `PERF_VIEW`, and `PERF_MOTION`. `PERF_BREAKDOWN=1` compares normal navigation, forced full effects, and individually disabled effects; `PERF_VARIANTS` selects a comma-separated subset. Diagnostic variants override adaptive effects only in the benchmark.
+Navigation additionally accepts `PERF_FRAMES`, `PERF_QUALITY`, and `PERF_MOTION`. `PERF_BREAKDOWN=1` compares normal navigation, forced full effects, and individually disabled effects; `PERF_VARIANTS` selects a comma-separated subset. Diagnostic variants override adaptive effects only in the benchmark.
 
-The runner builds production assets without the local API plugin. Every API request is intercepted with synthetic data. The scene hook exists only in this benchmark build. Browser tests cover measured row heights, viewport coverage, keyboard navigation beyond the original first page, focus retention, density changes, resize/hide/show, empty filters, picking in 2D/3D, geometry invalidation, preview context reuse, and renderer disposal.
+The runner builds production assets without the local API plugin. Every API request is intercepted with synthetic data. The scene hook exists only in this benchmark build. Browser tests cover measured row heights, viewport coverage, keyboard navigation beyond the original first page, focus retention, density changes, resize/hide/show, empty filters, 3D picking, geometry invalidation, preview context reuse, and renderer disposal.
 
 ## Implementation
 

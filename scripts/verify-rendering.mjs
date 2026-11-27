@@ -75,17 +75,13 @@ export async function verifyScene(page) {
     scene.applyPreferences({ ...scene.preferences, nodeScale: 140 }); scene.renderFrame(0);
     const rescaled = scene.nodeMesh.instanceMatrix.version > versions[0];
     scene.applyPreferences({ ...scene.preferences, nodeScale: 100 });
-    const picks = [];
-    for (const flat of [false, true]) {
-      scene.setFlat(flat); scene.renderFrame(0); scene.scene.updateMatrixWorld(true); scene.updatePicking();
-      const sample = scene.diagnostics().headSamples.find(sample => sample.screen[0] > 0 && sample.screen[0] < 1440 && sample.screen[1] > 0 && sample.screen[1] < 1000);
-      picks.push(Boolean(sample && scene.nodeGrid.at(...sample.screen).some(candidate => scene.graph.nodes[candidate.index].session.id === sample.id)));
-    }
-    scene.setFlat(false); scene.renderFrame(0);
-    return { unchanged, rescaled, picks };
+    scene.renderFrame(0); scene.scene.updateMatrixWorld(true); scene.updatePicking();
+    const sample = scene.diagnostics().headSamples.find(sample => sample.screen[0] > 0 && sample.screen[0] < 1440 && sample.screen[1] > 0 && sample.screen[1] < 1000);
+    const picked = Boolean(sample && scene.nodeGrid.at(...sample.screen).some(candidate => scene.graph.nodes[candidate.index].session.id === sample.id));
+    return { unchanged, rescaled, picked };
   });
   assert.ok(result.unchanged, 'uniform-only redraws do not upload node buffers');
   assert.ok(result.rescaled, 'geometry preference changes update node transforms');
-  assert.deepEqual(result.picks, [true, true], 'picking matches rendered 3D and 2D centers');
-  console.log('Verified: renderer invalidation, scale changes, 2D/3D picking.');
+  assert.ok(result.picked, 'picking matches rendered 3D centers');
+  console.log('Verified: renderer invalidation, scale changes, 3D picking.');
 }

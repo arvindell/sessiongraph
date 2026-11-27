@@ -33,3 +33,17 @@ test('SessionGraph restores legacy preferences and new saves take precedence', (
   assert.equal(loadPreferences(storage).muted, false);
   assert.equal(entries.get('session-atlas.preferences'), legacy);
 });
+
+test('retired view modes are ignored when loading and saving preferences', () => {
+  assert.equal('view' in DEFAULT_PREFERENCES, false);
+  for (const view of ['2d', '3d']) {
+    const legacy = { ...DEFAULT_PREFERENCES, view, muted: true, motion: 'off', panelOpacity: 75 };
+    const expected = normalizePreferences({ muted: true, motion: 'off', panelOpacity: 75 });
+    assert.deepEqual(normalizePreferences(legacy), expected);
+    assert.deepEqual(loadPreferences({ getItem: () => JSON.stringify({ version: 1, values: legacy }) }), expected);
+    let saved = '';
+    const values = { ...expected, view };
+    assert.equal(savePreferences({ setItem: (_key, value) => { saved = value; } }, values), true);
+    assert.deepEqual(JSON.parse(saved).values, expected);
+  }
+});

@@ -16,6 +16,11 @@ Anyone can view a published graph at `/@<github_username>` or find it in **Explo
 
 The SQLite library stores imported sessions, search data, and preferences on your device. See the [storage guide](docs/guide.md#local-storage-and-privacy) for paths and overrides. Handoff files and optional desktop login credentials also stay on your device. SessionGraph does not encrypt these files; use OS permissions and disk encryption as needed.
 
+Desktop releases install the `sessiongraph` and `ssg` commands on first launch.
+Setup copies CLI files to a per-user application-data directory and adds it to
+your shell profiles or Windows user PATH, preserving existing entries.
+See [CLI installation](docs/cli.md#install).
+
 Desktop updates contact GitHub, and npm installs contact the npm registry. Those requests do not include session history. The hosted service handles optional GitHub sign-in, publishing, and organization features. Organizations do not share your local history. If you explicitly continue a conversation in another coding tool, that tool may send the handoff context to its model provider under its own settings.
 
 To check local behavior, disconnect from the internet and browse or search an already imported library. You can also inspect the [source adapters](server/adapters/), [local API](server/standalone.ts), and [public graph format](packages/core/src/public-graph.ts).

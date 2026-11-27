@@ -75,7 +75,6 @@ export class TimelineScene {
   private hovered: string | null = null;
   private cutoff = 1;
   private clipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 151);
-  private flat = false;
   private motion = !matchMedia('(prefers-reduced-motion: reduce)').matches;
   private suspended = false;
   private frame = 0;
@@ -226,7 +225,6 @@ export class TimelineScene {
     this.preferences = { ...values };
     const motion = motionEnabled(values, matchMedia('(prefers-reduced-motion: reduce)').matches);
     if (motion !== this.motion) this.setMotion(motion);
-    if ((values.view === '2d') !== this.flat) this.setFlat(values.view === '2d');
     if (values.quality !== previous.quality) {
       const samples = values.quality === 'performance' ? 0 : Math.min(values.quality === 'high' ? 4 : 2, this.renderer.capabilities.maxSamples);
       this.scenePass.setSamples(samples);
@@ -288,16 +286,12 @@ export class TimelineScene {
     const indices = Float32Array.from(graph.nodes, (_, index) => index);
     geometry.setAttribute('nodeIndex', new THREE.InstancedBufferAttribute(indices, 1));
     const mesh = new THREE.InstancedMesh(geometry, createNodeMaterial(this.focusUniforms), graph.nodes.length);
-    // Flatten node centers, not the spheres themselves: coplanar surfaces flicker
-    // and lose their separating silhouettes when overlapping in 2D.
-    mesh.scale.z = this.flat ? 1000 : 1;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.frustumCulled = false;
     const transform = new THREE.Object3D();
     const glowPositions: number[] = [], glowColors: number[] = [], glowSizes: number[] = [];
     graph.nodes.forEach((node, index) => {
       transform.position.fromArray(node.position);
-      if (this.flat) transform.position.z *= .001;
       transform.scale.setScalar(node.radius * this.preferences.nodeScale / 100);
       transform.updateMatrix();
       mesh.setMatrixAt(index, transform.matrix);
@@ -382,12 +376,12 @@ export class TimelineScene {
   private orbCenter(node: GraphNode): [number, number, number] {
     const frontier = progressX(this.cutoff, this.graph), x = headPosition(node, frontier)[0], point = spiralPosition(node, x);
     const view = this.camera.matrixWorldInverse.elements;
-    const depth = -(view[2] * point[0] + view[6] * point[1] + view[10] * point[2] * (this.flat ? .001 : 1) + view[14]);
+    const depth = -(view[2] * point[0] + view[6] * point[1] + view[10] * point[2] + view[14]);
     const pixelSize = Math.max(.001, depth) * 2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) / (this.height * this.camera.zoom);
     // A screen-sized gap keeps even a selected 12px message dot outside the
     // sphere at every zoom. Offset in the view plane along projected time.
     const gap = this.selected === node.session.id && this.preferences.messageDots ? Math.max(.06, pixelSize * 8) : .02;
-    const tangent = spiralTangent(node, x); if (this.flat) tangent[2] *= .001;
+    const tangent = spiralTangent(node, x);
     const dx = view[0] * tangent[0] + view[4] * tangent[1] + view[8] * tangent[2];
     const dy = view[1] * tangent[0] + view[5] * tangent[1] + view[9] * tangent[2];
     const direction = this.headDirection.set(dx, dy, 0);
@@ -464,7 +458,7 @@ export class TimelineScene {
     if (!this.playing || !this.motion || !this.playbackPath) return false;
     const verticalFov = THREE.MathUtils.degToRad(this.camera.fov) / 2;
     const framingFov = Math.min(verticalFov, Math.atan(Math.tan(verticalFov) * this.camera.aspect));
-    if (this.playbackOutro !== null && this.playbackOrbit && !this.flat) {
+    if (this.playbackOutro !== null && this.playbackOrbit) {
       const orbit = this.playbackOrbit, progress = this.playbackOutro;
       // Unwrapped angles guarantee one whole turn; shortest-angle damping would
       // skip part of the orbit and keep drifting during the final hold.
@@ -477,15 +471,14 @@ export class TimelineScene {
       return true;
     }
     this.playbackPath.getPoint(this.cutoff, this.playbackFocus);
-    if (this.flat) this.playbackFocus.z = 0;
     const sample = this.cutoff * (this.playbackRadii.length - 1);
     const first = Math.floor(sample), last = Math.min(first + 1, this.playbackRadii.length - 1);
     const radius = THREE.MathUtils.lerp(this.playbackRadii[first], this.playbackRadii[last], sample - first);
     // A tighter activity shot for both live playback and the export renderer.
     const distance = THREE.MathUtils.clamp(radius / Math.sin(framingFov) * .84, 110, 1100);
     // Sweep a half-turn around the activity frontier, ending on the far side.
-    const yaw = this.flat ? 0 : -.3 + this.cutoff * Math.PI;
-    const elevation = this.flat ? 0 : .16 + Math.sin(this.cutoff * Math.PI) * .12;
+    const yaw = -.3 + this.cutoff * Math.PI;
+    const elevation = .16 + Math.sin(this.cutoff * Math.PI) * .12;
     const angle = Math.atan2(Math.sin(yaw - this.playbackSphere.theta), Math.cos(yaw - this.playbackSphere.theta));
     this.playbackSphere.theta += angle * (1 - Math.exp(-3 * delta));
     this.playbackSphere.phi = THREE.MathUtils.damp(this.playbackSphere.phi, Math.PI / 2 - elevation, 1.5, delta);
@@ -733,7 +726,7 @@ export class TimelineScene {
     const x = headPosition(node, progressX(this.cutoff, this.graph))[0];
     const target = new THREE.Vector3(...spiralPosition(node, x));
     const normal = this.focusDirection();
-    const tangent = new THREE.Vector3(...spiralTangent(node, x)); if (this.flat) tangent.z = 0;
+    const tangent = new THREE.Vector3(...spiralTangent(node, x));
     tangent.projectOnPlane(normal);
     if (tangent.lengthSq() < .0001) tangent.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
     tangent.normalize();
@@ -744,7 +737,6 @@ export class TimelineScene {
   }
 
   private focusPoint(target: THREE.Vector3, distance: number) {
-    if (this.flat) target.z = 0;
     this.frameFocus();
     const direction = this.focusDirection();
     this.targetLook = target;
@@ -753,7 +745,6 @@ export class TimelineScene {
   }
 
   private focusDirection() {
-    if (this.flat) return new THREE.Vector3(0, 0, 1);
     const direction = this.camera.position.clone().sub(this.controls.target);
     return direction.lengthSq() > .000001 ? direction.normalize() : this.camera.getWorldDirection(direction).negate();
   }
@@ -784,23 +775,12 @@ export class TimelineScene {
     const bounds = new THREE.Box3().setFromPoints(this.graph.nodes.flatMap((node) => [new THREE.Vector3(...node.startPosition), new THREE.Vector3(...node.position)]));
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
-    if (this.flat) center.z = 0;
     const tangent = 2 * Math.tan(THREE.MathUtils.degToRad(22.5));
     const vertical = (size.y + 30) / tangent;
     const horizontal = (size.x + 50) / (tangent * this.camera.aspect);
-    const distance = Math.max(vertical, horizontal, 100) + (this.flat ? 0 : size.z / 2 + 20);
+    const distance = Math.max(vertical, horizontal, 100) + size.z / 2 + 20;
     this.targetLook = center;
-    this.targetPosition = center.clone().add(new THREE.Vector3(this.flat ? 0 : 18, this.flat ? 0 : 45, distance));
-  }
-
-  setFlat(flat: boolean) {
-    this.dirty = true;
-    this.flat = flat;
-    this.controls.enableRotate = !flat;
-    for (const group of [this.graphGroup, this.selectionGroup, this.filesGroup]) group.scale.z = flat ? 0.001 : 1;
-    if (this.nodeMesh) { this.nodeMesh.scale.z = flat ? 1000 : 1; this.nodeMesh.boundingSphere = null; }
-    this.revealsActive = true;
-    if (!this.playing || !this.motion) this.reset();
+    this.targetPosition = center.clone().add(new THREE.Vector3(18, 45, distance));
   }
 
   setMotion(enabled: boolean) {
@@ -841,7 +821,7 @@ export class TimelineScene {
       selectedRadius: this.selected && this.nodeByID.has(this.selected) ? this.drawnRadius(this.nodeByID.get(this.selected)!) : undefined,
       headSamples: this.graph.nodes.slice(0, 32).map((node, index) => {
         const matrix = new THREE.Matrix4(); this.nodeMesh?.getMatrixAt(index, matrix);
-        const point = new THREE.Vector3(...this.orbCenter(node)); if (this.flat) point.z *= .001; point.project(this.camera);
+        const point = new THREE.Vector3(...this.orbCenter(node)); point.project(this.camera);
         return { id: node.session.id, start: node.startPosition[0], end: node.position[0], x: matrix.elements[12], glowX: this.glowPositions?.getX(index), reveal: this.nodeReveal[index], screen: [(point.x + 1) / 2 * this.width, (1 - point.y) / 2 * this.height] };
       }),
       focusDimming: this.focusUniforms.uFocus.value,
@@ -849,10 +829,10 @@ export class TimelineScene {
       eventMarkers: this.eventMarkers.length,
       eventIcons: this.eventIcons.filter((icon) => icon.visible).length,
       focusArea: this.focusArea(),
-      selectedScreen: this.selected && this.nodeByID.has(this.selected) ? (() => { const point = new THREE.Vector3(...this.orbCenter(this.nodeByID.get(this.selected)!)); if (this.flat) point.z *= .001; point.project(this.camera); return [(point.x + 1) / 2 * this.width, (1 - point.y) / 2 * this.height]; })() : undefined,
+      selectedScreen: this.selected && this.nodeByID.has(this.selected) ? (() => { const point = new THREE.Vector3(...this.orbCenter(this.nodeByID.get(this.selected)!)); point.project(this.camera); return [(point.x + 1) / 2 * this.width, (1 - point.y) / 2 * this.height]; })() : undefined,
       selectedEvent: this.selectedEvent,
       selectedEventPosition: this.eventMarkers.find((marker) => marker.item.id === this.selectedEvent)?.position.toArray(),
-      markerSamples: this.eventMarkers.slice(-30).map(({ item, position }) => { const p = position.clone(); if (this.flat) p.z *= .001; p.project(this.camera); return { id: item.id, kind: item.kind, time: item.time, position: position.toArray(), x: (p.x + 1) / 2 * this.container.clientWidth, y: (1 - p.y) / 2 * this.container.clientHeight }; }),
+      markerSamples: this.eventMarkers.slice(-30).map(({ item, position }) => { const p = position.clone(); p.project(this.camera); return { id: item.id, kind: item.kind, time: item.time, position: position.toArray(), x: (p.x + 1) / 2 * this.container.clientWidth, y: (1 - p.y) / 2 * this.container.clientHeight }; }),
       sessionTrails: this.graph.nodes.filter((node) => node.position[0] > node.startPosition[0]).length,
       renderedFrames: this.renderer.info.render.frame,
       revealingNodes: this.revealsActive,
@@ -865,7 +845,6 @@ export class TimelineScene {
       playbackOutro: this.playbackOutro,
       playbackOrbitAngle: this.playbackOrbit ? this.playbackSphere.theta - this.playbackOrbit.theta : 0,
       playbackFocus: this.playbackFocus.toArray(),
-      flat: this.flat,
       preferences: { ...this.preferences },
     };
   }
@@ -907,7 +886,6 @@ export class TimelineScene {
       const position = this.orbCenter(node);
       this.transform.position.fromArray(position);
       this.glowPositions?.setXYZ(i, ...position);
-      if (this.flat) this.transform.position.z *= .001;
       this.transform.scale.setScalar(this.drawnRadius(node));
       this.transform.updateMatrix();
       this.nodeMesh.setMatrixAt(i, this.transform.matrix);
@@ -961,7 +939,7 @@ export class TimelineScene {
       this.nodeGrid.add({ index, x, y }, x, y, Math.max(12, rx, ry), this.width, this.height);
     });
     this.eventMarkers.forEach(({ position }, index) => {
-      point.copy(position); if (this.flat) point.z *= .001; point.project(this.camera);
+      point.copy(position); point.project(this.camera);
       if (point.z < -1 || point.z > 1) return;
       const x = (point.x + 1) / 2 * this.width, y = (1 - point.y) / 2 * this.height;
       this.markerGrid.add({ index, x, y }, x, y, 22, this.width, this.height);
@@ -1097,7 +1075,7 @@ export class TimelineScene {
     if (this.bloom.enabled !== bloom) { this.bloom.enabled = bloom; this.dirty = true; }
     if (!this.playing && this.camera.view?.enabled && (this.focusedSession || this.focusedEvent)) this.frameFocus();
     // Project labels with the same camera matrix used for this frame's nodes,
-    // including immediate 2D/reset jumps when reduced motion is enabled.
+    // including immediate reset jumps when reduced motion is enabled.
     this.camera.updateMatrixWorld();
     const selected = this.selected ? this.nodeByID.get(this.selected) : undefined;
     const focusTarget = !this.playing && this.preferences.focusDimming && selected && selected.startPosition[0] <= this.clipPlane.constant ? 1 : 0;
@@ -1127,7 +1105,6 @@ export class TimelineScene {
     const occupied: { x: number; y: number; width: number }[] = [];
     for (const label of this.labels) {
       const world = label.point.clone();
-      if (this.flat) world.z = 0;
       const point = world.project(this.camera);
       const labelWidth = label.priority ? Math.min(260, width - 24) : this.options.manual ? 235 : 155;
       const projectedX = (point.x * 0.5 + 0.5) * width;
@@ -1146,7 +1123,6 @@ export class TimelineScene {
     }
     for (const icon of this.eventIcons) {
       const marker = this.eventMarkers[icon.marker], point = this.iconPoint.copy(marker.position);
-      if (this.flat) point.z = 0;
       point.project(this.camera);
       const x = (point.x + 1) / 2 * width - 6, y = (1 - point.y) / 2 * height - 25;
       const visible = this.preferences.messageDots && this.selectionGroup.visible && marker.position.x <= this.clipPlane.constant && point.z > -1 && point.z < 1 && x > 12 && x < width - 24 && y > 12 && y < height - 30 && !occupied.some((box) => x < box.x + box.width + 12 && x + 24 > box.x && Math.abs(y - box.y) < 24);
