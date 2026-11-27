@@ -14,6 +14,7 @@ const back = document.querySelector<HTMLElement>('#profile-back')!;
 const retry = document.querySelector<HTMLAnchorElement>('#profile-retry')!;
 const preview = document.querySelector<HTMLImageElement>('#profile-preview')!;
 const notice = document.querySelector<HTMLElement>('#profile-notice')!;
+const github = document.querySelector<HTMLAnchorElement>('#profile-github')!;
 let viewer: ReturnType<typeof createPublicViewer> | undefined;
 function showError(message: string, canRetry = true) {
   host.hidden = true; loading.hidden = false; loading.dataset.state = 'error';
@@ -21,6 +22,7 @@ function showError(message: string, canRetry = true) {
 }
 async function load() {
   viewer?.dispose(); viewer = undefined;
+  github.hidden = true;
   host.hidden = true; loading.hidden = false; loading.dataset.state = 'loading'; loading.setAttribute('aria-busy', 'true');
   summary.classList.add('sr-only'); summary.textContent = 'Loading public graph…'; back.hidden = true;
   preview.hidden = true; preview.removeAttribute('src'); notice.hidden = true; retry.hidden = true;
@@ -40,18 +42,17 @@ async function load() {
     const card = cardTemplate.content.firstElementChild!.cloneNode(true) as HTMLElement;
     const heading = card.querySelector<HTMLElement>('#profile-name')!;
     const tokens = card.querySelector<HTMLElement>('#profile-tokens')!;
-    const github = card.querySelector<HTMLAnchorElement>('#profile-github')!;
     heading.textContent = `@${username}`;
     heading.title = `@${username}`;
     summary.textContent = publicSummary(graph);
-    const { tokenCount, tokensPartial } = publicGraphStats(graph);
+    const { tokenCount } = publicGraphStats(graph);
     if (tokenCount !== null) {
       tokens.querySelector('strong')!.textContent = count.format(tokenCount);
-      tokens.querySelector('span')!.textContent = tokensPartial ? 'recorded tokens' : 'tokens';
       tokens.hidden = false;
     }
     github.href = `https://github.com/${username}`;
     github.setAttribute('aria-label', `@${username} on GitHub (opens in a new tab)`);
+    github.hidden = false;
     const updated = new Date(result.updatedAt);
     if (Number.isFinite(updated.getTime())) document.querySelector('#profile-info')!.textContent = `Updated ${updated.toLocaleString()}`;
     try {
