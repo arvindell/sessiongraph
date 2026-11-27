@@ -43,14 +43,17 @@ test('equal timestamps and malformed relationship cycles keep finite positions',
   assert.equal(makeGraph([], []).nodes.length, 0);
 });
 
-test('token usage creates clearly different sphere sizes while keeping extreme and unknown counts bounded', () => {
+test('token usage moderately increases sphere sizes without oversized outliers', () => {
   const counts = [0, 1000, 10_000, 100_000, 1_000_000, 10_000_000];
   const sessions = counts.map((tokens, index) => session(`size-${index}`, 1000 + index, { tokens }));
   const graph = makeGraph(sessions, []);
   const radii = sessions.map(s => graph.nodes.find(node => node.session.id === s.id)!.radius);
   assert.ok(radii.every((radius, index) => index === 0 || radius > radii[index - 1]));
-  assert.ok(radii[4] > radii[2] * 2.4, 'high-usage sessions are visibly larger, not just slightly heavier');
-  assert.ok(radii[5] > radii[1] * 5);
+  assert.ok(radii[4] > radii[2] * 1.5, 'usage still creates a visible size difference');
+  assert.ok(radii[4] < radii[2] * 2.1, 'million-token sessions do not dwarf smaller sessions');
+  assert.ok(radii[3] <= 0.7, '100k-token sessions remain compact');
+  assert.ok(radii[4] <= 1, 'million-token sessions stay below unit radius');
+  assert.ok(radii[5] < radii[1] * 3.5);
   for (const tokens of [null, NaN, Infinity, -Infinity, -100]) {
     const input = session('unknown', 1000, { tokens });
     assert.equal(makeGraph([input], []).nodes[0].radius, radii[0]);
@@ -58,7 +61,7 @@ test('token usage creates clearly different sphere sizes while keeping extreme a
   }
   for (const tokens of [100_000_000, Number.MAX_VALUE]) {
     const radius = makeGraph([session('extreme', 1000, { tokens })], []).nodes[0].radius;
-    assert.ok(Number.isFinite(radius) && radius <= 3.2);
+    assert.ok(Number.isFinite(radius) && radius <= 1.4);
     assert.ok(radius >= radii.at(-1)!);
   }
 });

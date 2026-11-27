@@ -99,9 +99,9 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
         position: [x, y + wave + (seed - 0.5) * spread, z + (hash(session.id + 'z') - 0.5) * spread],
         startPosition: [startX, 0, 0],
         color,
-        // Cube-root growth gives recorded usage a visible influence on sphere
-        // volume. Keep an absolute scale across filters and cap extreme outliers.
-        radius: 0.35 + Math.min(2.85, Math.cbrt(tokens / 100_000) * 0.55),
+        // Usage adds a restrained cube-root weight without oversized outliers.
+        // Keep an absolute scale across filters and cap the full radius at 1.4.
+        radius: 0.35 + Math.min(1.05, Math.cbrt(tokens / 100_000) * 0.3),
       };
       nodes.push(node);
       lane.nodes.push(node);
