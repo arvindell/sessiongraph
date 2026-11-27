@@ -1,16 +1,67 @@
+const hour = 3_600_000;
+
+// A reproducible shape for the landing video, separate from the uniform load fixture.
+function organicHistory(end) {
+  let seed = 0x37ab12;
+  const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+  const profiles = [
+    // Directory, session count, activity bursts (days ago), branch probability
+    ['sessiongraph', 96, [16, 11, 4, 1], .43],
+    ['web-studio', 50, [14, 8, 3], .28],
+    ['timeline', 34, [10, 5], .58],
+    ['desktop', 26, [12, 2], .34],
+    ['search', 19, [8, 2], .49],
+    ['notes', 14, [15, 6, 1], .08],
+    ['data-import', 11, [5], .42],
+    ['design-system', 8, [12, 7], .13],
+    ['tiny-tools', 6, [3], .14],
+    ['weekend-prototype', 4, [13], .22],
+    ['dotfiles', 3, [17, 9], 0],
+    ['scratchpad', 2, [7, 1], 0],
+  ];
+  const sessions = profiles.flatMap(([name, count, bursts, branchRate], lane) => {
+    const starts = Array.from({ length: count }, () => {
+      const day = bursts[Math.floor(random() * bursts.length)];
+      const jitter = (random() + random() + random() - 1.5) * 1.7;
+      return end - Math.max(.1, random() < .15 ? random() * 18 : day + jitter) * 24 * hour;
+    }).sort((a, b) => a - b);
+    const depths = [];
+    return starts.map((created, i) => {
+      const sourceRoll = random(), lengthRoll = random();
+      const recent = starts.slice(Math.max(0, i - 7), i).map((_, j) => Math.max(0, i - 7) + j)
+        .filter(j => depths[j] < 3 && created - starts[j] < 30 * hour);
+      const parent = recent.length && random() < branchRate ? recent[Math.floor(random() * recent.length)] : undefined;
+      depths.push(parent === undefined ? 0 : depths[parent] + 1);
+      const duration = lengthRoll < .18 ? 8 + random() * 52
+        : lengthRoll < .88 ? (1 + 12 * random() ** 2) * 60
+          : (14 + random() * 38) * 60;
+      const sourceIndex = sourceRoll < .76 ? [2, 1, 0, 3][(lane + (random() < .32 ? 1 : 0)) % 4]
+        : Math.floor(random() * 12);
+      const lastMessageAt = Math.min(end, created + duration * 60_000);
+      return { name, lane, i, sourceIndex, created, lastMessageAt, parent, fork: random() < .57,
+        tokens: Math.round(1900 * 1000 ** random()) };
+    });
+  });
+  return { lanes: profiles.map(([name]) => name), sessions };
+}
+
 /** Entirely invented demo data. Every API request is intercepted before navigation. */
 export async function installDemoRoutes(page, options = {}) {
-  const end = (options.now ?? Date.now()) - 3_600_000, start = end - 24 * 86_400_000;
-  const lanes = ['sessiongraph', 'timeline', 'search', 'desktop', 'source-adapters', 'design-system'];
+  const end = (options.now ?? Date.now()) - hour, start = end - 24 * 86_400_000;
+  const organic = options.organic ? organicHistory(end) : null;
+  const lanes = organic?.lanes ?? ['sessiongraph', 'timeline', 'search', 'desktop', 'source-adapters', 'design-system'];
   const titles = ['Build conversation search', 'Polish timeline playback', 'Add keyboard navigation', 'Explore a new layout', 'Ship the desktop app', 'Connect local session sources', 'Refine the command palette', 'Animate session branches', 'Improve search ranking', 'Design the onboarding flow', 'Trace changes across forks', 'Make the galaxy feel alive'];
   const sources = ['opencode', 'claude-code', 'codex', 'cursor', 'gemini', 'qwen-code', 'pi', 'copilot', 'cline', 'roo-code', 'kilo-code', 'continue'], sessions = [];
   const names = ['OpenCode', 'Claude Code', 'Codex', 'Cursor', 'Gemini CLI', 'Qwen Code', 'Pi', 'GitHub Copilot CLI', 'Cline', 'Roo Code', 'Kilo Code', 'Continue'];
-  for (let lane = 0; lane < lanes.length; lane++) for (let i = 0; i < (options.perLane ?? 70 - lane * 4); i++) {
-    const source = sources[(i + lane) % sources.length], id = `demo-${lane}-${i}`;
+  const history = organic?.sessions ?? lanes.flatMap((name, lane) => Array.from({ length: options.perLane ?? 70 - lane * 4 }, (_, i) => {
     const created = start + ((i + lane * 1.4) / (options.perLane ? options.perLane + 10 : 80)) * (end - start);
-    const parent = i > 2 && i % 6 !== 0 && i % 3 !== 0 ? `demo-${lane}-${i - i % 6}` : undefined;
-    const lastMessageAt = created + (i % 7 + 1) * 6 * 3_600_000;
-    sessions.push({ id, nativeID: id, source, projectID: 'demo', directory: `/demo/${lanes[lane]}`, title: titles[(i + lane * 2) % titles.length], created, updated: lastMessageAt, activity: { firstMessageAt: created, lastMessageAt, userMessages: 8, untimedUserMessages: 0 }, archived: false, model: source === 'claude-code' ? 'claude-sonnet-4-6' : 'gpt-6-astra', provider: source === 'claude-code' ? 'anthropic' : 'openai', agent: 'build', tokens: 24000 + i * 1371, cost: null, ...(i % 2 ? { forkID: parent } : { parentID: parent }), revision: 'demo', coverage: { history: 'complete', importedAt: end } });
+    return { name, lane, i, sourceIndex: (i + lane) % sources.length, created, lastMessageAt: created + (i % 7 + 1) * 6 * hour,
+      parent: i > 2 && i % 6 !== 0 && i % 3 !== 0 ? i - i % 6 : undefined, fork: i % 2, tokens: 24000 + i * 1371 };
+  }));
+  for (const { name, lane, i, sourceIndex, created, lastMessageAt, parent, fork, tokens } of history) {
+    const source = sources[sourceIndex], id = `demo-${lane}-${i}`;
+    const relation = parent === undefined ? {} : { [fork ? 'forkID' : 'parentID']: `demo-${lane}-${parent}` };
+    sessions.push({ id, nativeID: id, source, projectID: 'demo', directory: `/demo/${name}`, title: titles[(i + lane * 2) % titles.length], created, updated: lastMessageAt, activity: { firstMessageAt: created, lastMessageAt, userMessages: 8, untimedUserMessages: 0 }, archived: false, model: source === 'claude-code' ? 'claude-sonnet-4-6' : 'gpt-6-astra', provider: source === 'claude-code' ? 'anthropic' : 'openai', agent: 'build', tokens, cost: null, ...relation, revision: 'demo', coverage: { history: 'complete', importedAt: end } });
   }
   const data = { sourceID: 'synthetic-demo', onboarding: false, importing: false, loadedAt: end, warnings: [], projects: [{ id: 'demo', name: 'sessiongraph', directory: '/demo/sessiongraph', worktrees: lanes.slice(1).map(n => '/demo/' + n) }], sources: sources.map((id, i) => ({ id, name: names[i], description: 'Synthetic local history for this demo', available: true, selected: true, sessions: sessions.filter(s => s.source === id).length, capabilities: { history: true, forks: id !== 'cursor', children: true, files: id !== 'cursor' } })), sessions };
   if (options.preferences) data.preferences = options.preferences;

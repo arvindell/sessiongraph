@@ -24,7 +24,7 @@ try {
   await page.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
   const now = new Date('2026-11-25T12:00:00Z');
   const { data } = await installDemoRoutes(page, {
-    now: +now, autoImport: false,
+    now: +now, autoImport: false, organic: true,
     preferences: { muted: true, motion: 'on', trailFlow: true, playbackSpeed: 3, grouping: 'worktree', quality: 'balanced' },
   });
   data.viewState = { days: 0 };
