@@ -20,6 +20,8 @@ test('auto-import settings API validates writes and automatic requests cannot ch
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/sessiongraph`;
   const post = (path: string, value: unknown, headers = {}) => fetch(`${base}/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SessionGraph-Action': path, ...headers }, body: JSON.stringify(value) });
   try {
+    assert.equal((await (await fetch(base)).json()).autoImport, false);
+    assert.equal((await post('settings', { autoImport: true })).status, 200);
     assert.equal((await (await fetch(base)).json()).autoImport, true);
     assert.equal((await post('settings', { autoImport: false })).status, 200);
     assert.equal((await (await fetch(base)).json()).autoImport, false);

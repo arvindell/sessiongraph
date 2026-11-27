@@ -11,6 +11,7 @@ import { PublishingClient, PublishingError } from './publishing';
 import { publishingSettings } from '@sessiongraph/core/public-graph';
 import { withSourcePaths } from './source-paths';
 import { LibraryError } from './library-query';
+import { MAX_SESSION_RECORDS } from './history-limits';
 
 const publishing = new PublishingClient();
 
@@ -116,7 +117,7 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
       if (match[2] === 'events') return json(200, store.events(id, Object.fromEntries(['cursor', 'item', 'filter', 'revision'].flatMap((key) => url.searchParams.has(key) ? [[key, url.searchParams.get(key)!]] : []))));
       if (match[2] === 'connection') return json(200, await getLaunchConnection(session));
       const cursor = url.searchParams.get('cursor') || undefined;
-      if (cursor && (!/^\d{1,9}$/.test(cursor) || Number(cursor) > 50_000)) return json(400, { error: 'Invalid cursor.' });
+      if (cursor && (!/^\d{1,9}$/.test(cursor) || Number(cursor) > MAX_SESSION_RECORDS)) return json(400, { error: 'Invalid cursor.' });
       return json(200, match[2] === 'content' ? store.content(id, cursor) : store.detail(id, cursor));
     }
     return json(404, { error: 'Not found.' });

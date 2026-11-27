@@ -23,7 +23,7 @@ export interface Preferences {
 }
 
 export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({
-  autoImport: true,
+  autoImport: false,
   muted: false, clickSounds: true, clickVolume: 35,
   motion: 'system', view: '3d', density: 'comfortable', panelOpacity: 90,
   quality: 'balanced', bloom: 32, stars: true, labels: true, nodeScale: 100, focusDimming: true,

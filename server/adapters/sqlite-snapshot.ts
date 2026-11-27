@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { chmodSync, constants, copyFileSync, lstatSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFile, statfs } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { digest } from './common';
@@ -15,14 +16,74 @@ const close = (path: string) => {
 };
 process.once('exit', () => { for (const path of copies.keys()) close(path); });
 
-export function sqliteRevision(path: string): string {
-  return digest([path, ...[path, `${path}-wal`].map((file, i) => {
+function snapshotFiles(path: string, large: boolean) {
+  return [path, `${path}-wal`].map((file, i) => {
     try {
       const s = lstatSync(file);
-      if (!s.isFile() || s.size > 8_000_000_000) throw new Error('History database must be a regular file below 8 GB.');
-      return [s.dev, s.ino, s.size, s.mtimeMs, s.ctimeMs];
+      if (!s.isFile()) throw new Error('History database and WAL must be regular files.');
+      if (!large && s.size > 8_000_000_000) throw new Error('History database exceeds the 8 GB snapshot limit for this source.');
+      return s;
     } catch (error) { if (i && (error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
-  })]);
+  });
+}
+
+const fingerprint = (path: string, files: ReturnType<typeof snapshotFiles>) =>
+  digest([path, ...files.map(s => s && [s.dev, s.ino, s.size, s.mtimeMs, s.ctimeMs])]);
+
+export function sqliteRevision(path: string): string {
+  return fingerprint(path, snapshotFiles(path, false));
+}
+
+function openSnapshot(destination: string) {
+  const db = new DatabaseSync(destination, { readOnly: true, enableDoubleQuotedStringLiterals: false, allowExtension: false });
+  try { db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; PRAGMA busy_timeout=1000; BEGIN;'); return db; }
+  catch (error) { db.close(); throw error; }
+}
+
+/** T3 can have very large databases. Never fall back to a blocking bulk copy. */
+export async function withLargeSqliteSnapshot<T>(path: string, read: (db: DatabaseSync, revision: string) => T, expected?: string): Promise<T> {
+  const retained = copies.get(path);
+  if (expected && retained?.revision === expected) return read(retained.db, expected);
+  const files = snapshotFiles(path, true), revision = fingerprint(path, files);
+  if (expected && revision !== expected) throw new SqliteSnapshotChangedError('History database changed during import; import again.');
+  if (retained?.revision === revision) {
+    const result = read(retained.db, revision);
+    if (fingerprint(path, snapshotFiles(path, true)) !== revision) throw new SqliteSnapshotChangedError('History database changed during reading; import again.');
+    return result;
+  }
+  close(path);
+  while (copies.size >= 2) close(copies.keys().next().value!);
+  const directory = mkdtempSync(join(tmpdir(), 'sessiongraph-history-'));
+  const destination = join(directory, 'history.db');
+  let db: DatabaseSync | undefined;
+  try {
+    for (const [index, suffix] of ['', '-wal'].entries()) {
+      const file = files[index];
+      if (!file) continue;
+      try { await copyFile(path + suffix, destination + suffix, constants.COPYFILE_FICLONE_FORCE); }
+      catch (error) {
+        if (!['ENOSYS', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'EINVAL'].includes((error as NodeJS.ErrnoException).code || '')) throw error;
+        const { bavail, bsize } = await statfs(directory);
+        const reserve = 512 * 1024 * 1024;
+        if (bavail * bsize < file.size + reserve) throw new Error('Not enough free space for the T3 history snapshot. Free space on the temporary drive and retry.');
+        await copyFile(path + suffix, destination + suffix);
+      }
+      chmodSync(destination + suffix, 0o600);
+    }
+    if (fingerprint(path, snapshotFiles(path, true)) !== revision) throw new SqliteSnapshotChangedError('History database changed while copying; import again.');
+    db = openSnapshot(destination);
+    const result = read(db, revision);
+    if (!expected && fingerprint(path, snapshotFiles(path, true)) !== revision) throw new SqliteSnapshotChangedError('History database changed during reading; import again.');
+    close(path);
+    while (copies.size >= 2) close(copies.keys().next().value!);
+    copies.set(path, { revision, directory, db });
+    return result;
+  } catch (error) {
+    try { db?.close(); } finally { rmSync(directory, { recursive: true, force: true }); }
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT' && fingerprint(path, snapshotFiles(path, true)) !== revision)
+      throw new SqliteSnapshotChangedError('History database changed while copying; import again.');
+    throw error;
+  }
 }
 
 export function withSqliteSnapshot<T>(path: string, read: (db: DatabaseSync) => T, expected?: string, pinned = false): T {
@@ -48,8 +109,7 @@ export function withSqliteSnapshot<T>(path: string, read: (db: DatabaseSync) => 
         } catch (error) { if (suffix && (error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
       }
       if (sqliteRevision(path) !== revision) throw new SqliteSnapshotChangedError('History database changed while copying; import again.');
-      db = new DatabaseSync(destination, { readOnly: true, enableDoubleQuotedStringLiterals: false, allowExtension: false });
-      db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; PRAGMA busy_timeout=1000; BEGIN;');
+      db = openSnapshot(destination);
       copy = { revision, directory, db }; copies.set(path, copy);
     } catch (error) {
       try { db?.close(); } finally { rmSync(directory, { recursive: true, force: true }); }

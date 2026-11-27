@@ -5,15 +5,15 @@ import { isAbsolute, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { addText, blankMessage, blankSession, digest, identity, project } from './common';
 import type { Candidate, ImportedMessage, SessionAdapter } from './types';
-import { hasTable, sqliteRevision, withSqliteSnapshot, SqliteSnapshotChangedError } from './sqlite-snapshot';
+import { hasTable, withLargeSqliteSnapshot, SqliteSnapshotChangedError } from './sqlite-snapshot';
 import { eventFor, eventText, messageEvent } from '../events';
 import type { TimelineEvent } from '@sessiongraph/core/timeline';
+import type { SessionPullRequest } from '@sessiongraph/core/types';
 import { executionFields } from '../commit-extraction';
 
 type Row = Record<string, unknown>;
 const SOURCE = 't3-code';
 const PAGE = 100;
-const MAX_THREADS = 20_000;
 // A page is at most 25.6 MB before normalized text/event limits apply.
 const MAX_ITEM_JSON = 256_000;
 const providerSource: Record<string, string> = { codex: 'codex', claudeAgent: 'claude-code', opencode: 'opencode' };
@@ -93,22 +93,50 @@ function linkedSessions(db: DatabaseSync, ids: string[]): Map<string, string[]> 
   return links;
 }
 
+function pullRequests(db: DatabaseSync, warnings: string[]) {
+  if (!hasTable(db, 'projection_thread_pull_requests')) return undefined;
+  const query = db.prepare(`SELECT substr(host,1,254) AS host, substr(repository,1,301) AS repository,
+    number, substr(url,1,1025) AS url, substr(source,1,32) AS source
+    FROM projection_thread_pull_requests WHERE thread_id=? AND source<>'stack-dismissed'
+    ORDER BY host, repository, number LIMIT 101`);
+  let warned = false;
+  return (id: string): SessionPullRequest[] => {
+    const rows = query.all(id), links = new Map<string, SessionPullRequest>();
+    for (const row of rows.slice(0, 100)) {
+      const host = string(row.host).toLowerCase(), repository = string(row.repository).toLowerCase();
+      const number = Number(row.number), source = string(row.source) as SessionPullRequest['source'];
+      if (host.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(host)
+        || !/^[a-z0-9-]{1,100}\/[a-z0-9_.-]{1,200}$/.test(repository)
+        || /\/\.{1,2}$/.test(repository)
+        || !Number.isSafeInteger(number) || number < 1 || !['manual', 'created', 'agent', 'stack'].includes(source)) continue;
+      const url = `https://${host}/${repository}/pull/${number}`;
+      if (string(row.url).replace(/\/$/, '').toLowerCase() !== url) continue;
+      if (!links.has(url)) links.set(url, { host, repository, number, url, source });
+    }
+    if (!warned && rows.length > 100) {
+      warnings.push('T3 Code pull request discovery is limited to 100 links per thread.');
+      warned = true;
+    }
+    return [...links.values()];
+  };
+}
+
 function discoverV2(db: DatabaseSync, path: string, databaseRevision: string) {
   if (!hasTable(db, 'orchestration_v2_projection_threads') || !hasTable(db, 'orchestration_v2_projection_turn_items')) throw new Error('Unsupported T3 Code database schema.');
-  const rows = db.prepare(`SELECT thread_id, project_id, substr(title,1,300) AS title, default_provider, created_at, updated_at, archived_at,
+  const selected = db.prepare(`SELECT thread_id, project_id, substr(title,1,300) AS title, default_provider, created_at, updated_at, archived_at,
     CASE WHEN json_valid(payload_json) THEN substr(json_extract(payload_json,'$.worktreePath'),1,4096) END AS worktree_path,
     CASE WHEN json_valid(payload_json) THEN substr(json_extract(payload_json,'$.modelSelection.model'),1,200) END AS model,
     CASE WHEN json_valid(payload_json) THEN json_extract(payload_json,'$.lineage.parentThreadId') END AS parent_thread_id,
     CASE WHEN json_valid(payload_json) THEN json_extract(payload_json,'$.lineage.relationshipToParent') END AS relationship,
     json_valid(payload_json) AS valid_payload
-    FROM orchestration_v2_projection_threads WHERE deleted_at IS NULL ORDER BY created_at, thread_id LIMIT ?`).all(MAX_THREADS + 1);
-  const selected = rows.slice(0, MAX_THREADS), ids = selected.map((row) => string(row.thread_id));
+    FROM orchestration_v2_projection_threads WHERE deleted_at IS NULL ORDER BY created_at, thread_id`).all();
+  const ids = selected.map((row) => string(row.thread_id));
   const roots = projectRoots(db, selected.map((row) => string(row.project_id)));
   const counts = aggregates(db, 'orchestration_v2_projection_messages', ids);
   const items = aggregates(db, 'orchestration_v2_projection_turn_items', ids);
   const links = linkedSessions(db, ids);
   const sessions: Candidate[] = [], projects = new Map<string, ReturnType<typeof project>>(), warnings: string[] = [];
-  if (rows.length > MAX_THREADS) warnings.push(`T3 Code discovery is limited to ${MAX_THREADS.toLocaleString()} threads.`);
+  const readPullRequests = pullRequests(db, warnings);
   let unreadableMetadata = 0;
   for (const row of selected) {
     const nativeID = string(row.thread_id), created = time(row.created_at);
@@ -125,8 +153,11 @@ function discoverV2(db: DatabaseSync, path: string, databaseRevision: string) {
       model: string(row.model) || 'Unknown model', provider: string(row.default_provider), agent: 'T3 Code',
       linkedSessionIDs: links.get(nativeID) || [] });
     // Reprocess saved V2 activity after fixing tool labels misread as file paths.
-    const revision = digest([3, row.updated_at, counts.get(nativeID), items.get(nativeID), links.get(nativeID)]);
-    sessions.push({ session, revision, locator: { path, databaseRevision, threadID: nativeID, format: 'v2', metadataPartial: row.valid_payload ? '' : '1' } });
+    const prs = readPullRequests?.(nativeID);
+    const revisionParts = [3, row.updated_at, counts.get(nativeID), items.get(nativeID), links.get(nativeID)];
+    // Link mutations need not advance the thread timestamp.
+    const revision = digest(prs ? [...revisionParts, prs] : revisionParts);
+    sessions.push({ session, revision, pullRequests: prs, locator: { path, databaseRevision, threadID: nativeID, format: 'v2', metadataPartial: row.valid_payload ? '' : '1' } });
   }
   if (unreadableMetadata) warnings.push(`${unreadableMetadata} T3 Code threads had unreadable metadata; model or lineage may be unavailable.`);
   return { sessions, projects: [...projects.values()], warnings };
@@ -134,11 +165,10 @@ function discoverV2(db: DatabaseSync, path: string, databaseRevision: string) {
 
 function discoverV1(db: DatabaseSync, path: string, databaseRevision: string) {
   if (!hasTable(db, 'projection_threads') || !hasTable(db, 'projection_thread_messages')) throw new Error('Unsupported T3 Code database schema.');
-  const rows = db.prepare(`SELECT thread_id, project_id, substr(title,1,300) AS title, substr(worktree_path,1,4096) AS worktree_path,
+  const selected = db.prepare(`SELECT thread_id, project_id, substr(title,1,300) AS title, substr(worktree_path,1,4096) AS worktree_path,
     created_at, updated_at, archived_at,
     CASE WHEN json_valid(model_selection_json) THEN substr(json_extract(model_selection_json,'$.model'),1,200) END AS model
-    FROM projection_threads WHERE deleted_at IS NULL ORDER BY created_at, thread_id LIMIT ?`).all(MAX_THREADS + 1);
-  const selected = rows.slice(0, MAX_THREADS);
+    FROM projection_threads WHERE deleted_at IS NULL ORDER BY created_at, thread_id`).all();
   const roots = projectRoots(db, selected.map((row) => string(row.project_id)));
   const counts = aggregates(db, 'projection_thread_messages', selected.map((row) => string(row.thread_id)));
   const sessions: Candidate[] = [], projects = new Map<string, ReturnType<typeof project>>();
@@ -154,7 +184,6 @@ function discoverV1(db: DatabaseSync, path: string, databaseRevision: string) {
     sessions.push({ session, revision: digest([row.updated_at, counts.get(nativeID)]), locator: { path, databaseRevision, threadID: nativeID, format: 'v1' } });
   }
   const warnings = ['Legacy T3 Code V1 stores text conversations but has limited event and provider-link coverage.'];
-  if (rows.length > MAX_THREADS) warnings.push(`T3 Code discovery is limited to ${MAX_THREADS.toLocaleString()} threads.`);
   return { sessions, projects: [...projects.values()], warnings };
 }
 
@@ -259,17 +288,16 @@ export const t3CodeAdapter: SessionAdapter = {
     const path = await databasePath();
     if (!path) return { sessions: [], projects: [], warnings: ['T3 Code database is unavailable. Saved history is retained.'] };
     for (let attempt = 0; ; attempt++) {
-      const databaseRevision = sqliteRevision(path);
       try {
-        return withSqliteSnapshot(path, (db) => hasTable(db, 'orchestration_v2_projection_threads')
-          ? discoverV2(db, path, databaseRevision) : discoverV1(db, path, databaseRevision), databaseRevision);
+        return await withLargeSqliteSnapshot(path, (db, databaseRevision) => hasTable(db, 'orchestration_v2_projection_threads')
+          ? discoverV2(db, path, databaseRevision) : discoverV1(db, path, databaseRevision));
       } catch (error) {
         if (!(error instanceof SqliteSnapshotChangedError) || attempt >= 2) throw error;
       }
     }
   },
   async read(candidate, cursor) {
-    return withSqliteSnapshot(candidate.locator.path, (db) => candidate.locator.format === 'v2'
-      ? readV2(db, candidate, cursor) : readV1(db, candidate, cursor), candidate.locator.databaseRevision, true);
+    return withLargeSqliteSnapshot(candidate.locator.path, (db) => candidate.locator.format === 'v2'
+      ? readV2(db, candidate, cursor) : readV1(db, candidate, cursor), candidate.locator.databaseRevision);
   },
 };

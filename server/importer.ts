@@ -4,6 +4,7 @@ import type { ImportedMessage, SessionAdapter } from './adapters/types';
 import { SessionGraphStore } from './store';
 import { boundEventPayloads } from './events';
 import { withSourcePaths } from './source-paths';
+import { MAX_SESSION_RECORDS, MAX_SESSION_CHARACTERS, MAX_SESSION_PAGES, SESSION_LIMIT_NOTE } from './history-limits';
 
 export class Importer {
   status: ImportStatus = { running: false, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [] };
@@ -50,7 +51,8 @@ export class Importer {
           const saved = this.store.getSession(candidate.session.id);
           // A failed update or an older inconsistent metadata snapshot must be
           // retried, even if the source has returned to its saved revision.
-          const retry = !saved?.coverage?.importedAt || saved.coverage.note?.startsWith('Latest import failed:') || !this.store.commitsCurrent(candidate.session.id);
+          const retry = !saved?.coverage?.importedAt || saved.coverage.note?.startsWith('Latest import failed:') ||
+            !this.store.commitsCurrent(candidate.session.id) || this.store.historyLimitedByOldBudget(saved);
           if (!retry && saved?.revision === candidate.revision && this.store.revision(candidate.session.id) === candidate.revision) { this.store.upsert(candidate); this.status.unchanged++; continue; }
           // New sessions need a pending row. Existing snapshots keep their
           // metadata and locator until replacement commits with their history.
@@ -62,13 +64,14 @@ export class Importer {
             do {
               const page = await adapter.read(candidate, cursor);
               partial ||= Boolean(page.partial); note = page.note || note;
+              let limited = false;
               for (const message of page.messages) {
                 if (!message.id || messages.has(message.id)) continue;
-                if (messages.size >= 50_000 || characters >= 16_000_000) { partial = true; break; }
-                let remaining = 16_000_000 - characters;
+                if (messages.size >= MAX_SESSION_RECORDS || characters >= MAX_SESSION_CHARACTERS) { limited = true; break; }
+                let remaining = MAX_SESSION_CHARACTERS - characters;
                 message.fragments = message.fragments.flatMap((fragment) => {
                   const text = fragment.text.slice(0, remaining);
-                  if (text.length < fragment.text.length) message.partial = true;
+                  if (text.length < fragment.text.length) { message.partial = true; limited = true; }
                   remaining -= text.length;
                   return text ? [{ ...fragment, text }] : [];
                 });
@@ -80,7 +83,9 @@ export class Importer {
               cursor = page.cursor; pages++;
               if (cursor && cursors.has(cursor)) throw new Error('Source returned a repeated history cursor.');
               if (cursor) cursors.add(cursor);
-              if (pages >= 2000 || messages.size >= 50_000 || characters >= 16_000_000) { partial = true; note = `${note || ''} Import limited to 50,000 messages / 16 million text characters / 2,000 pages.`; break; }
+              if (limited || cursor && (pages >= MAX_SESSION_PAGES || messages.size >= MAX_SESSION_RECORDS || characters >= MAX_SESSION_CHARACTERS)) {
+                partial = true; note = [note, SESSION_LIMIT_NOTE].filter(Boolean).join(' '); break;
+              }
               await yieldToIO();
             } while (cursor);
             // Time-ordered messages when timestamps exist; otherwise preserve
