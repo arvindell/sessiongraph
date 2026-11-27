@@ -26,6 +26,8 @@ export interface Discovery {
   sessions: Candidate[];
   projects: Project[];
   warnings: string[];
+  /** Read problems encountered during discovery; warnings describe coverage. */
+  errors?: string[];
   /** An unreadable authoritative representation must not be replaced by a stale export. */
   blocked?: string[];
   unavailable?: boolean;

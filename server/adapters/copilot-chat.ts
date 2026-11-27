@@ -129,7 +129,7 @@ const filesAdapter = localFileAdapter({
     const model = [...data.requests].reverse().find(r => text(r.modelId));
     return { nativeID: data.sessionId, messages,
       session: { title: text(data.customTitle) || text(data.computedTitle), created: time(data.creationDate), directory: vscodeChatPath(data.workingDirectory || workspace.folder), model: text(model?.modelId) || 'Unknown model' },
-      note: 'Persisted VS Code Chat UI history, including Copilot participants. Attachments, pre-compaction content, and transient UI state may be absent. Accepted-edit records provide file evidence; proposed edits and references do not. Multi-root workspaces without an explicit working directory remain unassigned. Tool subagent IDs are event correlations, not session ancestry.' };
+      note: 'Earlier messages may be missing.' };
   },
 });
 

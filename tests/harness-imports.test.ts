@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, stat, truncate } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { gzipSync, zstdCompressSync } from 'node:zlib';
 import { adapters } from '../server/adapters';
-import { closeSqliteSnapshots } from '../server/adapters/sqlite-snapshot';
+import { closeSqliteSnapshots, sqliteRevision } from '../server/adapters/sqlite-snapshot';
 import { rows, sqliteHistoryAdapter } from '../server/adapters/sqlite-histories';
 import { discoverComposers, readComposer } from '../server/adapters/cursor-composer';
 import { createCursorAdapter } from '../server/adapters/cursor';
@@ -220,7 +220,7 @@ test('legacy Cursor inline, mapped and separate bubbles retain original dates an
   const inline = readComposer(found.sessions.find(c => c.session.nativeID === 'inline')!);
   assert.deepEqual(inline.messages.map(m => m.id), ['u', 'a']); assert.deepEqual(inline.messages.map(m => m.time), [0, at + 1000]);
   assert.equal(readComposer(found.sessions.find(c => c.session.nativeID === 'map')!).messages[0].fragments[0].text, 'Mapped prompt');
-  assert.match(readComposer(found.sessions.find(c => c.session.nativeID === 'separate')!).note, /omitted/);
+  assert.match(readComposer(found.sessions.find(c => c.session.nativeID === 'separate')!).note, /messages were skipped/);
   const adapter = createCursorAdapter({ home: join(root, 'cursor-home'), userData: root });
   await put(root, 'cursor-home/projects/project/agent-transcripts/inline.jsonl', lines({ role: 'user', content: 'Modern export' }));
   const candidates = await adapter.discover(), modern = candidates.sessions.find(c => c.session.nativeID === 'inline')!;
@@ -236,9 +236,22 @@ test('Cursor NULL Composer markers are ignored while oversized payloads remain b
     db.prepare('INSERT INTO cursorDiskKV VALUES (?,?)').run('composerData:good', JSON.stringify({ composerId: 'good', createdAt: at, conversation: [{ bubbleId: 'u', type: 1, text: 'Keep this conversation' }] }));
     const found = discoverComposers(path);
     assert.deepEqual(found.sessions.map(c => c.session.nativeID), ['good']);
-    assert.deepEqual(found.warnings, ['1 legacy Cursor Composer records were unreadable or oversized; saved imports are retained.']);
+    assert.deepEqual(found.warnings, ['Cursor Composer: Skipped 1 unreadable or oversized record.']);
     assert.equal(readComposer(found.sessions[0]).messages[0].fragments[0].text, 'Keep this conversation');
   } finally { closeSqliteSnapshots(); db.close(); }
+}));
+
+test('SQLite distinguishes a non-file from an oversized database and identifies the affected source', { skip: process.platform === 'win32' }, async () => fixture('cursor', async root => {
+  const path = join(root, 'User/globalStorage/state.vscdb');
+  await mkdir(path, { recursive: true });
+  assert.throws(() => sqliteRevision(path), /History database is not a regular file/);
+  await rm(path, { recursive: true });
+  await writeFile(path, '');
+  await truncate(path, 8_000_000_001);
+  assert.throws(() => sqliteRevision(path), /History database exceeds 8 GB/);
+  const cursor = createCursorAdapter({ home: root, userData: root });
+  const result = await cursor.discover();
+  assert.deepEqual(result.errors, ['Cursor Composer: History database exceeds 8 GB.']);
 }));
 
 test('Codex titles prefer native names and fall back past injected app context', async () => fixture('codex', async root => {
@@ -313,7 +326,7 @@ test('OpenClaw prefers database events and blocks stale JSONL fallback when the 
     await put(root, 'agent/sessions/native.jsonl', piRows);
     assert.equal((await only(adapter)).messages[0].fragments[0].text, 'Authoritative');
     db.exec("UPDATE transcript_events SET event_zstd=x'0102'");
-    const found = await adapter.discover(); assert.equal(found.sessions.length, 0); assert.ok(found.warnings.some(w => w.includes('unsupported')));
+    const found = await adapter.discover(); assert.equal(found.sessions.length, 0); assert.ok(found.errors?.some(error => error.includes('unsupported')));
     assert.equal((await adapter.discover()).sessions.length, 0, 'cached failures must still block fallback');
   } finally { closeSqliteSnapshots(); db.close(); }
 }));

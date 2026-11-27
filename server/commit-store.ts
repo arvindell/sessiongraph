@@ -21,7 +21,7 @@ export const pendingCommits = (): CommitIndex => ({ version: 0, state: 'pending'
 export function writeCommits(db: DatabaseSync, session: Session): CommitIndex {
   db.prepare('DELETE FROM session_commits WHERE session_id=?').run(session.id);
   const base = { version: COMMIT_EXTRACTOR_VERSION, indexedAt: Date.now() };
-  if (!supported.has(session.source || '')) return { ...base, state: 'unavailable', count: null, note: 'Commit attribution is not validated for this source format.' };
+  if (!supported.has(session.source || '')) return { ...base, state: 'unavailable', count: null, note: 'Commit history unavailable for this source.' };
   const calls = new Map<string, TimelineItem | null>();
   const results = new Map<string, string | null>();
   const rows = () => db.prepare("SELECT data FROM timeline_items WHERE session_id=? AND kind IN ('tool_call','tool_result') ORDER BY ordinal").iterate(session.id);
@@ -57,7 +57,7 @@ export function writeCommits(db: DatabaseSync, session: Session): CommitIndex {
   for (const [id, call] of calls) if (call && !completed.has(id) && /\bgit\b[\s\S]*\b(?:commit|cherry-pick)\b/.test(call.input || '')) partial = true;
   const count = Number(db.prepare('SELECT count(*) AS n FROM session_commits WHERE session_id=?').get(session.id)!.n);
   return { ...base, state: !tools ? 'unavailable' : partial ? 'partial' : 'indexed', count: !tools ? null : count,
-    note: !tools ? 'No usable tool executions recorded; commit history is unknown.' : `${partial ? 'Some execution evidence is missing, ambiguous, inherited, or unsupported. ' : ''}Confirmed recorded operations only; absence is not proof that no commits occurred. Paths are execution directories; abbreviated SHAs remain unresolved. Linked provider histories retain their own attribution.` };
+    note: !tools ? 'No tool executions recorded.' : partial ? 'Some commits may be missing.' : count ? 'Confirmed commits from saved tool results.' : 'No recorded commits found.' };
 }
 function commit(row: Record<string, unknown>): SessionCommit {
   return { sessionID: String(row.session_id), sha: String(row.sha), repositoryPath: String(row.repository_path), operation: row.operation as SessionCommit['operation'], occurredAt: row.occurred_at === null ? null : Number(row.occurred_at), evidenceEventID: String(row.evidence_event_id) };

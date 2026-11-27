@@ -67,6 +67,6 @@ export const geminiAdapter = localFileAdapter({
     const parent = meta.kind === 'subagent' && basename(dirname(dirname(path))) === 'chats' ? basename(dirname(path)) : undefined;
     return { nativeID: meta.sessionId, messages, parent, partial,
       session: { directory, created: time(meta.startTime), title: text(meta.summary), model: text([...records].reverse().find(r => r.model)?.model) || 'Unknown model', provider: 'Google', nativeResume: !parent && Boolean(directory) && !sourcePath('gemini') && !process.env.SESSIONGRAPH_GEMINI_HOME && !path.includes(`${sep}.cache${sep}`) },
-      note: 'Local Gemini chat records with rewind and patch reconstruction. Only explicit subagent directories form parent links; workspace paths come from the project-root marker. Binary content is omitted.' };
+    };
   },
 });

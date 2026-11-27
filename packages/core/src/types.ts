@@ -96,6 +96,7 @@ export interface ImportStatus {
   unchanged: number;
   failed: number;
   errors: string[];
+  warnings?: string[];
 }
 
 export interface GraphNode {

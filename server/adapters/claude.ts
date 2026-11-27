@@ -109,7 +109,7 @@ const sdkClaudeAdapter: SessionAdapter = {
         } catch { unreadable++; }
       }
     }
-    if (unreadable) warnings.push(`${unreadable} Claude Code histories unavailable or too large. Saved imports are kept.`);
+    if (unreadable) warnings.push(`Claude Code: Skipped ${unreadable} unavailable or oversized transcripts.`);
     return { sessions, projects: [...new Map(sessions.map((c) => { const p = project('claude-code', c.session.directory); return [p.id, p]; })).values()], warnings };
   },
   async read(candidate, cursor) {
@@ -127,7 +127,7 @@ const sdkClaudeAdapter: SessionAdapter = {
     const messages = claudeMessages(rows.slice(0, count), candidate, transcript.times, transcript.byID).slice(offset - start);
     if (!offset && !messages.length && transcript.size > 100) throw new Error('SDK returned no readable conversation for this transcript.');
     if (!more && await revision(candidate.locator.path) !== candidate.revision) throw new Error('Session changed during import; import again to capture the latest messages.');
-    return { messages, cursor: more ? String(offset + 120) : undefined, partial: transcript.partial, note: `SDK-visible conversation chain from the local CLI/VS Code transcript; pre-compaction text and unsupported message types may be absent. Fork ancestry is unavailable.${transcript.partial ? ' Some transcript records or subagent metadata were unreadable.' : ''}` };
+    return { messages, cursor: more ? String(offset + 120) : undefined, partial: transcript.partial, note: transcript.partial ? 'Some transcript or subagent records could not be read.' : undefined };
   },
 };
 

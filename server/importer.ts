@@ -6,7 +6,7 @@ import { boundEventPayloads } from './events';
 import { withSourcePaths } from './source-paths';
 
 export class Importer {
-  status: ImportStatus = { running: false, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [] };
+  status: ImportStatus = { running: false, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [], warnings: [] };
   private job?: Promise<void>;
   readonly adapters: SessionAdapter[];
   constructor(readonly store: SessionGraphStore, adapters: SessionAdapter[]) {
@@ -29,22 +29,32 @@ export class Importer {
     if (ids && save) {
       this.store.setting('selected', [...new Set(ids)]);
     }
-    this.status = { running: true, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [] };
+    this.status = { running: true, discovered: 0, imported: 0, unchanged: 0, failed: 0, errors: [], warnings: [] };
     const heartbeat = setInterval(() => this.store.heartbeat(), 5000);
     this.job = this.run(ids || this.store.selected()).catch(() => { this.status.failed++; this.status.errors.push('Import interrupted. Re-import to resume remaining sessions.'); }).finally(() => { clearInterval(heartbeat); this.store.releaseImport(); this.status.running = false; this.status.source = undefined; this.job = undefined; });
     return this.status;
   }
   async settled() { await this.job; }
+  private report(kind: 'errors' | 'warnings', message: string) {
+    const messages = this.status[kind] ??= [];
+    if (!messages.includes(message)) messages.push(message);
+  }
   private async run(ids: string[]) {
     for (const adapter of this.adapters.filter((a) => ids.includes(a.id))) {
       this.status.source = adapter.id;
       try {
-        if (!await adapter.detect()) throw new Error(`${adapter.name} is unavailable. Saved imports remain available.`);
+        if (!await adapter.detect()) throw new Error('Source unavailable.');
         const discovery = await adapter.discover();
         const failedBefore = this.status.failed;
+        const discoveryErrors = [...new Set(discovery.errors)];
         const seen = new Map(discovery.sessions.map((candidate) => [candidate.session.id, candidate]));
         this.status.discovered += seen.size;
-        this.status.errors.push(...discovery.warnings);
+        for (const warning of discovery.warnings) this.report('warnings', warning);
+        for (const error of discoveryErrors) this.report('errors', error);
+        if (discovery.unavailable && !discoveryErrors.length) {
+          discoveryErrors.push(`${adapter.name}: History unavailable.`);
+          this.report('errors', discoveryErrors[0]);
+        }
         for (const project of discovery.projects) this.store.db.prepare('INSERT INTO projects VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(project.id, adapter.id, JSON.stringify(project));
         for (const candidate of seen.values()) {
           const saved = this.store.getSession(candidate.session.id);
@@ -80,7 +90,7 @@ export class Importer {
               cursor = page.cursor; pages++;
               if (cursor && cursors.has(cursor)) throw new Error('Source returned a repeated history cursor.');
               if (cursor) cursors.add(cursor);
-              if (pages >= 2000 || messages.size >= 50_000 || characters >= 16_000_000) { partial = true; note = `${note || ''} Import limited to 50,000 messages / 16 million text characters / 2,000 pages.`; break; }
+              if (pages >= 2000 || messages.size >= 50_000 || characters >= 16_000_000) { partial = true; note = [note, 'Session import limit reached.'].filter(Boolean).join(' '); break; }
               await yieldToIO();
             } while (cursor);
             // Time-ordered messages when timestamps exist; otherwise preserve
@@ -89,20 +99,22 @@ export class Importer {
             if (adapter.id === 'opencode') values.reverse();
             // A lifecycle-only export can describe an initially failed turn,
             // but must never erase a previously imported conversation.
-            if (saved?.activity?.userMessages && values.every(message => message.role === 'system')) throw new Error('Source has no readable conversation. Previous imports are retained.');
+            if (saved?.activity?.userMessages && values.every(message => message.role === 'system')) throw new Error('No readable conversation.');
             this.store.replace(candidate, values, partial, note);
             this.status.imported++;
           } catch (error) {
             this.status.failed++;
             this.store.failed(candidate.session.id, error instanceof Error ? error.message : 'Unavailable');
-            if (this.status.errors.length < 30) this.status.errors.push(`${adapter.name}: ${error instanceof Error ? error.message : 'Session import failed.'}`);
+            if (this.status.errors.length < 30) this.report('errors', `${adapter.name}: ${error instanceof Error ? error.message : 'Session import failed.'}`);
           }
           await yieldToIO();
         }
-        this.store.recordSource(adapter.id, [this.status.failed > failedBefore ? `${this.status.failed - failedBefore} sessions could not be updated; import again to retry.` : '', ...discovery.warnings].filter(Boolean).join(' ') || undefined);
+        const failed = this.status.failed - failedBefore;
+        if (discoveryErrors.length) this.status.failed++;
+        this.store.recordSource(adapter.id, [...discoveryErrors, failed ? `${failed} ${failed === 1 ? 'session' : 'sessions'} failed to import. Run sync to retry.` : ''].filter(Boolean).join(' ') || undefined);
       } catch (error) {
-        const message = error instanceof Error ? error.message : `${adapter.name} import failed.`;
-        this.status.errors.push(message); this.store.recordSource(adapter.id, message); this.status.failed++;
+        const message = `${adapter.name}: ${error instanceof Error ? error.message : 'Import failed.'}`;
+        this.report('errors', message); this.store.recordSource(adapter.id, message); this.status.failed++;
       }
     }
   }

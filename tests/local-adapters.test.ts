@@ -175,7 +175,8 @@ test('local history snapshots reject changed cursors, symlinks, oversized files 
     assert.equal(store.library([], false).sessions.length, 1);
     await writeFile(path, 'corrupted'); importer.start(); await importer.settled();
     assert.equal(store.library([], false).sessions.length, 1);
-    assert.match(importer.status.errors.join(' '), /Saved imports are kept/);
+    assert.deepEqual(importer.status.errors, []);
+    assert.match(importer.status.warnings!.join(' '), /Skipped .* history files/);
   } finally { store.close(); }
 }));
 

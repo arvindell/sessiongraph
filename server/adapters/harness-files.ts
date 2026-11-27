@@ -37,7 +37,7 @@ function kimiHistory(path: string, files: Map<string, string>): LocalHistory {
   const messages = rows.flatMap((r, i) => { const m = message(r, nativeText(r.id) || `context:${i}`); return m ? [m] : []; });
   if (!messages.length) throw new Error('No readable Kimi context messages.');
   return { nativeID, messages, partial: true, session: { created: seconds(wireRows.find(r => r.timestamp)?.timestamp) },
-    note: 'Kimi persisted context, including tool messages. Earlier compacted context and wire-only activity may be absent. Context messages carry no reliable turn times; wire times are used only for session placement.' };
+    note: 'Message times unavailable. Earlier messages may be missing.' };
 }
 
 function museHistory(path: string, files: Map<string, string>): LocalHistory {
@@ -53,8 +53,7 @@ function museHistory(path: string, files: Map<string, string>): LocalHistory {
     if (m) return [m];
     return text(event.kind) ? [recordEvent(r, nativeText(r.sequence) || `record:${i}`, event.kind, at, event.text)] : [];
   });
-  return { nativeID, messages, partial: true, session: { directory: text(meta.payload?.record?.workspace_root), model: text(meta.payload?.record?.model_id) || 'Unknown model', provider: text(meta.payload?.record?.provider_id) },
-    note: 'Muse runtime session events and recognized message payloads. Unsupported event content remains partial; no session ancestry is inferred from timestamps.' };
+  return { nativeID, messages, partial: true, session: { directory: text(meta.payload?.record?.workspace_root), model: text(meta.payload?.record?.model_id) || 'Unknown model', provider: text(meta.payload?.record?.provider_id) } };
 }
 
 function junieHistory(path: string, files: Map<string, string>): LocalHistory {
@@ -65,7 +64,7 @@ function junieHistory(path: string, files: Map<string, string>): LocalHistory {
     return [recordEvent(r, text(r.id) || `event:${i}`, kind, r.timestampMs, e.text ?? e.prompt ?? e.message)];
   });
   if (!messages.length) throw new Error('No supported Junie events.');
-  return { nativeID: basename(dirname(path)), messages, partial: true, note: 'Junie recorded agent events. State snapshots and opaque event bodies are omitted; events without an authoritative message role are not counted as user turns.' };
+  return { nativeID: basename(dirname(path)), messages, partial: true, note: 'Recorded events only.' };
 }
 
 function augmentHistory(path: string, files: Map<string, string>): LocalHistory {
@@ -75,7 +74,7 @@ function augmentHistory(path: string, files: Map<string, string>): LocalHistory 
     const exchange = object(turn.exchange), id = nativeText(turn.sequenceId) || `turn:${i}`;
     return [recordEvent(turn, id, turn.completed === true ? 'Completed exchange' : 'Incomplete exchange', turn.finishedAt, exchange.response_text)];
   });
-  return { nativeID: r.sessionId, messages, partial: true, session: { title: text(r.title), created: time(r.created), model: text(r.agentState?.modelId) || 'Unknown model' }, note: 'Augment saved exchange records. Typed response-node payloads and absent prompts are not reconstructed into conversations.' };
+  return { nativeID: r.sessionId, messages, partial: true, session: { title: text(r.title), created: time(r.created), model: text(r.agentState?.modelId) || 'Unknown model' }, note: 'Recorded exchanges only.' };
 }
 
 function fxHistory(path: string, files: Map<string, string>): LocalHistory {
@@ -83,7 +82,7 @@ function fxHistory(path: string, files: Map<string, string>): LocalHistory {
   const id = text(usage.session_id) || text(meta.id);
   if (!id || !usage.snapshot || meta.id && meta.id !== id) throw new Error('Unsupported Fx session metadata.');
   return { nativeID: id, messages: [], partial: true, session: { created: time(meta.created_at_ms), directory: text(meta.workspace_root), title: text(meta.title) },
-    note: 'Fx session metadata only. The usage snapshot is cumulative; it contains no conversation or message timestamps.' };
+    note: 'Session metadata only.' };
 }
 
 const definitions: FileHarness[] = [
@@ -111,23 +110,23 @@ const definitions: FileHarness[] = [
   { id: 'muse', name: 'Muse Code', roots: () => [dataPath('muse/sessions')], match: p => p.endsWith('/session.jsonl'), parse: museHistory },
   { id: 'junie', name: 'Junie', roots: () => [homePath('.junie/sessions')], match: p => p.endsWith('/events.jsonl'), parse: junieHistory, description: 'Local agent event history · partial conversation coverage' },
   { id: 'augment', name: 'Augment Code', roots: () => [homePath('.augment/sessions')], match: p => p.endsWith('.json'), parse: augmentHistory, description: 'Local exchange records · partial conversation coverage' },
-  { id: 'fx', name: 'Fx', roots: () => [homePath('.fx/sessions')], match: p => p.endsWith('/usage-v2.json'), extras: p => [join(dirname(p), 'session.json')], parse: fxHistory, history: false, description: 'Local native session metadata · conversation unavailable in usage snapshots' },
+  { id: 'fx', name: 'Fx', roots: () => [homePath('.fx/sessions')], match: p => p.endsWith('/usage-v2.json'), extras: p => [join(dirname(p), 'session.json')], parse: fxHistory, history: false, description: 'Session metadata only' },
   { id: 'minimax-code', name: 'MiniMax Code', roots: () => [join(process.env.TOKSCALE_HEADLESS_DIR || tokscalePath('headless'), 'mcode')], parse(p, f) {
     const value = f.get(p)!, { rows } = jsonLines(value), ids = new Set(rows.map(r => text(r.sessionId)).filter(Boolean));
     if (ids.size !== 1) throw new Error('Headless capture needs one explicit session identity.');
     const messages = rows.flatMap((r, i) => { const m = message(object(r.message), text(r.message?.id) || `record:${i}`); return m ? [m] : []; });
-    return { nativeID: [...ids][0], messages, partial: true, note: 'Previously captured MiniMax stream JSON only; no command is executed. User input and transient streaming records may be absent.' };
+    return { nativeID: [...ids][0], messages, partial: true, note: 'Captured messages only; prompts may be missing.' };
   } },
   { id: 'opencodereview', name: 'OpenCodeReview', roots: () => [homePath('.opencodereview/sessions')], parse(p, f) {
     const { rows } = jsonLines(f.get(p)!), header = rows.find(r => r.type === 'session_start');
     if (!header) throw new Error('Unsupported review session.');
-    return { nativeID: text(header.session_id || header.sessionId) || fileID(p), messages: rows.filter(r => r.type === 'llm_response').map((r, i) => recordEvent(r, text(r.id) || `response:${i}`, 'Review response', r.timestamp, r.content ?? r.response)), partial: true, session: { directory: text(header.cwd), created: time(header.timestamp) }, note: 'OpenCodeReview saved response events. Usage-only records do not establish conversation text or user prompts.' };
+    return { nativeID: text(header.session_id || header.sessionId) || fileID(p), messages: rows.filter(r => r.type === 'llm_response').map((r, i) => recordEvent(r, text(r.id) || `response:${i}`, 'Review response', r.timestamp, r.content ?? r.response)), partial: true, session: { directory: text(header.cwd), created: time(header.timestamp) }, note: 'Recorded review responses only.' };
   } },
 ];
 
 export const fileHarnessAdapters: SessionAdapter[] = definitions.map(source => localFileAdapter({
   ...source, roots: harnessRoots(source.id, source.roots), match: source.match || jsonl,
-  description: source.description || 'Local transcript snapshots · bounded, read-only import',
+  description: source.description || 'Local session transcripts',
   capabilities: { history: source.history !== false, forks: false, children: false, files: false },
   parse: source.parse || ((p, f) => envelopeHistory(p, f.get(p)!)),
 }));

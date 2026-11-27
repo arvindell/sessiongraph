@@ -116,7 +116,7 @@ export function readCursorStore(path: string) {
         }
       } catch { partial = true; }
     }
-    if (!messages.length) throw new Error('Cursor store has no readable conversation at its saved root. Previous imports are retained.');
+    if (!messages.length) throw new Error('Cursor store has no readable conversation.');
     return { meta, messages, partial };
   });
 }

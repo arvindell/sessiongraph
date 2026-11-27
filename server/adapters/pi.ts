@@ -24,7 +24,7 @@ export function piHistory(value: string): LocalHistory {
   const lastModel = [...rows].reverse().find(r => r.type === 'model_change' || r.message?.model);
   return { nativeID: header.id, messages, partial,
     session: { directory: text(header.cwd), created: time(header.timestamp), title: text([...rows].reverse().find(r => r.type === 'session_info')?.name), model: text(lastModel?.modelId || lastModel?.message?.model) || 'Unknown model', provider: text(lastModel?.provider || lastModel?.message?.provider) },
-    note: 'Raw Pi session history includes all recorded in-file branches, not just the active model context. Entry parent IDs are preserved as event links, not session ancestry. Parent-session file paths do not establish whether a session is a fork or a child. Binary content is omitted.' };
+    note: 'Includes all saved branches in this transcript.' };
 }
 
 export const piAdapter = localFileAdapter({

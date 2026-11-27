@@ -46,7 +46,7 @@ function taskAdapter(id: string, name: string, extension: string, env: string) {
         parent: text(history.parentTaskId || info.parent_session_id) || undefined,
         fork: text(info.metadata?.fork?.forkedFromSessionId) || undefined,
         session: { directory: text(history.workspace || info.cwd || info.workspace_root || task.workspace), created: time(info.started_at), title: text(history.task || info.metadata?.title), model: text(lastModel?.modelInfo?.id || lastModel?.model || info.model) || 'Unknown model', provider: text(lastModel?.modelInfo?.provider || info.provider) },
-        note: sdk ? 'Cline CLI/SDK message snapshots. Metadata is used when a matching session.json exists; database-only workspace, title, and lineage fields remain unknown. Binary attachments are omitted.' : `${name} API-conversation snapshots; UI-only messages, older compacted content, and binary attachments can be absent. XML tool requests alone are not successful edit evidence.${id === 'kilo-code' ? ' Select the separate Kilo CLI source for its SQLite history.' : ''}` };
+        note: sdk ? undefined : 'Earlier and editor-only messages may be missing.' };
     },
   });
 }
@@ -76,6 +76,6 @@ export const continueAdapter = localFileAdapter({
     const usage = object(value.usage);
     return { nativeID: value.sessionId, messages,
       session: { directory: text(value.workspaceDirectory), title: text(value.title), created: time(meta.dateCreated), model: text(value.chatModelTitle) || 'Unknown model', cost: typeof usage.totalCost === 'number' ? usage.totalCost : null, tokens: sumRecordedTokens([usage.promptTokens, usage.completionTokens]) },
-      note: 'Local Continue conversation snapshots. Missing message times remain unknown. Context attachments and transient tool UI state are not imported; tool outputs are retained when recorded as messages.' };
+    };
   },
 });

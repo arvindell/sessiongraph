@@ -111,7 +111,7 @@ async function loadSessionGraph(): Promise<SessionGraphData> {
     if (cursor && seenCursors.has(cursor)) throw new Error('OpenCode returned a repeated session cursor.');
     if (cursor) seenCursors.add(cursor);
   } while (cursor && sessions.size < 20_000);
-  if (cursor) warnings.push('Showing the newest 20,000 sessions. Older sessions are not loaded.');
+  if (cursor) warnings.push('OpenCode: Showing the newest 20,000 sessions.');
   const projects: Project[] = rawProjects.map((p) => ({
     id: p.id,
     name: p.name || basename(p.canonical) || 'Global',

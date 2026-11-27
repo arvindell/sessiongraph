@@ -32,6 +32,6 @@ export const qwenAdapter = localFileAdapter({
     const title = latest.find(r => r.subtype === 'custom_title')?.systemPayload?.customTitle;
     return { nativeID: first.sessionId, messages, partial, parent: text(parent) || undefined, fork: text(rows.find(r => r.forkedFrom?.sessionId)?.forkedFrom?.sessionId) || undefined,
       session: { directory: text(first.cwd), created: time(first.timestamp), title: text(title), model: text(latest.find(r => r.model)?.model) || text(latest.find(r => r.subtype === 'session_model')?.systemPayload?.modelId) || 'Unknown model', nativeResume: Boolean(first.cwd) && !sourcePath('qwen-code') && !process.env.SESSIONGRAPH_QWEN_HOME },
-      note: 'Local Qwen chat records, including compaction and branch events in source order. Parent and fork links use recorded session IDs. Managed-daemon-only and binary history may be unavailable.' };
+    };
   },
 });

@@ -43,7 +43,7 @@ export function envelopeHistory(path: string, value: string): LocalHistory {
   const last = [...rows].reverse().find(r => r.message?.model || typeof r.model === 'string');
   return { nativeID, messages, partial: true,
     session: { directory: text(meta.cwd), created: time(header.timestamp), title: text(header.title), model: text(last?.message?.model || last?.model) || 'Unknown model' },
-    note: `Local conversation envelopes; source-native message IDs are retained. Context-only records, opaque attachments, and unsupported branches may be absent.${partial ? ' Malformed records were skipped.' : ''}` };
+    note: partial ? 'Some transcript records could not be imported.' : undefined };
 }
 
 export function ampHistory(path: string, files: Map<string, string>): LocalHistory {
@@ -53,7 +53,7 @@ export function ampHistory(path: string, files: Map<string, string>): LocalHisto
     const result = message(m, nativeText(m.messageId) || `message:${i}`, m.timestamp ?? m.usage?.timestamp);
     return result ? [result] : [];
   });
-  return { nativeID: raw.id, messages, partial: true, session: { created: time(raw.created), title: text(raw.title), directory: text(raw.cwd) }, note: 'Amp local/exported thread messages. Usage-ledger ranges are not message timestamps. Export-only and missing content remain partial.' };
+  return { nativeID: raw.id, messages, partial: true, session: { created: time(raw.created), title: text(raw.title), directory: text(raw.cwd) } };
 }
 
 export function jcodeHistory(path: string, files: Map<string, string>): LocalHistory {
@@ -72,7 +72,7 @@ export function jcodeHistory(path: string, files: Map<string, string>): LocalHis
     if (seen.has(id)) return []; seen.add(id);
     const m = message(r, id); return m ? [m] : [];
   });
-  return { nativeID: raw.id, messages, partial: appended.partial, session: { title: text(raw.title), directory: text(raw.working_dir), created: time(raw.created_at), model: text(raw.model) || 'Unknown model', provider: text(raw.provider_key) }, note: 'Jcode session snapshot and append journal; replayed native message IDs count once. Absent message times remain unknown.' };
+  return { nativeID: raw.id, messages, partial: appended.partial, session: { title: text(raw.title), directory: text(raw.working_dir), created: time(raw.created_at), model: text(raw.model) || 'Unknown model', provider: text(raw.provider_key) } };
 }
 
 export function codebuffHistory(path: string, files: Map<string, string>, free: boolean): LocalHistory | undefined {
@@ -86,7 +86,7 @@ export function codebuffHistory(path: string, files: Map<string, string>, free: 
     return m ? [m] : [];
   });
   const chat = basename(dirname(path)), project = basename(dirname(dirname(dirname(path))));
-  return { nativeID: `${project}/${chat}`, messages, partial: true, note: 'Codebuff/Freebuff persisted chat messages. Freebuff requires a recorded base2-free root-agent marker. Shared storage is attributed once; token counts are not estimated from text.' };
+  return { nativeID: `${project}/${chat}`, messages, partial: true };
 }
 
 export function vibeHistory(path: string, files: Map<string, string>): LocalHistory {
@@ -99,7 +99,7 @@ export function vibeHistory(path: string, files: Map<string, string>): LocalHist
   const messages = records.flatMap((r: Raw, i: number) => { const m = message(r, `message:${i}`); return m ? [m] : []; });
   return { nativeID: meta.session_id, messages, partial: parsed.partial || !messages.length,
     session: { directory: text(meta.environment?.working_directory), created: time(meta.start_time), model: text(meta.config?.active_model) || 'Unknown model', title: text(meta.title) },
-    note: 'Vibe session metadata and conversation snapshot. Untimed transcript messages remain untimed; cumulative session usage is not spread across turns.' };
+  };
 }
 
 /** ACP updates are fragments, not complete turns. Group only adjacent chunks of a recorded turn. */
@@ -124,7 +124,7 @@ export function acpHistory(path: string, value: string): LocalHistory {
   flush();
   if (ids.size > 1) throw new Error('Multiple sessions in one ACP event log.');
   if (!ids.size || !messages.length) throw new Error('No supported ACP session updates.');
-  return { nativeID: [...ids][0], messages, partial: true, note: 'Saved ACP updates. Adjacent text chunks are grouped; missing turn boundaries, tool payloads, and metadata remain partial.' };
+  return { nativeID: [...ids][0], messages, partial: true, note: 'Turn boundaries and tool details may be incomplete.' };
 }
 
 export function dshHistory(value: string): LocalHistory {
@@ -136,5 +136,5 @@ export function dshHistory(value: string): LocalHistory {
     const m = message({ ...body, role: body.role || r.type.split('/')[0] }, text(body.id) || `record:${i}`, r.time);
     return m ? [m] : [];
   });
-  return { nativeID: header!.id, messages, partial: true, session: { directory: text(header!.cwd), created: time(header!.createdAt ?? header!.time) }, note: `DeepSeek Harness final message records; streaming/retry bookkeeping is excluded. Context seeds and unsupported event payloads may be absent.${partial ? ' Malformed records were skipped.' : ''}` };
+  return { nativeID: header!.id, messages, partial: true, session: { directory: text(header!.cwd), created: time(header!.createdAt ?? header!.time) }, note: partial ? 'Some transcript records could not be imported.' : undefined };
 }

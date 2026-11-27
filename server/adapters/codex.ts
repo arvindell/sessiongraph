@@ -99,7 +99,7 @@ export function codexRecord(raw: any, offset: number, candidate: Candidate) {
 }
 
 export const codexAdapter: SessionAdapter = {
-  id: 'codex', name: 'Codex', description: 'Local active and archived rollouts · no running agent required',
+  id: 'codex', name: 'Codex', description: 'Local active and archived transcripts',
   capabilities: { history: true, forks: true, children: true, files: true },
   async detect() { try { return (await stat(root())).isDirectory(); } catch { return false; } },
   async discover() {
@@ -134,8 +134,7 @@ export const codexAdapter: SessionAdapter = {
       if (!old || rank(candidate) > rank(old) || rank(candidate) === rank(old) && session.updated > old.session.updated) found.set(session.id, candidate);
       } catch { unsupported++; }
     }
-    if (unsupported) warnings.push(`${unsupported} Codex files were unreadable, oversized, or had no supported rollout metadata; saved history is retained.`);
-    warnings.push('Codex imports local JSONL rollouts and bounded zstd/gzip archive copies. Cloud-only and store-only history are not imported.');
+    if (unsupported) warnings.push(`Codex: Skipped ${unsupported} unreadable, oversized, or unsupported transcript files.`);
     const sessions = [...found.values()];
     return { sessions, projects: [...new Map(sessions.map((c) => { const p = project('codex', c.session.directory); return [p.id, p]; })).values()], warnings };
   },
@@ -143,6 +142,6 @@ export const codexAdapter: SessionAdapter = {
     if (!cursor) candidate.locator.executionCwd = '';
     const page = await readJSONL(candidate.locator.path, Number(cursor || 0));
     if (page.cursor === undefined && await revision(candidate.locator.path) !== candidate.revision) throw new Error('Session changed during import; import again to capture the latest messages.');
-    return { messages: page.rows.flatMap((r) => { const msg = codexRecord(r.value, r.offset, candidate); return msg ? [msg] : []; }), cursor: page.cursor === undefined ? undefined : String(page.cursor), partial: page.partial, note: 'Local rollout messages, tools, and lifecycle events. Mirrored conversation events are deduplicated. Images, encrypted reasoning, and store-only history are unavailable.' };
+    return { messages: page.rows.flatMap((r) => { const msg = codexRecord(r.value, r.offset, candidate); return msg ? [msg] : []; }), cursor: page.cursor === undefined ? undefined : String(page.cursor), partial: page.partial };
   },
 };

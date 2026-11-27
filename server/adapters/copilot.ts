@@ -38,6 +38,6 @@ export const copilotAdapter = localFileAdapter({
     const latest = [...rows].reverse();
     return { nativeID: meta.sessionId, messages, partial, parent: text(meta.detachedFromSpawningParentSessionId) || undefined,
       session: { directory: text(meta.context?.cwd), created: time(meta.startTime || start?.timestamp), title: text(latest.find(r => r.type === 'session.title_changed')?.data?.title), model: text(latest.find(r => r.type === 'session.model_change')?.data?.newModel) || text(meta.selectedModel) || 'Unknown model', provider: text(meta.providerId), nativeResume: Boolean(meta.context?.cwd) && !sourcePath('copilot') && !process.env.SESSIONGRAPH_COPILOT_HOME },
-      note: 'Persisted Copilot CLI events only. Streaming deltas are excluded in favor of final messages. Tool-call parents are event correlations, not session ancestry. Cloud-only sessions and binary assets are unavailable.' };
+    };
   },
 });
