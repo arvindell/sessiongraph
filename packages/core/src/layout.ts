@@ -46,8 +46,12 @@ export const connectionPositions = (from: GraphNode, to: GraphNode) => [
 
 export function makeGraph(sessions: Session[], projects: Project[], previous?: Graph, grouping?: GraphGrouping): Graph {
   if (!sessions.length) return { nodes: [], edges: [], lanes: [], start: 0, end: 0 };
-  const keyFor = (session: Session) => !grouping ? laneKey(session)
-    : JSON.stringify([grouping, (grouping === 'repository' ? session.checkout?.repository : session.checkout?.worktree) ?? null]);
+  const keyFor = (session: Session) => {
+    if (!grouping) return laneKey(session);
+    const checkout = grouping === 'repository' ? session.checkout?.repository : session.checkout?.worktree;
+    if (checkout) return JSON.stringify([grouping, checkout]);
+    return session.directory ? JSON.stringify(['directory', directoryPath(session.directory)]) : JSON.stringify([grouping, null]);
+  };
   const ordered = [...sessions].sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
   const start = ordered[0].created;
   const end = ordered.reduce((latest, session) => Math.max(latest, sessionEnd(session)), start + 3_600_000);
@@ -80,8 +84,8 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
     const directory = group[0].directory;
     const lane: Lane = {
       key, slot: index, color,
-      label: grouping === 'repository' ? group[0].checkout?.repositoryLabel || 'Unknown repository'
-        : grouping === 'worktree' ? (group[0].checkout ? directoryLabel(group[0].checkout.worktree) : 'Unknown worktree')
+      label: grouping === 'repository' ? group[0].checkout?.repositoryLabel || (directory ? directoryLabel(directory) : 'Unknown repository')
+        : grouping === 'worktree' ? (group[0].checkout ? directoryLabel(group[0].checkout.worktree) : directory ? directoryLabel(directory) : 'Unknown worktree')
         : directory ? directoryLabel(directory) : project?.name || group[0].projectID || 'Unknown directory',
       kind: grouping === 'worktree' && group[0].checkout || !grouping && directory && worktrees.has(directoryPath(directory)) ? 'worktree' : 'directory',
       y, z, nodes: [],

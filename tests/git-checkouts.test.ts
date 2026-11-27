@@ -52,3 +52,14 @@ test('repository grouping combines checkouts; worktree grouping combines subdire
   assert.equal(normalizePreferences({ grouping: 'directory' }).grouping, 'worktree');
   assert.equal(normalizePreferences({ grouping: 'repository' }).grouping, 'repository');
 });
+
+test('both Git clustering modes fall back to the full directory before the unknown lane', () => {
+  const sessions = ['/one/app', '/one/app/', '/two/app', '', ''].map((directory, i) => blankSession('codex', String(i), directory));
+  for (const [mode, unknownLabel] of [['worktree', 'Unknown worktree'], ['repository', 'Unknown repository']] as const) {
+    const { lanes } = makeGraph(sessions, [], undefined, mode);
+    assert.equal(lanes.length, 3);
+    assert.deepEqual(lanes.find(lane => lane.label === unknownLabel)?.nodes.map(node => node.session.id), [sessions[3].id, sessions[4].id]);
+    const folders = lanes.filter(lane => lane.kind === 'directory' && lane.label === 'app');
+    assert.deepEqual(folders.map(lane => lane.nodes.map(node => node.session.id)), [[sessions[0].id, sessions[1].id], [sessions[2].id]]);
+  }
+});
