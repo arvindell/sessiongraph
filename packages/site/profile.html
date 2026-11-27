@@ -3,7 +3,17 @@
   <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#080e13"><meta name="robots" content="noindex"><title>Public graph — SessionGraph</title><link rel="icon" href="/assets/favicon.svg"><link rel="apple-touch-icon" href="/assets/apple-touch-icon.png"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/profile.css"><script type="module" src="/profile.ts"></script></head>
   <body class="graph-page">
     <a class="skip-link" href="#public-graph">Skip to graph</a>
-    <header class="graph-header"><a class="brand" href="/" aria-label="SessionGraph home"><img src="/assets/brand/mark.svg" width="28" height="28" alt=""><span>SessionGraph</span></a><span class="graph-header-divider"></span><h1 id="profile-name">Public graph</h1><nav aria-label="Main navigation"><a href="/explore">Explore graphs</a><a href="/#download">Create yours ↗</a></nav></header>
+    <header class="graph-header">
+      <a class="brand" href="/" aria-label="SessionGraph home"><img src="/assets/brand/mark.svg" width="28" height="28" alt=""><span>SessionGraph</span></a>
+      <div class="profile-card">
+        <div class="profile-identity">
+          <h1 id="profile-name">Public graph</h1>
+          <p id="profile-tokens" hidden><strong></strong> <span></span></p>
+        </div>
+        <a id="profile-github" class="profile-github" target="_blank" rel="noopener noreferrer" hidden><!-- icon:github --><span>GitHub</span><!-- icon:arrow-up-right --></a>
+      </div>
+      <nav aria-label="Main navigation"><a href="/explore">Explore graphs</a><a href="/#download">Create yours ↗</a></nav>
+    </header>
     <div class="graph-loading" id="profile-loading" data-state="loading" aria-busy="true">
       <div class="graph-skeleton" aria-hidden="true">
         <div class="graph-skeleton-toolbar"><span class="skeleton"></span><span class="skeleton"></span></div>

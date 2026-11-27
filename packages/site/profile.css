@@ -1,8 +1,16 @@
 .graph-page { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 .graph-header { display: flex; align-items: center; gap: 18px; min-height: 64px; padding: 10px 22px; border-bottom: 1px solid var(--line); background: #0b141a; }
 .graph-header .brand { font-size: 19px; }
-.graph-header h1 { font-size: 14px; font-weight: 500; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.graph-header-divider { width: 1px; height: 22px; background: var(--line); }
+.profile-card { display: flex; align-items: center; gap: 16px; min-width: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: #b0e9d606; }
+.profile-identity { min-width: 0; }
+.profile-identity h1 { margin: 0; font-size: clamp(16px, 2vw, 21px); font-weight: 640; letter-spacing: -.025em; line-height: 1.15; overflow-wrap: anywhere; }
+#profile-tokens { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+#profile-tokens strong { color: var(--mint); font-variant-numeric: tabular-nums; }
+.profile-github { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 6px 8px; border-radius: 6px; color: #b5c9be; font-size: 11px; }
+.profile-github[hidden] { display: none; }
+.profile-github:hover { color: var(--mint); background: #b0e9d611; }
+.profile-github .ui-icon { width: 15px; height: 15px; }
+.profile-github .ui-icon:last-child { width: 11px; height: 11px; }
 .graph-header nav { display: flex; align-items: center; gap: 24px; margin-left: auto; font-size: 12px; flex-shrink: 0; color: #b5c9be; }
 .graph-header nav a:hover { color: var(--mint); }
 #public-graph { flex: 1; width: 100%; min-height: 0; }
@@ -35,4 +43,6 @@
   .graph-skeleton-streams { left: 65%; right: 10px; }
   .graph-skeleton-timeline { bottom: 26px; width: calc(100% - 20px); }
 }
-@media(max-width:720px) { .graph-header { padding-inline: 12px; gap: 12px; } .graph-header .brand span, .graph-header-divider, .graph-header nav a:last-child { display: none; } .graph-header nav { font-size: 11px; } .graph-footer { font-size: 9px; } }
+@media(max-width:720px) { .graph-header { padding-inline: 12px; gap: 10px; } .graph-header .brand span, .graph-header nav a:last-child { display: none; } .graph-header nav { font-size: 11px; } .graph-footer { font-size: 9px; } }
+@media(max-width:480px) { .profile-card { gap: 4px; padding-inline: 8px; } .profile-github span, .profile-github .ui-icon:last-child { display: none; } }
+.graph-page { --app-sans: 'Katagami Sans', Geist, sans-serif; font-family: var(--app-sans); }

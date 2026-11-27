@@ -57,10 +57,19 @@ export interface FileChange {
   steps: number;
 }
 
+export interface SessionPullRequest {
+  host: string;
+  repository: string;
+  number: number;
+  url: string;
+  source: 'manual' | 'created' | 'agent' | 'stack';
+}
+
 export interface SessionDetail {
   revision?: string;
   note?: string;
   id: string;
+  pullRequests?: SessionPullRequest[];
   files: FileChange[];
   tools: { name: string; count: number }[];
   locations: { directory: string; time: number }[];
@@ -138,4 +147,6 @@ export interface Graph {
   end: number;
   /** Coordinate frame stays fixed across imports; start/end describe current data. */
   timeFrame?: { start: number; end: number };
+  /** False when X encodes an anonymous sequence rather than real calendar dates. */
+  calendarTime?: boolean;
 }

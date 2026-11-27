@@ -12,10 +12,9 @@ export function switchShareMode(dialog: HTMLDialogElement, mode: ShareMode, sele
 export function shareHeader(dialog: HTMLDialogElement, mode: ShareMode, select: (mode: ShareMode) => void) {
   const fragment = document.createDocumentFragment(), header = document.createElement('header');
   header.className = 'sharing-header';
-  const title = document.createElement('h2'); title.id = `sharing-${mode}-title`; title.textContent = 'Share SessionGraph';
+  const title = document.createElement('h2'); title.id = `sharing-${mode}-title`; title.textContent = 'Share';
   dialog.setAttribute('aria-labelledby', title.id);
   const close = document.createElement('button'); close.type = 'button'; close.className = 'text-button'; close.textContent = 'Close'; close.setAttribute('aria-label', 'Close sharing'); close.onclick = () => dialog.close();
-  header.append(title, close);
   const modes = document.createElement('div'); modes.className = 'sharing-modes'; modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Share method');
   for (const value of ['publish', 'video'] as const) {
     const button = document.createElement('button'); button.type = 'button'; button.dataset.shareMode = value;
@@ -23,5 +22,6 @@ export function shareHeader(dialog: HTMLDialogElement, mode: ShareMode, select: 
     button.onclick = () => { if (value !== mode) switchShareMode(dialog, value, select); };
     modes.append(button);
   }
-  fragment.append(header, modes); return fragment;
+  header.append(title, modes, close);
+  fragment.append(header); return fragment;
 }

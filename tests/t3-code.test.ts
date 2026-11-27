@@ -72,6 +72,48 @@ test('T3 V2 imports app threads, ordered activity, explicit lineage, and strong 
   assert.deepEqual(await readFile(path), before);
 }));
 
+test('T3 PR links are imported, scoped to their thread, and refreshed independently of thread timestamps', async () => fixture(async (_path, db) => {
+  db.exec(`CREATE TABLE orchestration_v2_projection_threads(thread_id TEXT PRIMARY KEY, project_id TEXT, title TEXT, default_provider TEXT, created_at TEXT, updated_at TEXT, archived_at TEXT, deleted_at TEXT, payload_json TEXT);
+    CREATE TABLE orchestration_v2_projection_turn_items(turn_item_id TEXT PRIMARY KEY, thread_id TEXT, ordinal INTEGER, type TEXT, status TEXT, updated_at TEXT, payload_json TEXT);
+    CREATE TABLE projection_thread_pull_requests(thread_id TEXT, host TEXT, repository TEXT, number INTEGER, url TEXT, source TEXT,
+      PRIMARY KEY (thread_id, host, repository, number));`);
+  const thread = db.prepare('INSERT INTO orchestration_v2_projection_threads VALUES (?,?,?,?,?,?,NULL,NULL,?)');
+  thread.run('app', 'p', 'Task', 'opencode', at, at, '{}');
+  thread.run('other', 'p', 'Other', 'opencode', at, at, '{}');
+  db.prepare('INSERT INTO orchestration_v2_projection_turn_items VALUES (?,?,?,?,?,?,?)').run('u', 'app', 1, 'user_message', 'completed', at, JSON.stringify({ text: 'A task', startedAt: at }));
+  const put = db.prepare('INSERT INTO projection_thread_pull_requests VALUES (?,?,?,?,?,?)');
+  put.run('app', 'github.com', 'Example/Repo', 7, 'https://github.com/Example/Repo/pull/7', 'manual');
+  put.run('app', 'github.com', 'example/repo', 7, 'https://github.com/example/repo/pull/7', 'manual');
+  put.run('app', 'github.com', 'example/repo', 8, 'https://github.com/example/repo/pull/8', 'stack-dismissed');
+  put.run('app', 'github.com', 'example/repo', 9, 'javascript:alert(1)', 'manual');
+  put.run('app', 'github.com', 'example/repo', 10, 'https://other.example/example/repo/pull/10', 'manual');
+  put.run('other', 'git.example.com', 'example/repo', 7, 'https://git.example.com/example/repo/pull/7', 'created');
+  const store = new SessionGraphStore(':memory:');
+  try {
+    const native = blankSession('opencode', 'native');
+    store.upsert({ session: native, revision: '1', locator: {} });
+    const importer = new Importer(store, [t3CodeAdapter]);
+    const refresh = async () => { importer.sync(['t3-code']); await importer.settled(); assert.equal(importer.status.failed, 0); };
+    await refresh();
+    const original = store.detail('t3-code:app');
+    assert.deepEqual(original.pullRequests, [{ host: 'github.com', repository: 'example/repo', number: 7, url: 'https://github.com/example/repo/pull/7', source: 'manual' }]);
+    assert.equal(store.detail('t3-code:other').pullRequests?.[0].host, 'git.example.com');
+    assert.equal(store.detail(native.id).pullRequests, undefined);
+    assert.equal(store.detail('t3-code:app', '120').pullRequests, undefined);
+    await refresh(); assert.equal(importer.status.unchanged, 2);
+    db.exec('ALTER TABLE projection_thread_pull_requests RENAME TO unavailable');
+    await refresh();
+    assert.deepEqual(store.detail('t3-code:app').pullRequests, original.pullRequests);
+    db.exec(`DELETE FROM unavailable WHERE thread_id='app'; ALTER TABLE unavailable RENAME TO projection_thread_pull_requests;`);
+    await refresh();
+    const current = store.detail('t3-code:app');
+    assert.notEqual(current.revision, original.revision);
+    assert.equal(current.pullRequests, undefined);
+    assert.equal(current.messagesScanned, 1);
+    assert.equal(store.detail('t3-code:other').pullRequests?.length, 1);
+  } finally { store.close(); }
+}));
+
 test('T3 app threads replace only uniquely linked native sessions in the visible library', async () => fixture(async (_path, db) => {
   db.exec(`
     CREATE TABLE projection_projects(project_id TEXT PRIMARY KEY, workspace_root TEXT, deleted_at TEXT);
@@ -202,6 +244,18 @@ test('T3 V1 fallback imports text with explicit partial coverage', async () => f
     assert.equal(page.messages[0].fragments[0].text, 'Old prompt');
     assert.equal(page.partial, true);
   } finally { legacy.close(); }
+}));
+
+test('T3 discovery includes threads past the old 20,000-thread cutoff', async () => fixture(async (_path, db) => {
+  db.exec(`CREATE TABLE orchestration_v2_projection_threads(thread_id TEXT PRIMARY KEY, project_id TEXT, title TEXT, default_provider TEXT, created_at TEXT, updated_at TEXT, archived_at TEXT, deleted_at TEXT, payload_json TEXT);
+    CREATE TABLE orchestration_v2_projection_turn_items(thread_id TEXT, updated_at TEXT);
+    CREATE INDEX turn_item_thread ON orchestration_v2_projection_turn_items(thread_id);
+    WITH RECURSIVE ids(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ids WHERE n<20001)
+      INSERT INTO orchestration_v2_projection_threads
+      SELECT printf('thread-%05d',n), 'p', 'Task', 'opencode', '${at}', '${at}', NULL, NULL, '{}' FROM ids;`);
+  const found = await t3CodeAdapter.discover();
+  assert.equal(found.sessions.length, 20_001);
+  assert.equal(found.sessions.at(-1)?.session.nativeID, 'thread-20001');
 }));
 
 test('T3 paged reads remain on one verified snapshot while the server database changes', async () => fixture(async (_path, db) => {

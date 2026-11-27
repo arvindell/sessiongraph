@@ -6,6 +6,12 @@ import { randomUUID } from 'node:crypto';
 import type { TimelineFilter, TimelineMarkers, TimelinePage } from '@sessiongraph/core/timeline';
 import type { Session } from '@sessiongraph/core/types';
 import { commitMarkers } from './commit-store';
+import { MAX_TIMELINE_EVENTS, MAX_TIMELINE_BYTES, TIMELINE_LIMIT_NOTE } from './history-limits';
+
+/** Covers message counts and ordered times without touching the large payload rows. */
+export const MESSAGE_TIME_INDEX = `CREATE INDEX IF NOT EXISTS timeline_messages_time
+  ON timeline_items(session_id,time,ordinal)
+  WHERE kind='message' AND role IN ('user','assistant');`;
 
 export const EVENT_SCHEMA = `CREATE TABLE IF NOT EXISTS timeline_items (
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, id TEXT NOT NULL, message_id TEXT NOT NULL,
@@ -26,14 +32,14 @@ export function writeEvents(db: DatabaseSync, id: string, rows: Iterable<Record<
     for (const event of normalizedEvents(message, id)) {
       const item: TimelineItem = { ...event, ordinal: ordinal++ }, data = JSON.stringify(item);
       bytes += Buffer.byteLength(data);
-      if (ordinal > 200_000 || bytes > 32_000_000) { limited = true; break; }
+      if (ordinal > MAX_TIMELINE_EVENTS || bytes > MAX_TIMELINE_BYTES) { limited = true; break; }
       partial ||= Boolean(item.partial);
       const preview = (item.text || item.input || item.output || item.name).replace(/\s+/g, ' ').slice(0, 180);
       insert.run(id, item.id, item.messageID, item.ordinal, item.kind, item.role || null, item.time, item.callID || null, item.name, preview, data);
     }
     if (limited) break;
   }
-  const note = [legacy ? 'Some items were reconstructed from an older flattened import; tool inputs/results cannot be paired there. Refresh sources to import structured events.' : '', limited ? 'Event history limited to 200,000 items / 32 MB per session.' : '', partial ? 'Some event content is missing, unsupported, or shortened.' : ''].filter(Boolean).join(' ');
+  const note = [legacy ? 'Some items were reconstructed from an older flattened import; tool inputs/results cannot be paired there. Refresh sources to import structured events.' : '', limited ? TIMELINE_LIMIT_NOTE : '', partial ? 'Some event content is missing, unsupported, or shortened.' : ''].filter(Boolean).join(' ');
   db.prepare('INSERT OR REPLACE INTO timeline_coverage VALUES (?,?,?,?)').run(id, Number(partial || legacy || limited), note || null, randomUUID());
 }
 
@@ -69,7 +75,7 @@ export function readEvents(db: DatabaseSync, session: Session, options: { cursor
     try {
       if (options.cursor.length > 512) throw new Error();
       const cursor = JSON.parse(Buffer.from(options.cursor, 'base64url').toString());
-      if (!Number.isSafeInteger(cursor.offset) || cursor.offset < 0 || cursor.offset > 200_000 || cursor.filter !== filter || typeof cursor.revision !== 'string') throw new Error();
+      if (!Number.isSafeInteger(cursor.offset) || cursor.offset < 0 || cursor.offset > MAX_TIMELINE_EVENTS || cursor.filter !== filter || typeof cursor.revision !== 'string') throw new Error();
       if (cursor.revision !== state.revision) throw new EventReadError('Saved history changed. Reload the event explorer.', 409);
       offset = cursor.offset;
     } catch (error) { if (error instanceof EventReadError) throw error; throw new EventReadError('Invalid event cursor.', 400); }

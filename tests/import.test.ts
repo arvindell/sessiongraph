@@ -76,38 +76,82 @@ test('failed imports retain saved metadata and locator until replacement succeed
   } finally { store.close(); }
 });
 
-test('automatic imports honor persisted opt-out and source choices, discover new history and keep the library lock', async () => {
+test('automatic imports require opt-in, refresh all selected sources, and keep the library lock', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'sessiongraph-auto-')), path = join(directory, 'sessiongraph.sqlite');
   let store = new SessionGraphStore(path);
   const other = new SessionGraphStore(path);
-  let revision = 'v1', discoveries = 0;
+  let revision = 'v1', discoveries = 0, secondDiscoveries = 0;
   const adapter: SessionAdapter = { id: 'test', name: 'Test', description: '', capabilities: { history: true, files: false, forks: false, children: false }, async detect() { return true; },
     async discover() { discoveries++; return { sessions: (revision === 'v1' ? ['first'] : ['first', 'new']).map((id) => ({ session: blankSession('test', id), revision, locator: {} })), projects: [], warnings: [] }; },
     async read() { return { messages: [{ ...blankMessage('m', 1, 'user'), fragments: [{ kind: 'You', text: revision, time: 1 }] }] }; },
   };
+  const second: SessionAdapter = { ...adapter, id: 'second',
+    async discover() { secondDiscoveries++; return { sessions: [{ session: blankSession('second', 'first'), revision, locator: {} }], projects: [], warnings: [] }; },
+  };
+  const unselected: SessionAdapter = { ...adapter, id: 'unselected', async detect() { assert.fail('an unselected source must not be checked'); } };
   try {
-    let importer = new Importer(store, [adapter]);
-    assert.equal(store.autoImportEnabled(), true);
+    let importer = new Importer(store, [adapter, second, unselected]);
+    assert.equal(store.autoImportEnabled(), false);
+    store.setting('selected', ['test', 'second']);
     importer.start(undefined, true); await importer.settled(); assert.equal(discoveries, 0);
-    assert.deepEqual(store.selected(), []);
-    importer.start(['test']); await importer.settled(); assert.equal(store.library([], false).sessions.length, 1);
+    assert.equal(secondDiscoveries, 0);
+    importer.start(); await importer.settled(); assert.equal(store.library([], false).sessions.length, 2);
     revision = 'v2';
-    store.setting('autoImport', false); store.close(); store = new SessionGraphStore(path); importer = new Importer(store, [adapter]);
+    store.setting('autoImport', false); store.close(); store = new SessionGraphStore(path); importer = new Importer(store, [adapter, second, unselected]);
     assert.equal(store.library([], false).autoImport, false);
     importer.start(undefined, true); await importer.settled(); assert.equal(discoveries, 1);
-    store.setting('autoImport', true);
+    other.setting('autoImport', true);
     importer.start(undefined, true);
     assert.equal(importer.start(undefined, true), importer.status);
     assert.throws(() => new Importer(other, [adapter]).start(undefined, true), /Another SessionGraph window/);
     await importer.settled();
-    assert.equal(importer.status.imported, 2); assert.equal(store.content('test:first').fragments[0].text, 'v2');
-    importer.start(undefined, true); await importer.settled(); assert.equal(importer.status.unchanged, 2);
+    assert.equal(importer.status.imported, 3); assert.equal(store.content('test:first').fragments[0].text, 'v2');
+    assert.equal(store.content('second:first').fragments[0].text, 'v2');
+    assert.deepEqual(store.selected(), ['test', 'second']);
+    importer.start(undefined, true); await importer.settled(); assert.equal(importer.status.unchanged, 3);
     store.setting('autoImport', false);
-    importer.start(); await importer.settled(); assert.equal(importer.status.unchanged, 2, 'manual refresh still works');
+    importer.start(); await importer.settled(); assert.equal(importer.status.unchanged, 3, 'manual refresh still works');
+    assert.equal(importer.status.failed, 0);
     store.setting('selected', []); store.setting('autoImport', true);
     const before = discoveries; importer.start(undefined, true); await importer.settled(); assert.equal(discoveries, before);
-    assert.equal(store.library([], false).sessions.length, 2, 'deselecting retains saved history');
+    assert.equal(store.library([], false).sessions.length, 3, 'deselecting retains saved history');
   } finally { store.close(); other.close(); await rm(directory, { recursive: true }); }
+});
+
+test('refresh retries previously capped snapshots and accepts a session past the old page limit', async () => {
+  const store = new SessionGraphStore(':memory:');
+  const candidate = { session: blankSession('test', 'long'), revision: 'same', locator: {} };
+  let reads = 0;
+  const adapter: SessionAdapter = {
+    id: 'test', name: 'Test', description: '', capabilities: { history: true, files: false, forks: false, children: false },
+    async detect() { return true; },
+    async discover() { return { sessions: [candidate], projects: [], warnings: [] }; },
+    async read(_candidate, cursor) {
+      reads++;
+      const page = Number(cursor || 0) + 1;
+      return { messages: [{ ...blankMessage(String(page), page, 'user'), events: [] }], cursor: page < 2001 ? String(page) : undefined };
+    },
+  };
+  try {
+    store.upsert(candidate);
+    store.replace(candidate, [], true, 'Import limited to 50,000 messages / 16 million text characters / 2,000 pages.');
+    // An unsupported source otherwise retries for commit indexing; isolate the budget retry.
+    store.commitsCurrent = () => true;
+    const importer = new Importer(store, [adapter]);
+    importer.sync(['test']); await importer.settled();
+    assert.equal(reads, 2001);
+    assert.equal(importer.status.imported, 1);
+    assert.equal(store.getSession(candidate.session.id)?.coverage?.history, 'complete');
+    assert.equal(store.db.prepare('SELECT COUNT(*) AS count FROM messages').get()?.count, 2001);
+    importer.sync(['test']); await importer.settled();
+    assert.equal(reads, 2001);
+    assert.equal(importer.status.unchanged, 1);
+    store.db.prepare('UPDATE timeline_coverage SET note=? WHERE session_id=?')
+      .run('Event history limited to 200,000 items / 32 MB per session.', candidate.session.id);
+    importer.sync(['test']); await importer.settled();
+    assert.equal(importer.status.imported, 1);
+    assert.equal(reads, 4002);
+  } finally { store.close(); }
 });
 
 test('SQLite index persists checkpoints, rejects stale versions, and clear prevents older tabs resurrecting it', () => {

@@ -1,8 +1,9 @@
-import { createIcons, Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2, Cpu, Bot, Coins, DollarSign } from 'lucide';
+import { icon, type IconName } from '@sessiongraph/core/icons';
+import { graphButton, graphHelp, sessionInfo, shortcutHints, soundButton } from '@sessiongraph/core/graph-ui';
 import type { TimelineScene } from '@sessiongraph/core/scene';
 import { directoryLabel, makeGraph, sessionEnd } from '@sessiongraph/core/layout';
-import { setupPanelDragging } from './panels';
 import { createSessionSearch } from './search/ui';
+import { VirtualList } from '@sessiongraph/core/virtual-list';
 import { createSessionLauncher } from './launcher';
 import { createImports } from './imports';
 import { AutoImportScheduler, AUTO_IMPORT_INTERVAL } from './auto-import';
@@ -15,22 +16,25 @@ import { sourceName, sourceIcon } from '@sessiongraph/core/sources';
 import { sessionMatchesSource } from './session-links';
 import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from '@sessiongraph/core/preferences';
 import { createSettings } from './settings';
-import { InteractionAudio } from './audio';
+import { InteractionAudio } from '@sessiongraph/core/audio';
 import { createEventExplorer } from './event-explorer';
 import { createEventHover } from './event-hover';
 import { showCommitHistory } from './commit-history';
+import { isTauri } from '@tauri-apps/api/core';
+import { openDesktopUrl } from './external-links';
 import { TimelineClient } from './timeline-client';
 import { createDesktopUpdater } from './updater';
 import { createDateRange } from './date-range';
 import { observeSelects, refreshSelects } from './controls';
+import { createPublishing } from './publishing';
+import { preloadPublishingAccount } from './publishing-account';
 import type { TimelineMarkers } from '@sessiongraph/core/timeline';
 import type { SessionGraphData, Graph, Session, SessionDetail } from '@sessiongraph/core/types';
 import './style.css';
 import './publishing.css';
 
-const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2, Cpu, Bot, Coins, DollarSign };
-const refreshIcons = () => { createIcons({ icons, attrs: { 'stroke-width': 1.5 } }); refreshSelects(); };
-const icon = (name: string, cls = '') => `<i data-lucide="${name}" class="${cls}" aria-hidden="true"></i>`;
+const publishingAccount = preloadPublishingAccount();
+const refreshIcons = () => refreshSelects();
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const compact = (value: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
@@ -49,7 +53,7 @@ let data: SessionGraphData | undefined;
 let graph: Graph = { nodes: [], edges: [], lanes: [], start: 0, end: 0 };
 let filtered: Session[] = [];
 let sortedSessions: Session[] = [], filteredIDs = new Set<string>(), sessionsByID = new Map<string, Session>();
-let sessionCards = new Map<string, HTMLButtonElement>(), nodeColors = new Map<string, string>();
+let sessionRows = new Map<string, number>(), nodeColors = new Map<string, string>();
 let scene: TimelineScene | undefined;
 let sceneLoading = true;
 let tooltipSession: Session | undefined;
@@ -65,7 +69,6 @@ let fromDate = '';
 let toDate = '';
 let includeChildren = true;
 let includeArchived = false;
-let listLimit = 60;
 let detailRequest = 0;
 let detailController: AbortController | undefined, timelineController: AbortController | undefined;
 let playFrame = 0;
@@ -77,7 +80,7 @@ let tokenPlayback = playbackTokens([]), tokenDisplay = '';
 let sessionPlayback = playbackSessions([]);
 let playbackPanels: { explorer: boolean; inspector: boolean } | undefined;
 let playbackShare: ReturnType<typeof import('./share').createPlaybackShare> | undefined;
-let publishingDialog: ReturnType<typeof import('./publishing').createPublishing> | undefined;
+let publishingDialog: ReturnType<typeof createPublishing> | undefined;
 let shareRevealTimer = 0, shareReady = false;
 let preferences: Preferences = { ...DEFAULT_PREFERENCES }, preferencesSaved = true;
 let autoImport: AutoImportScheduler | undefined;
@@ -98,22 +101,22 @@ $('#app').innerHTML = `
     <a class="brand" href="/" aria-label="SessionGraph home" title="Explore &amp; visualize all your LLM sessions"><img src="/brand/mark.svg" alt=""/><span>SessionGraph</span></a>
     <span class="connection" role="status" title="Connecting"><span class="status-dot"></span><span id="connection-label" class="sr-only">Connecting</span></span>
     <span class="toolbar-divider"></span>
-    <button class="toolbar-button" id="toggle-explorer" aria-label="Toggle sessions" aria-controls="explorer" aria-expanded="true" title="Sessions">${icon('search')}<span>Sessions</span></button>
+    ${graphButton('search', 'Toggle sessions', { id: 'toggle-explorer', 'aria-controls': 'explorer', 'aria-expanded': 'true' }, 'Sessions', 'Sessions')}
   </header>
   <nav class="map-controls glass" aria-label="Map controls">
-    <button class="icon-button" id="reset-camera" aria-label="Fit view" title="Fit view (F)">${icon('crosshair')}</button>
-    <button class="icon-button" id="toggle-timeline" aria-label="Toggle timeline" aria-controls="timeline" aria-expanded="true" title="Timeline">${icon('clock')}</button>
-    <button class="icon-button" id="toggle-inspector" aria-label="Toggle session details" aria-controls="inspector" aria-expanded="false" title="Session details" hidden>${icon('panel-right')}</button>
-    <button class="icon-button" id="help" aria-label="Help" title="Help">${icon('circle-help')}</button>
-    <button class="icon-button" id="mute-audio" aria-label="Mute sound" title="Mute sound" aria-pressed="false" data-sound="none">${icon('volume-2')}</button>
-    <button class="icon-button" id="open-settings" aria-label="Settings" title="Settings" aria-haspopup="dialog">${icon('settings-2')}</button>
-    <button class="icon-button" id="open-publishing" aria-label="Share SessionGraph" title="Share SessionGraph" aria-haspopup="dialog">${icon('share-2')}</button>
+    ${graphButton('center-focus', 'Fit view', { id: 'reset-camera' }, 'Fit view (F)')}
+    ${graphButton('clock', 'Toggle timeline', { id: 'toggle-timeline', 'aria-controls': 'timeline', 'aria-expanded': 'true' }, 'Timeline')}
+    ${graphButton('panel-right', 'Toggle session details', { id: 'toggle-inspector', 'aria-controls': 'inspector', 'aria-expanded': 'false', hidden: true }, 'Session details')}
+    ${graphButton('circle-help', 'Help', { id: 'help', 'aria-haspopup': 'dialog' })}
+    ${graphButton('volume-2', 'Mute sound', { id: 'mute-audio', 'aria-pressed': 'false', 'data-sound': 'none' })}
+    ${graphButton('settings-2', 'Settings', { id: 'open-settings', 'aria-haspopup': 'dialog' })}
+    ${graphButton('share-2', 'Share SessionGraph', { id: 'open-publishing', 'aria-haspopup': 'dialog' })}
   </nav>
   <aside class="sidebar floating-panel glass" id="explorer" aria-label="Sessions">
-      <div class="panel-heading"><button class="panel-handle" data-drag-panel="explorer" aria-label="Move sessions panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span>Sessions</span><span class="small-badge" id="list-count">—</span></button><button class="icon-button" id="refresh" aria-label="Refresh sessions" title="Refresh sessions">${icon('refresh-cw')}</button><button class="icon-button" id="close-explorer" aria-label="Close sessions">${icon('x')}</button></div>
+      <div class="panel-heading"><h2 class="panel-title">Sessions <span class="small-badge" id="list-count">—</span></h2><button class="icon-button" id="refresh" aria-label="Refresh sessions" title="Refresh sessions">${icon('refresh-cw')}</button><button class="icon-button" id="close-explorer" aria-label="Close sessions">${icon('x')}</button></div>
       <button class="search-box search-trigger" id="search" aria-label="Search all sessions">${icon('search')}<span>Search everything…</span><kbd>/</kbd></button>
       <div class="filters">
-        <div class="filter-row"><div class="select-wrap"><span id="source-filter-icon">${sourceIcon()}</span><select id="source" aria-label="Session source"><option value="">All sources</option></select>${icon('chevron-down')}</div><button class="icon-button" id="manage-sources" aria-label="Manage sources" title="Import sources">${icon('sliders-horizontal')}</button></div>
+        <div class="filter-row"><div class="select-wrap"><select id="source" data-source-icons="/sources" aria-label="Session source"><option value="">All sources</option></select>${icon('chevron-down')}</div><button class="icon-button" id="manage-sources" aria-label="Manage sources" title="Import sources">${icon('sliders-horizontal')}</button></div>
         <div class="select-wrap">${icon('folder')}<select id="project" aria-label="Project"><option value="">All projects</option></select>${icon('chevron-down')}</div>
         <div class="select-wrap">${icon('git-branch')}<select id="directory" aria-label="Worktree or directory"><option value="">All directories</option></select>${icon('chevron-down')}</div>
         <div class="filter-toggles"><label><input type="checkbox" id="children" checked/><span>Subagent sessions</span></label></div>
@@ -124,17 +127,29 @@ $('#app').innerHTML = `
   <div class="timeline-dock floating-panel" id="timeline">
     <div class="playback-share"><button id="share-playback" class="primary-button" disabled>${icon('share-2')}Share SessionGraph</button></div>
     <section class="timeline-panel glass timeline-controls" aria-label="Timeline controls">
-    ${playbackControls(`<button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="ytd" class="active" title="Year to date" aria-pressed="true">YTD</button><button data-days="0">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button>`, { play: 'play', histogram: 'histogram', scrubber: 'scrubber', cursor: 'timeline-cursor', date: 'playback-date', period: 'playback-period', summary: 'playback-summary', sessions: 'playback-sessions', tokens: 'playback-tokens' }, { showCoverage: false })}
+    ${playbackControls(`<span class="panel-title" id="date-label">Timeline</span><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="ytd" class="active" title="Year to date" aria-pressed="true">YTD</button><button data-days="0">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button>`, { play: 'play', histogram: 'histogram', scrubber: 'scrubber', cursor: 'timeline-cursor', date: 'playback-date', period: 'playback-period', summary: 'playback-summary', sessions: 'playback-sessions', tokens: 'playback-tokens' }, { showCoverage: false })}
     </section>
   </div>
-  <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div>
+  ${graphHelp('help-dialog', ['search', 'fit', 'panels', 'clear'], `
     <div class="graph-legend"><span><i class="legend-node"></i>Session orb</span><span><i class="legend-node message"></i>Message</span><span><i class="legend-line lane"></i>Session lifetime</span><span><i class="legend-line fork"></i>Fork</span><span><i class="legend-line child"></i>Child</span><span id="file-legend" hidden><i class="legend-file"></i>File</span></div>
-    <p>Time runs left to right. Each orb travels from session creation to its latest saved message, leaving a trail behind. Select it to explore user and assistant messages in matching colors. Messages without timestamps stay readable in the explorer. Click empty space to deselect. Directory colors group sessions; only fork and child links represent ancestry.</p><button class="secondary-button motion-button" id="motion" aria-pressed="true">${icon('sparkles')}Animate map</button></dialog>
+    <p>Search also opens with ⌘/Ctrl K. Each trail follows a session to its latest saved message. Only fork and child links represent ancestry.</p>`)}
   <div id="toast" class="toast" role="status" hidden></div>
-  <aside class="shortcut-hints" aria-label="Keyboard shortcuts"><span><kbd>/</kbd>Search</span><span><kbd>F</kbd>Fit view</span><span><kbd>H</kbd>Panels</span><span><kbd>Esc</kbd>Clear selection</span></aside>
+  ${shortcutHints(['search', 'fit', 'panels', 'clear'], 'shortcut-hints')}
 `;
 refreshIcons();
-const disposePanelDragging = setupPanelDragging();
+type SessionRow = { session: Session } | { label: string; year: number };
+const sessionList = new VirtualList<SessionRow>($('#session-list'), {
+  key: row => 'session' in row ? `session:${row.session.id}` : `date:${row.year}:${row.label}`,
+  estimate: row => 'session' in row ? preferences.density === 'compact' ? 66 : 76 : 42,
+  render: row => {
+    const element = document.createElement('template');
+    if ('session' in row) {
+      const session = row.session, end = sessionEnd(session);
+      element.innerHTML = `<button class="session-card ${selectedID === session.id ? 'selected' : ''}" data-session="${escape(session.id)}" aria-pressed="${selectedID === session.id}" title="${escape(session.title)}"><span class="session-dot" style="--node-color:${nodeColors.get(session.id)}"></span><span class="session-card-body"><span class="session-title">${escape(session.title)}</span><span class="session-meta">${session.forkID ? icon('git-fork') : session.parentID ? icon('network') : ''}<span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><span title="${session.activity?.lastMessageAt ? 'Latest saved message' : 'Session created; message time unavailable'}">${clock.format(end)}</span></span></span></button>`;
+    } else element.innerHTML = `<div class="list-date">${row.label}<span>${row.year}</span></div>`;
+    return element.content.firstElementChild as HTMLElement;
+  },
+});
 const desktopUpdater = createDesktopUpdater();
 const disposeSelects = observeSelects();
 const dateRange = createDateRange($('.custom-dates'), (from, to) => { days = 0; fromDate = from; toDate = to; updateFilters(true); }, stopPlayback);
@@ -152,17 +167,16 @@ function openEvents(item?: string) {
   const session = data?.sessions.find((s) => s.id === selectedID);
   if (session) { eventHover.clear(); stopPlayback(); setPanel('inspector', true); eventExplorer.open(session, item, item ? selectedTimeline?.revision : undefined, selectedTimeline?.items.find(marker => marker.id === item)?.kind === 'commit' ? 'tools' : 'messages'); }
 }
-const settings = createSettings({ publishing: openPublishing, change: changePreferences, getArchived: () => includeArchived, changeArchived: (value) => { includeArchived = value; updateFilters(); }, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, getSources: () => imports.sources(), importSources: (ids) => imports.select(ids), resetPanels: () => {
-  document.querySelectorAll<HTMLElement>('.floating-panel').forEach((panel) => { panel.removeAttribute('style'); delete panel.dataset.positioned; });
-} });
+const settings = createSettings({ publishing: openPublishing, change: changePreferences, getArchived: () => includeArchived, changeArchived: (value) => { includeArchived = value; updateFilters(); }, visibility: modalVisibility, previewSound: () => { void audio.play('select'); }, getSources: () => imports.sources(), importSources: (ids) => imports.select(ids) });
 const audio = new InteractionAudio(preferences, settings.audioStatus);
 function applyPreferences() {
   scene?.applyPreferences(preferences); audio.configure(preferences);
+  const densityChanged = document.documentElement.dataset.density !== preferences.density;
   document.documentElement.dataset.density = preferences.density;
+  if (densityChanged) sessionList.resetHeights();
   document.documentElement.dataset.motion = String(motionEnabled(preferences, reducedMotion.matches));
   document.documentElement.style.setProperty('--panel-opacity', `${preferences.panelOpacity}%`);
-  $('#motion').setAttribute('aria-pressed', String(motionEnabled(preferences, reducedMotion.matches)));
-  const mute = $('#mute-audio'); mute.setAttribute('aria-pressed', String(preferences.muted)); mute.setAttribute('aria-label', preferences.muted ? 'Unmute sound' : 'Mute sound'); mute.title = preferences.muted ? 'Unmute sound' : 'Mute sound'; mute.innerHTML = icon(preferences.muted ? 'volume-x' : 'volume-2');
+  const mute = $('#mute-audio'), sound = soundButton(preferences.muted); mute.setAttribute('aria-pressed', String(preferences.muted)); mute.setAttribute('aria-label', sound.label); mute.title = sound.label; mute.innerHTML = icon(sound.glyph);
   settings.render(preferences, preferencesSaved || settingsHydrated, settingsSaver?.state || 'saved'); refreshIcons();
 }
 function changePreferences(patch: Partial<Preferences>) {
@@ -272,6 +286,7 @@ async function initializeScene() { try {
     },
   }, { panels: [$('#explorer'), $('#inspector'), $('#timeline')] });
   scene.applyPreferences(preferences);
+  scene.setSuspended(Boolean(document.querySelector('dialog[open]')));
   if (data) {
     scene.setGraph(graph, true);
     if (selectedID) { scene.select(selectedID); scene.focus(selectedID); }
@@ -282,7 +297,6 @@ async function initializeScene() { try {
   console.error('[sessiongraph] Graphics initialization failed', error);
   showToast('3D requires WebGL. You can still browse sessions in the list.');
 } finally { sceneLoading = false; if (data) renderGraphMessage(); } }
-void initializeScene();
 $('#scene').addEventListener('scene-error', (event) => showToast((event as CustomEvent<string>).detail));
 
 async function fetchJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -304,7 +318,7 @@ async function load(background = false) {
     const preserve = Boolean(previous && graph.nodes.length);
     data = next;
     if (!settingsSaver?.pending && preferenceRevision === settingsSaver?.revision) {
-      preferences = { ...normalizePreferences(next.preferences || preferences), autoImport: next.autoImport !== false };
+      preferences = { ...normalizePreferences(next.preferences || preferences), autoImport: next.autoImport === true };
       try { preferencesSaved = savePreferences(localStorage, preferences); } catch { preferencesSaved = false; }
       if (!settingsHydrated) {
         const view = normalizeViewState(next.viewState);
@@ -325,7 +339,6 @@ async function load(background = false) {
     sessionsByID = new Map(data.sessions.map((session) => [session.id, session]));
     $<HTMLSelectElement>('#source').innerHTML = '<option value="">All sources</option>' + (data.sources || []).map((s) => `<option value="${escape(s.id)}">${escape(s.name)} · ${s.sessions.toLocaleString()}</option>`).join('');
     $<HTMLSelectElement>('#source').value = sourceID;
-    $('#source-filter-icon').innerHTML = sourceIcon(sourceID);
     sessionSearch.setData(data);
     const projectCounts = new Map<string, number>();
     data.sessions.forEach((session) => projectCounts.set(session.projectID, (projectCounts.get(session.projectID) || 0) + 1));
@@ -382,8 +395,7 @@ function updateFilters(fit = false, preserve = false) {
   if (!data) return;
   if (graphGrouping !== preferences.grouping) { fit = true; preserve = false; }
   graphGrouping = preferences.grouping;
-  if (!preserve) { stopPlayback(); playback = 1; listLimit = 60; }
-  const scroll = $('#session-list').scrollTop;
+  if (!preserve) { stopPlayback(); playback = 1; }
   const focused = document.activeElement?.closest<HTMLElement>('[data-session]')?.dataset.session;
   const { min, max } = viewDateBounds(currentView());
   filtered = data.sessions.filter((s) =>
@@ -404,8 +416,8 @@ function updateFilters(fit = false, preserve = false) {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
-  renderList();
-  if (preserve) { $('#session-list').scrollTop = scroll; if (focused) sessionCards.get(focused)?.focus({ preventScroll: true }); }
+  renderList(preserve);
+  if (preserve && focused) sessionList.getElement(sessionRows.get(focused)!)?.focus({ preventScroll: true });
   renderHistogram();
   if (selectedID && !filtered.some((s) => s.id === selectedID)) clearSelection();
   else if (selectedID && selectedDetail) scene?.setFiles(selectedDetail.files);
@@ -441,7 +453,6 @@ function updateShareButton(reset = false) {
 
 function resetFilters(reveal?: Session) {
   sourceID = ''; $<HTMLSelectElement>('#source').value = '';
-  $('#source-filter-icon').innerHTML = sourceIcon();
   projectID = ''; directory = ''; days = reveal ? 0 : DEFAULT_VIEW_STATE.days; fromDate = ''; toDate = ''; includeChildren = true; includeArchived = reveal?.archived === true;
   $<HTMLSelectElement>('#project').value = '';
   $<HTMLInputElement>('#children').checked = true;
@@ -450,24 +461,25 @@ function resetFilters(reveal?: Session) {
   updateFilters(true);
 }
 
-function renderList() {
+function renderList(preserve = false) {
   $('#list-count').textContent = count(filtered.length);
-  const sorted = sortedSessions;
+  const rows: SessionRow[] = [];
+  sessionRows = new Map();
   let lastDate = '';
-  $('#session-list').innerHTML = sorted.slice(0, listLimit).map((session) => {
-    const end = sessionEnd(session), d = date(end);
-    const header = d !== lastDate ? `<div class="list-date">${d}<span>${new Date(end).getFullYear()}</span></div>` : '';
+  for (const session of sortedSessions) {
+    const end = sessionEnd(session), d = date(end, true);
+    if (d !== lastDate) rows.push({ label: date(end), year: new Date(end).getFullYear() });
     lastDate = d;
-    return `${header}<button class="session-card ${selectedID === session.id ? 'selected' : ''}" data-session="${escape(session.id)}" aria-pressed="${selectedID === session.id}" title="${escape(session.title)}"><span class="session-dot" style="--node-color:${nodeColors.get(session.id)}"></span><span class="session-card-body"><span class="session-title">${escape(session.title)}</span><span class="session-meta">${session.forkID ? icon('git-fork') : session.parentID ? icon('network') : ''}<span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><span title="${session.activity?.lastMessageAt ? 'Latest saved message' : 'Session created; message time unavailable'}">${clock.format(end)}</span></span></span></button>`;
-  }).join('') + (sorted.length > listLimit ? `<button id="more-sessions" class="load-more">Show more sessions ${icon('chevron-down')}</button>` : !sorted.length ? '<p class="empty-list">No sessions match your filters.</p>' : '');
-  $('#more-sessions')?.addEventListener('click', () => { listLimit += 100; const scroll = $('#session-list').scrollTop; renderList(); $('#session-list').scrollTop = scroll; refreshIcons(); });
-  sessionCards = new Map([...$('#session-list').querySelectorAll<HTMLButtonElement>('.session-card')].map((card) => [card.dataset.session!, card]));
-  refreshIcons();
+    sessionRows.set(session.id, rows.length); rows.push({ session });
+  }
+  sessionList.setItems(rows, preserve);
+  $('#session-list').querySelector('.empty-list')?.remove();
+  if (!rows.length) $('#session-list').insertAdjacentHTML('beforeend', '<p class="empty-list">No sessions match your filters.</p>');
 }
 
 function updateListSelection(previous: string | null) {
   for (const id of [previous, selectedID]) {
-    const card = id ? sessionCards.get(id) : undefined;
+    const card = id ? sessionList.getElement(sessionRows.get(id)!) : undefined;
     if (card) { card.classList.toggle('selected', id === selectedID); card.setAttribute('aria-pressed', String(id === selectedID)); }
   }
 }
@@ -553,9 +565,9 @@ function clearSelection() {
 const inspectorPreviewCount = 3;
 
 function renderConnections(container: HTMLElement, session: Session, initiallyExpanded: boolean) {
-  const parents = session.forkID ? [{ id: session.forkID, label: 'Forked from', kind: 'git-fork' }] : session.parentID ? [{ id: session.parentID, label: 'Parent', kind: 'network' }] : [];
+  const parents: { id: string; label: string; kind: IconName }[] = session.forkID ? [{ id: session.forkID, label: 'Forked from', kind: 'git-fork' }] : session.parentID ? [{ id: session.parentID, label: 'Parent', kind: 'network' }] : [];
   const children = data!.sessions.filter((s) => s.forkID === session.id || (!s.forkID && s.parentID === session.id));
-  const related = [...parents, ...children.map((s) => ({ id: s.id, label: s.forkID ? 'Fork' : 'Child', kind: s.forkID ? 'git-fork' : 'network' }))];
+  const related: typeof parents = [...parents, ...children.map((s): (typeof parents)[number] => ({ id: s.id, label: s.forkID ? 'Fork' : 'Child', kind: s.forkID ? 'git-fork' : 'network' }))];
   if (!related.length) { container.hidden = true; return; }
   const rows = (expanded: boolean) => (expanded ? related : related.slice(0, inspectorPreviewCount)).map((r) => {
     const relatedSession = sessionsByID.get(r.id);
@@ -581,7 +593,7 @@ function renderInspector(session: Session, reveal = true) {
   const isWorktree = project?.worktrees.includes(session.directory);
   const infoOpen = !reveal ? ($('#session-inspector').querySelector<HTMLDetailsElement>('.session-info')?.open ?? true) : true;
   const connectionsExpanded = !reveal && $('#toggle-connections')?.getAttribute('aria-expanded') === 'true';
-  const infoRows = [
+  const infoRows: [IconName, string, string][] = [
     ['folder', 'Project', project?.name || 'Unknown'],
     ['cpu', 'Model', session.model],
     ['bot', 'Agent', session.agent || 'Unknown'],
@@ -589,12 +601,13 @@ function renderInspector(session: Session, reveal = true) {
     ['dollar-sign', session.usage?.costEstimated ? 'Cost (harness estimate)' : 'Recorded cost', session.cost === null ? 'Not recorded' : `$${session.cost.toFixed(2)}`],
   ];
   $('#session-inspector').innerHTML = `
-    <div class="panel-heading"><button class="panel-handle" data-drag-panel="inspector" aria-label="Move session details panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span>${kind}</span></button><button id="close-inspector" class="icon-button" aria-label="Close session details">${icon('x')}</button></div>
+    <div class="panel-heading"><span class="panel-title">${kind}</span><button id="close-inspector" class="icon-button" aria-label="Close session details">${icon('x')}</button></div>
     <div class="detail-scroll">
       <div class="detail-title"><span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><h2>${escape(session.title)}</h2><div class="detail-title-meta"><span class="detail-date">${timestamp(session.created)}</span><button id="focus-session" class="icon-button" title="Focus node" aria-label="Focus node">${icon('crosshair')}</button></div></div>
       <section id="message-detail" class="detail-section"></section>
-      <details class="session-info more-details detail-section"${infoOpen ? ' open' : ''}><summary>Session info ${icon('chevron-down')}</summary><dl class="metadata">${infoRows.map(([glyph, label, value]) => `<div><dt>${icon(glyph)}${label}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl><div class="directory-card"><span>${icon(isWorktree ? 'git-branch' : 'folder')}${isWorktree ? 'Worktree' : 'Directory'}</span><code>${escape(session.directory)}</code></div></details>
+      ${sessionInfo(infoRows, `<div class="directory-card"><span>${icon(isWorktree ? 'git-branch' : 'folder')}${isWorktree ? 'Worktree' : 'Directory'}</span><code>${escape(session.directory)}</code></div>`, infoOpen)}
       <section id="commit-detail" class="detail-section"></section>
+      <section id="pull-request-detail" class="detail-section" hidden></section>
       ${session.linkedSessionIDs?.length ? `<section class="detail-section"><div class="section-label">Linked provider history</div>${session.linkedSessionIDs.map(id => `<button class="relation" data-history="${escape(id)}">${sourceIcon(id.split(':')[0])}<span>${escape(sourceName(id.split(':')[0]))}</span>${icon('arrow-up-right')}</button>`).join('')}</section>` : ''}
       <div id="file-detail"><section class="detail-section"><div class="section-label">Changed files</div><div class="detail-loading">${icon('loader-circle', 'spinning')}Loading changes…</div></section></div>
       <section id="session-connections" class="detail-section"></section>
@@ -648,10 +661,19 @@ function mergeDetail(previous: SessionDetail, next: SessionDetail): SessionDetai
   }
   const tools = new Map(previous.tools.map((tool) => [tool.name, tool.count]));
   next.tools.forEach((tool) => tools.set(tool.name, (tools.get(tool.name) || 0) + tool.count));
-  return { ...next, files: [...files.values()].sort((a, b) => b.steps - a.steps || a.path.localeCompare(b.path)), tools: [...tools].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count), locations: [...previous.locations, ...next.locations], messagesScanned: previous.messagesScanned + next.messagesScanned, snapshotSteps: previous.snapshotSteps + next.snapshotSteps };
+  return { ...next, pullRequests: next.pullRequests ?? previous.pullRequests, files: [...files.values()].sort((a, b) => b.steps - a.steps || a.path.localeCompare(b.path)), tools: [...tools].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count), locations: [...previous.locations, ...next.locations], messagesScanned: previous.messagesScanned + next.messagesScanned, snapshotSteps: previous.snapshotSteps + next.snapshotSteps };
 }
 
 function renderDetail(detail: SessionDetail) {
+  const prSection = $('#pull-request-detail'), prs = detail.pullRequests || [];
+  prSection.hidden = !prs.length;
+  prSection.innerHTML = prs.length ? `<div class="section-label">Pull requests<span>${count(prs.length)}</span></div>${prs.map(pr =>
+    `<a class="relation" href="${escape(pr.url)}" target="_blank" rel="noopener noreferrer">${icon('git-branch')}<span><small>${escape(pr.host)}</small><strong>${escape(pr.repository)} #${pr.number}</strong></span>${icon('arrow-up-right')}</a>`
+  ).join('')}` : '';
+  if (isTauri()) prSection.querySelectorAll<HTMLAnchorElement>('a').forEach(link => link.addEventListener('click', event => {
+    event.preventDefault();
+    void openDesktopUrl(link.href).catch(() => showToast('Could not open the pull request in your browser.'));
+  }));
   const files = detail.files;
   const root = $('#file-detail');
   const toolsRoot = $('#session-tools');
@@ -753,11 +775,11 @@ $('#inspector').addEventListener('click', (event) => {
   if (button?.dataset.related) selectSession(button.dataset.related);
 });
 $('#project').addEventListener('change', (event) => { projectID = (event.target as HTMLSelectElement).value; directory = ''; updateDirectories(); updateFilters(true); });
-$('#source').addEventListener('change', (event) => { sourceID = (event.target as HTMLSelectElement).value; $('#source-filter-icon').innerHTML = sourceIcon(sourceID); updateFilters(true); });
+$('#source').addEventListener('change', (event) => { sourceID = (event.target as HTMLSelectElement).value; updateFilters(true); });
 $('#directory').addEventListener('change', (event) => { directory = (event.target as HTMLSelectElement).value; updateFilters(true); });
 $('#children').addEventListener('change', (event) => { includeChildren = (event.target as HTMLInputElement).checked; updateFilters(); });
 document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.addEventListener('click', () => { days = button.dataset.days === 'ytd' ? 'ytd' : Number(button.dataset.days); fromDate = ''; toDate = ''; updateFilters(true); }));
-$('#reset-camera').addEventListener('click', () => updateFilters(true));
+$('#reset-camera').addEventListener('click', () => { stopPlayback(); scene?.reset(); });
 $('#refresh').addEventListener('click', () => { if (data?.onboarding) void imports.open(true); else void imports.refresh(); });
 $('#scrubber').addEventListener('input', (event) => { stopPlayback(); playback = Number((event.target as HTMLInputElement).value) / 1000; updateScrubber(true); });
 $('#play').addEventListener('click', () => {
@@ -790,17 +812,16 @@ async function exportAnimation() {
 }
 async function openPublishing() {
   try {
-    if (!publishingDialog) { const { createPublishing } = await import('./publishing'); publishingDialog = createPublishing(modalVisibility, () => void exportAnimation()); }
+    publishingDialog ??= createPublishing(modalVisibility, () => void exportAnimation(), publishingAccount);
     await publishingDialog.open(filtered.map(session => session.id));
   } catch { showToast('Could not open publishing. Please try again.'); }
 }
 $('#share-playback').addEventListener('click', openPublishing);
 $('#open-publishing').addEventListener('click', openPublishing);
 if (import.meta.hot) import.meta.hot.dispose(() => { window.clearTimeout(shareRevealTimer); playbackShare?.dispose(); publishingDialog?.dispose(); });
-$('#motion').addEventListener('click', () => changePreferences({ motion: motionEnabled(preferences, reducedMotion.matches) ? 'off' : 'on' }));
 $('#help').addEventListener('click', () => { $<HTMLDialogElement>('#help-dialog').showModal(); modalVisibility(); });
 $('#help-dialog').addEventListener('close', modalVisibility);
-$('#close-help').addEventListener('click', () => $<HTMLDialogElement>('#help-dialog').close());
+$('#help-dialog [data-close-help]').addEventListener('click', () => $<HTMLDialogElement>('#help-dialog').close());
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented) return;
   if (document.querySelector('dialog[open]')) return;
@@ -812,7 +833,7 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   if ((event.target as HTMLElement).matches('input, select, textarea') || event.metaKey || event.ctrlKey || event.altKey) return;
-  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key) && !(event.target as Element).closest('[data-drag-panel], [contenteditable="true"]')) {
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key) && !(event.target as Element).closest('[contenteditable="true"]')) {
     const target = event.target as HTMLElement;
     if (target.matches('canvas, body, .session-card') || target.closest('.session-card')) {
       const sorted = sortedSessions;
@@ -821,14 +842,15 @@ document.addEventListener('keydown', (event) => {
       if (next) {
         event.preventDefault(); selectSession(next.id);
         if (target.closest('.session-card')) {
-          if (!sessionCards.has(next.id)) { listLimit = Math.min(sorted.length, listLimit + 100); renderList(); }
-          sessionCards.get(next.id)?.focus({ preventScroll: true });
+          const row = sessionRows.get(next.id)!;
+          sessionList.scrollToIndex(row);
+          sessionList.getElement(row)?.focus({ preventScroll: true });
         }
       }
       return;
     }
   }
-  if (event.key.toLowerCase() === 'f') updateFilters(true);
+  if (event.key.toLowerCase() === 'f') { stopPlayback(); scene?.reset(); }
   if (event.key.toLowerCase() === 'h') {
     stopPlayback();
     const visible = (['explorer', 'timeline', 'inspector'] as const).filter((id) => !$(`#${id}`).hidden);
@@ -837,6 +859,12 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-void load().then(() => { if (data?.importing) imports.resume(); else checkAutoImport(); });
+void load().then(() => {
+  // Let the usable session list paint before allocating a WebGL context and
+  // compiling shaders, which can be expensive on a cold graphics driver.
+  requestAnimationFrame(() => { window.setTimeout(() => void initializeScene(), 0); });
+  if (data?.importing) imports.resume(); else checkAutoImport();
+});
 if (import.meta.env.DEV) Object.assign(window, { sessionGraphDiagnostics: () => scene?.diagnostics(), sessionGraphAudioDiagnostics: () => audio.diagnostics(), sessionGraphSearchDiagnostics: sessionSearch.diagnostics });
-if (import.meta.hot) import.meta.hot.dispose(() => { settingsSaver?.dispose(); autoImport?.dispose(); autoImportEvents.abort(); window.clearInterval(autoImportTimer); detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); desktopUpdater.dispose(); dateRange.dispose(); disposeSelects(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); disposePanelDragging(); cancelAnimationFrame(playFrame); });
+if (import.meta.hot) import.meta.hot.dispose(() => sessionList.dispose());
+if (import.meta.hot) import.meta.hot.dispose(() => { settingsSaver?.dispose(); autoImport?.dispose(); autoImportEvents.abort(); window.clearInterval(autoImportTimer); detailController?.abort(); timelineController?.abort(); timelineClient.clear(); scene?.dispose(); audio.dispose(); settings.dispose(); eventExplorer.dispose(); eventHover.dispose(); desktopUpdater.dispose(); dateRange.dispose(); disposeSelects(); reducedMotion.removeEventListener('change', onSystemMotion); window.removeEventListener('storage', onPreferencesStorage); sessionSearch.dispose(); launcher.dispose(); imports.dispose(); cancelAnimationFrame(playFrame); });

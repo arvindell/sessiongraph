@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SceneRenderPass } from './scene-render-pass';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { connectionPositions, hash, headPosition, orbPosition, progressX, timeX } from './layout';
+import { monthTicks } from './month-ticks';
 import { cometTrails } from './comet-trails';
 import { ForkLinks } from './fork-links';
 import { orbArrivals } from './orb-arrivals';
@@ -21,7 +22,8 @@ import { isConversationMessage, type TimelineItem, type TimelineSummary } from '
 import { ScreenGrid } from './screen-grid';
 import { eventIcon } from './event-icons';
 
-type Label = { element: HTMLDivElement; point: THREE.Vector3; priority?: boolean; visible?: boolean; transform?: string; x?: number; y?: number };
+type Label = { element: HTMLDivElement; point: THREE.Vector3; priority?: boolean; month?: boolean; visible?: boolean; transform?: string; x?: number; y?: number };
+const gridY = -105, gridDepth = 70;
 
 function clearGroup(group: THREE.Group) {
   group.traverse((object) => {
@@ -42,9 +44,12 @@ export class TimelineScene {
   private camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2500);
   private controls: OrbitControls;
   private composer: EffectComposer;
+  private scenePass: SceneRenderPass;
   private bloom: UnrealBloomPass;
   private smaa: SMAAPass;
   private dirty = true;
+  private cameraDirty = true;
+  private cameraSettlesAt = 0;
   private graphGroup = new THREE.Group();
   private selectionGroup = new THREE.Group();
   private filesGroup = new THREE.Group();
@@ -91,7 +96,8 @@ export class TimelineScene {
   private playbackFocus = new THREE.Vector3();
   private playbackOffset = new THREE.Vector3();
   private playbackOutro: number | null = null;
-  private playbackOrbit?: { theta: number; phi: number; radius: number; focus: THREE.Vector3 };
+  private playbackOrbit?: { theta: number; phi: number; radius: number; focus: THREE.Vector3; incomingTurnsPerSecond: number };
+  private playbackYawSpeed = 0;
   private glowMaterial?: THREE.ShaderMaterial;
   private glowPositions?: THREE.BufferAttribute;
   private time = 0;
@@ -141,7 +147,8 @@ export class TimelineScene {
     this.onHover = callbacks.onHover;
     this.onEvent = callbacks.onEvent;
     this.onEventHover = callbacks.onEventHover;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    // Only a fullscreen output triangle reaches the canvas; geometry AA is offscreen.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'high-performance' });
     // Supersample thin filaments on 1x displays; cap retina rendering at 2x.
     this.renderer.setPixelRatio(Math.min(Math.max(devicePixelRatio, 1.5), 2));
     this.renderer.localClippingEnabled = true;
@@ -161,6 +168,9 @@ export class TimelineScene {
     this.controls.dampingFactor = 0.065;
     this.controls.rotateSpeed = 0.5;
     this.controls.zoomSpeed = 0.8;
+    // Wheel/touch handlers update OrbitControls before the animation frame.
+    // A second update() can return false even though the camera has moved.
+    this.controls.addEventListener('change', () => { this.cameraDirty = true; });
     this.controls.addEventListener('start', () => {
       this.targetPosition = undefined; this.targetLook = undefined;
       this.focusedSession = null;
@@ -168,16 +178,20 @@ export class TimelineScene {
     });
     this.camera.position.set(20, 70, 320);
     this.scene.add(this.graphGroup, this.selectionGroup, this.filesGroup, this.particles.group);
-    // Canvas antialiasing does not reach EffectComposer's offscreen targets.
-    // Resolve 4x MSAA before bloom. Three's SMAA operates in linear color,
-    // so apply it before the final output transform.
+    // Resolve geometry MSAA once, before the single-sample effects pipeline.
+    // Three's SMAA operates in linear color, before the final output transform.
+    const samples = Math.min(2, this.renderer.capabilities.maxSamples);
     const renderTarget = new THREE.WebGLRenderTarget(1, 1, {
       type: THREE.HalfFloatType,
-      samples: Math.min(2, this.renderer.capabilities.maxSamples),
+      depthBuffer: samples === 0,
     });
     this.composer = new EffectComposer(this.renderer, renderTarget);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.scenePass = new SceneRenderPass(this.scene, this.camera);
+    this.scenePass.setSamples(samples);
+    this.composer.addPass(this.scenePass);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.23, 0.4, 0.9);
+    // The blur pyramid is fullscreen image processing, with no depth testing.
+    for (const target of [this.bloom.renderTargetBright, ...this.bloom.renderTargetsHorizontal, ...this.bloom.renderTargetsVertical]) target.depthBuffer = false;
     this.composer.addPass(this.bloom);
     this.smaa = new SMAAPass();
     this.composer.addPass(this.smaa);
@@ -223,7 +237,11 @@ export class TimelineScene {
     if (motion !== this.motion) this.setMotion(motion);
     if (values.quality !== previous.quality) {
       const samples = values.quality === 'performance' ? 0 : Math.min(values.quality === 'high' ? 4 : 2, this.renderer.capabilities.maxSamples);
-      for (const target of [this.composer.renderTarget1, this.composer.renderTarget2]) { target.samples = samples; target.dispose(); }
+      this.scenePass.setSamples(samples);
+      // With MSAA off, render geometry directly into the composer's input.
+      for (const target of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+        target.depthBuffer = samples === 0; target.dispose();
+      }
       this.smaa.enabled = values.quality !== 'performance';
       this.resize();
     }
@@ -239,6 +257,7 @@ export class TimelineScene {
     }
     const markers = this.selectionGroup.getObjectByName('event-markers'); if (markers) markers.visible = values.messageDots;
     if (this.nodeMesh && previous.nodeScale !== values.nodeScale) { this.nodeMesh.boundingSphere = null; this.revealsActive = true; }
+    if (previous.messageDots !== values.messageDots) this.revealsActive = true;
     this.dirty = true;
   }
 
@@ -338,9 +357,15 @@ export class TimelineScene {
 
     // Time reference marks sit below the main trunk, with real linear spacing.
     const gridPositions: number[] = [], gridColors: number[] = [];
-    for (let tick = 0; tick <= 8; tick++) {
-      const x = progressX(tick / 8, graph);
-      this.appendSegments([new THREE.Vector3(x, -105, -70), new THREE.Vector3(x, -105, 70)], new THREE.Color('#314149'), gridPositions, gridColors);
+    const months = monthTicks(graph);
+    const gridColor = new THREE.Color('#314149');
+    const marks = months.length > 1 ? months.map(tick => tick.x) : Array.from({ length: 9 }, (_, i) => progressX(i / 8, graph));
+    for (const x of marks) {
+      this.appendSegments([new THREE.Vector3(x, gridY, -gridDepth), new THREE.Vector3(x, gridY, gridDepth)], gridColor, gridPositions, gridColors);
+    }
+    for (const { x, label } of months) {
+      if (months.length === 1 && x !== marks[0]) this.appendSegments([new THREE.Vector3(x, gridY, -gridDepth), new THREE.Vector3(x, gridY, gridDepth)], gridColor, gridPositions, gridColors);
+      this.addLabel(label, new THREE.Vector3(x, gridY, gridDepth), '#9ab9b3', false, true);
     }
     this.addLines(gridPositions, gridColors, 0.23);
     this.setCutoff(this.cutoff);
@@ -429,6 +454,7 @@ export class TimelineScene {
     if (this.playing === playing) return;
     this.playing = playing;
     this.playbackOutro = null; this.playbackOrbit = undefined;
+    this.playbackYawSpeed = 0;
     if (!playing) { this.playbackPath = undefined; this.playbackRadii = []; this.camera.clearViewOffset(); }
     if (playing) { this.focusedSession = null; this.camera.clearViewOffset(); }
     if (playing && this.cutoff === 0) { this.nodeBorn.fill(NaN); this.nodeReveal.fill(0); this.revealsActive = true; }
@@ -446,7 +472,7 @@ export class TimelineScene {
     if (value === this.playbackOutro) return;
     if (value !== null && this.playbackOutro === null) {
       this.playbackSphere.setFromVector3(this.camera.position.clone().sub(this.controls.target));
-      this.playbackOrbit = { theta: this.playbackSphere.theta, phi: this.playbackSphere.phi, radius: this.playbackSphere.radius, focus: this.controls.target.clone() };
+      this.playbackOrbit = { theta: this.playbackSphere.theta, phi: this.playbackSphere.phi, radius: this.playbackSphere.radius, focus: this.controls.target.clone(), incomingTurnsPerSecond: this.playbackYawSpeed / (2 * Math.PI) };
     }
     if (value === null) this.playbackOrbit = undefined;
     this.playbackOutro = value; this.dirty = true;
@@ -460,7 +486,7 @@ export class TimelineScene {
       const orbit = this.playbackOrbit, progress = this.playbackOutro;
       // Unwrapped angles guarantee one whole turn; shortest-angle damping would
       // skip part of the orbit and keep drifting during the final hold.
-      this.playbackSphere.theta = orbit.theta + overviewTurn(progress) * Math.PI * 2;
+      this.playbackSphere.theta = orbit.theta + overviewTurn(progress, orbit.incomingTurnsPerSecond) * Math.PI * 2;
       this.playbackSphere.phi = orbit.phi;
       this.playbackSphere.radius = orbit.radius;
       this.controls.target.copy(orbit.focus);
@@ -478,7 +504,9 @@ export class TimelineScene {
     const yaw = -.3 + this.cutoff * Math.PI;
     const elevation = .16 + Math.sin(this.cutoff * Math.PI) * .12;
     const angle = Math.atan2(Math.sin(yaw - this.playbackSphere.theta), Math.cos(yaw - this.playbackSphere.theta));
-    this.playbackSphere.theta += angle * (1 - Math.exp(-3 * delta));
+    const yawStep = angle * -Math.expm1(-3 * delta);
+    this.playbackSphere.theta += yawStep;
+    if (delta > 0) this.playbackYawSpeed = yawStep / delta;
     this.playbackSphere.phi = THREE.MathUtils.damp(this.playbackSphere.phi, Math.PI / 2 - elevation, 1.5, delta);
     this.playbackSphere.radius = THREE.MathUtils.damp(this.playbackSphere.radius, distance, 1.25, delta);
     this.controls.target.lerp(this.playbackFocus, 1 - Math.exp(-2.1 * delta));
@@ -537,18 +565,19 @@ export class TimelineScene {
     links.update(this.nodeReveal, selected && this.motion ? 0 : Infinity); group.add(links.group); return links;
   }
 
-  private addLabel(text: string, point: THREE.Vector3, color: string, priority = false) {
+  private addLabel(text: string, point: THREE.Vector3, color: string, priority = false, month = false) {
     const element = document.createElement('div');
-    element.className = priority ? 'scene-label selected-label' : 'scene-label';
+    element.className = priority ? 'scene-label selected-label' : month ? 'scene-label month-label' : 'scene-label';
     element.textContent = text;
     element.style.setProperty('--label-color', color);
     this.labelLayer.append(element);
-    const label = { element, point, priority };
+    const label = { element, point, priority, month };
     if (priority) this.labels.unshift(label); else this.labels.push(label);
   }
 
   select(id: string | null) {
     this.pickingDirty = true;
+    this.revealsActive = true;
     this.dirty = true;
     if (this.selected !== id) { this.selectedEvent = null; this.focusedEvent = undefined; }
     this.selected = id;
@@ -778,6 +807,7 @@ export class TimelineScene {
     this.camera.clearViewOffset();
     if (!this.graph.nodes.length) return;
     const bounds = new THREE.Box3().setFromPoints(this.graph.nodes.flatMap((node) => [new THREE.Vector3(...node.startPosition), new THREE.Vector3(...node.position)]));
+    if (this.preferences.labels && this.labels.some(label => label.month)) bounds.min.y = Math.min(bounds.min.y, gridY - 12);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
     const tangent = 2 * Math.tan(THREE.MathUtils.degToRad(22.5));
@@ -935,7 +965,10 @@ export class TimelineScene {
     this.nodeGrid.clear(); this.markerGrid.clear();
     const point = new THREE.Vector3(), view = new THREE.Vector3();
     this.graph.nodes.forEach((node, index) => {
-      point.fromArray(this.orbCenter(node));
+      // Pick the transforms actually drawn. Re-evaluating each spiral and its
+      // camera-facing offset here duplicates the preceding frame's node work.
+      if (!this.nodeMesh) return;
+      point.fromArray(this.nodeMesh.instanceMatrix.array, index * 16 + 12).applyMatrix4(this.nodeMesh.matrixWorld);
       view.copy(point).applyMatrix4(this.camera.matrixWorldInverse); point.project(this.camera);
       if (point.z < -1 || point.z > 1) return;
       const radius = this.drawnRadius(node);
@@ -1030,6 +1063,7 @@ export class TimelineScene {
   private resize() {
     this.dirty = true;
     this.pickingDirty = true;
+    this.revealsActive = true;
     const width = this.container.clientWidth, height = this.container.clientHeight;
     if (!width || !height) return;
     this.width = width; this.height = height;
@@ -1072,7 +1106,17 @@ export class TimelineScene {
       this.controls.target.lerp(this.targetLook, ease);
       if (this.camera.position.distanceTo(this.targetPosition) < 0.05) { this.targetPosition = undefined; this.targetLook = undefined; }
     }
-    const changed = this.controls.update();
+    this.controls.update();
+    const changed = this.cameraDirty;
+    if (changed || animatingCamera) this.cameraSettlesAt = this.time + .15;
+    // Balanced navigation retains geometry MSAA, supersampling, and node halos.
+    // Defer fullscreen glow/SMAA until damping settles, with one final idle draw.
+    // High quality and fixed-step video capture always keep their chosen effects.
+    const navigating = !this.options.manual && this.preferences.quality === 'balanced' && !this.playing && this.time < this.cameraSettlesAt;
+    const smaa = this.preferences.quality !== 'performance' && !navigating;
+    if (this.smaa.enabled !== smaa) { this.smaa.enabled = smaa; this.dirty = true; }
+    const bloom = this.preferences.quality !== 'performance' && this.preferences.bloom > 0 && !navigating;
+    if (this.bloom.enabled !== bloom) { this.bloom.enabled = bloom; this.dirty = true; }
     if (!this.playing && this.camera.view?.enabled && (this.focusedSession || this.focusedEvent)) this.frameFocus();
     // Project labels with the same camera matrix used for this frame's nodes,
     // including immediate reset jumps when reduced motion is enabled.
@@ -1092,7 +1136,9 @@ export class TimelineScene {
       hoverCenter: hovered ? this.orbCenter(hovered) : undefined,
     });
     if (!this.dirty && !changed && !animatingCamera && !focusing && !this.revealsActive && !flow && !particleMotion && !(this.motion && this.selected && this.selectionGroup.visible)) return;
-    if (changed || animatingCamera || this.dirty) this.revealsActive = true;
+    // Hover, labels, and focus dimming only change uniforms. Rebuild instance
+    // transforms when geometry, reveal state, or the camera actually changes.
+    if (changed || animatingCamera) this.revealsActive = true;
     this.animateNodes();
     this.selectedLinks?.update(this.nodeReveal, this.motion ? this.time - this.selectionBorn : Infinity);
     if (selected) {
@@ -1113,17 +1159,17 @@ export class TimelineScene {
     for (const label of this.labels) {
       const world = label.point.clone();
       const point = world.project(this.camera);
-      const labelWidth = label.priority ? Math.min(260, width - 24) : this.options.manual ? 235 : 155;
+      const labelWidth = label.priority ? Math.min(260, width - 24) : label.month ? (label.element.textContent!.length > 3 ? 62 : 32) : this.options.manual ? 235 : 155;
       const projectedX = (point.x * 0.5 + 0.5) * width;
-      const x = label.priority ? THREE.MathUtils.clamp(projectedX - labelWidth / 2, 12, width - labelWidth - 12) : projectedX;
-      const y = (-point.y * 0.5 + 0.5) * height - (label.priority ? 24 : 0);
+      const x = label.priority ? THREE.MathUtils.clamp(projectedX - labelWidth / 2, 12, width - labelWidth - 12) : label.month ? projectedX - labelWidth / 2 : projectedX;
+      const y = (-point.y * 0.5 + 0.5) * height + (label.priority ? -24 : label.month ? 4 : 0);
       const overlaps = occupied.some((box) => x < box.x + box.width + 8 && x + labelWidth + 8 > box.x && Math.abs(y - box.y) < 26);
       const inTime = label.priority && selected ? selected.startPosition[0] <= this.clipPlane.constant : label.point.x <= this.clipPlane.constant;
-      const visible = (width > 600 || label.priority) && !overlaps && x + labelWidth <= width - 12 && inTime && point.z < 1 && point.z > -1 && Math.abs(point.x) < 0.95 && Math.abs(point.y) < 0.9;
+      const visible = (width > 600 || label.priority || label.month) && !overlaps && (!label.month || x >= 12) && x + labelWidth <= width - 12 && inTime && point.z < 1 && point.z > -1 && Math.abs(point.x) < 0.95 && Math.abs(point.y) < 0.9;
       if (label.visible !== visible) { label.element.classList.toggle('visible', visible); label.visible = visible; }
       if (visible) {
         label.x = x; label.y = y;
-        const transform = `translate(${x}px, ${y}px)`;
+        const transform = `translate(${x}px, ${y}px)${label.month ? ` translateX(${labelWidth / 2}px) translateX(-50%)` : ''}`;
         if (label.transform !== transform) { label.element.style.transform = transform; label.transform = transform; }
         occupied.push({ x, y, width: labelWidth });
       }
@@ -1141,6 +1187,7 @@ export class TimelineScene {
       }
     }
     this.composer.render();
+    this.cameraDirty = false;
     this.dirty = false;
   }
 
@@ -1172,7 +1219,9 @@ export class TimelineScene {
     context.save(); context.font = '11px "IBM Plex Mono", monospace'; context.textBaseline = 'top';
     for (const label of this.labels) if (label.visible && !label.priority) {
       context.fillStyle = label.element.style.getPropertyValue('--label-color'); context.globalAlpha = .8;
-      context.fillText(label.element.textContent || '', (label.x || 0) + 8, (label.y || 0) + 5);
+      const text = label.element.textContent || '';
+      const x = (label.x || 0) + (label.month ? ((text.length > 3 ? 62 : 32) - context.measureText(text).width) / 2 : 8);
+      context.fillText(text, x, (label.y || 0) + 5);
     }
     context.restore();
   }

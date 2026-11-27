@@ -1,4 +1,4 @@
-import type { FileChange, Project, Session, SourceStatus } from '@sessiongraph/core/types';
+import type { FileChange, Project, Session, SessionPullRequest, SourceStatus } from '@sessiongraph/core/types';
 import type { Fragment } from '../../src/search/types';
 import type { TimelineEvent } from '@sessiongraph/core/timeline';
 import type { RecordedUsage, MessageMetadata } from '@sessiongraph/core/usage';
@@ -25,6 +25,8 @@ export interface ImportedMessage {
 }
 export interface Candidate {
   session: Session;
+  /** Undefined means unavailable; an empty array is an authoritative empty set. */
+  pullRequests?: SessionPullRequest[];
   revision: string;
   locator: Record<string, string>;
 }
