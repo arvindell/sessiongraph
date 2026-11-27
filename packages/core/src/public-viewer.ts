@@ -12,6 +12,7 @@ import { sessionEnd } from './layout';
 import { sourceName, sourceIconElement } from './sources';
 import type { TimelineSummary } from './timeline';
 import { VirtualList } from './virtual-list';
+import { viewDateBounds } from './view-state';
 import './public-viewer.css';
 
 export { publicSummary } from './public-stats';
@@ -49,7 +50,7 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
     </div>
     <aside class="public-session public-panel" aria-label="Session details" hidden><div class="public-panel-heading"><h2 data-session-heading></h2>${graphButton('crosshair', 'Focus node', { 'data-focus': true })}${graphButton('x', 'Close session details', { 'data-close-detail': true })}</div><div class="public-session-data"></div></aside>
     <div class="public-tooltip" hidden></div>
-    <section class="public-playback public-panel timeline-controls" aria-label="Timeline controls">${playbackControls(`<span class="public-period-label">${icon('clock')}<span data-range-label>Timeline</span></span><div class="range-buttons" role="group" aria-label="Date range"><button type="button" data-days="7">7D</button><button type="button" data-days="30">30D</button><button type="button" data-days="90">90D</button><button type="button" data-days="0" aria-pressed="true">All</button></div><select data-speed aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>${graphButton('x', 'Close timeline', { 'data-close-timeline': true })}`, {}, { showCoverage: false })}</section>
+    <section class="public-playback public-panel timeline-controls" aria-label="Timeline controls">${playbackControls(`<span class="public-period-label">${icon('clock')}<span data-range-label>Timeline</span></span><div class="range-buttons" role="group" aria-label="Date range"><button type="button" data-days="7">7D</button><button type="button" data-days="30">30D</button><button type="button" data-days="90">90D</button><button type="button" data-days="ytd" title="Year to date">YTD</button><button type="button" data-days="0">All</button></div><select data-speed aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>${graphButton('x', 'Close timeline', { 'data-close-timeline': true })}`, {}, { showCoverage: false })}</section>
     ${shortcutHints(['fit', 'clear'], 'public-hints')}
     ${graphHelp(helpID, ['fit', 'clear'])}
     <p class="public-announcement" role="status"></p>`;
@@ -62,7 +63,8 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
   const motionQuery = matchMedia('(prefers-reduced-motion: reduce)'), events = new AbortController();
   const preferences = { ...DEFAULT_PREFERENCES, focusDimming: false, messageDots: value.settings.messageTimestamps };
   const audio = new InteractionAudio(preferences, () => {}, host);
-  let scene: TimelineScene | undefined, selected: number | null = null, visible = value.sessions, days = 0;
+  const defaultDays = () => value.settings.timestamps ? 'ytd' : 0;
+  let scene: TimelineScene | undefined, selected: number | null = null, visible = value.sessions, days: number | 'ytd' = defaultDays();
   let frame = 0, playing = false, progress = 1, outro = 0, last = 0, disposed = false, markers: TimelineSummary[] = [];
   let panels: { browser: boolean; details: boolean } | undefined;
   let sessionCount = playbackSessions(graph.nodes.map(n => n.session)), tokens = playbackTokens(graph.nodes.map(n => n.session), { allSources: true });
@@ -147,15 +149,19 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
   }
   function filter(reuseLayout = false) {
     stop(); progress = 1;
-    const cutoff = value.settings.timestamps && days ? Math.max(...value.sessions.map(publicSessionRecency)) - days * 86400_000 : 0;
-    visible = value.sessions.filter(s => (!project.value || String(s.group) === project.value) && (!harness.value || s.harness === harness.value) && (!cutoff || publicSessionRecency(s) >= cutoff)).sort(newestPublicSessionFirst);
-    if (!reuseLayout) graph = publicGraphLayout(value, new Set(visible.map(s => s.id)));
+    const { min: earliest, max: latest } = days === 'ytd' ? viewDateBounds({ days, fromDate: '', toDate: '' })
+      : { min: days ? Math.max(...value.sessions.map(publicSessionRecency)) - days * 86400_000 : 0, max: Infinity };
+    visible = value.sessions.filter(s => {
+      const recency = publicSessionRecency(s);
+      return (!project.value || String(s.group) === project.value) && (!harness.value || s.harness === harness.value) && recency >= earliest && recency <= latest;
+    }).sort(newestPublicSessionFirst);
+    if (!reuseLayout || visible.length !== value.sessions.length) graph = publicGraphLayout(value, new Set(visible.map(s => s.id)));
     sessionCount = playbackSessions(graph.nodes.map(n => n.session)); tokens = playbackTokens(graph.nodes.map(n => n.session), { allSources: true });
     scene?.setGraph(graph, true); select(null);
     const buckets = timelineBuckets(graph.nodes.map(n => sessionEnd(n.session)), graph.start, graph.end), max = Math.max(1, ...buckets);
     part('histogram').replaceChildren(...buckets.map(count => { const bar = document.createElement('span'); bar.style.height = `${Math.max(4, count / max * 100)}%`; bar.style.opacity = count ? '.8' : '.15'; return bar; }));
     $('[data-range-label]').textContent = !visible.length ? 'No sessions' : value.settings.timestamps ? `${shortDate(graph.start)} — ${shortDate(graph.end, true)}` : 'Timeline';
-    for (const button of host.querySelectorAll<HTMLButtonElement>('[data-days]')) button.setAttribute('aria-pressed', String(Number(button.dataset.days) === days));
+    for (const button of host.querySelectorAll<HTMLButtonElement>('[data-days]')) button.setAttribute('aria-pressed', String(button.dataset.days === String(days)));
     play.disabled = !visible.length; scrubber.disabled = !visible.length; renderList(); update();
   }
   try {
@@ -182,7 +188,7 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
   }
   populateFilters();
   for (const control of [project, harness]) control.onchange = () => filter();
-  for (const button of host.querySelectorAll<HTMLButtonElement>('[data-days]')) { button.hidden = !value.settings.timestamps && button.dataset.days !== '0'; button.onclick = () => { days = Number(button.dataset.days); filter(); }; }
+  for (const button of host.querySelectorAll<HTMLButtonElement>('[data-days]')) button.onclick = () => { days = button.dataset.days === 'ytd' ? 'ytd' : Number(button.dataset.days); filter(); };
   $('[data-sessions]').onclick = () => { stop(); if (browser.hidden && host.clientWidth < 1000) setDetails(false); setList(browser.hidden); };
   $('[data-close-list]').onclick = () => setList(false);
   $('[data-close-detail]').onclick = () => setDetails(false);
@@ -242,7 +248,7 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
     setData(input: PublicGraph) {
       value = validatePublicGraph(input); graph = publicGraphLayout(value);
       projects = new Map(graph.lanes.flatMap(lane => lane.nodes.map(node => [Number(node.session.projectID), lane.label] as const)));
-      preferences.messageDots = value.settings.messageTimestamps; days = 0; selected = null;
+      preferences.messageDots = value.settings.messageTimestamps; days = defaultDays(); selected = null;
       populateFilters(); filter(true); applyMotion();
     },
     dispose() { disposed = true; stop(); events.abort(); observer.disconnect(); disposeSelects(); virtualList.dispose(); scene?.dispose(); audio.dispose(); delete host.dataset.graphAudio; host.replaceChildren(); host.classList.remove('public-viewer', 'public-viewer-full'); },
