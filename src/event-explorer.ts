@@ -107,7 +107,7 @@ export function createEventExplorer(container: HTMLElement, client: TimelineClie
     close,
     handleKey(event: KeyboardEvent) {
       if (!visible() || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || document.querySelector('dialog[open]')) return false;
-      if ((event.target as Element).closest('input, select, textarea, [contenteditable="true"], [data-drag-panel], #explorer')) return false;
+      if ((event.target as Element).closest('input, select, textarea, [contenteditable="true"], #explorer')) return false;
       if (event.key === 'Escape') { event.preventDefault(); close(); document.querySelector<HTMLCanvasElement>('#scene canvas')?.focus({ preventScroll: true }); return true; }
       if (!['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) return false;
       event.preventDefault(); step(event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? 'previous' : 'next'); return true;

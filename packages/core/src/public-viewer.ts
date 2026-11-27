@@ -34,7 +34,7 @@ export function createPublicViewer(host: HTMLElement, input: PublicGraph, option
     <div class="public-canvas" aria-label="Interactive public session graph"></div>
     <div class="public-toolbar">${graphButton('search', 'Toggle sessions', { 'data-sessions': true, 'aria-expanded': 'true' }, 'Sessions', 'Sessions')}</div>
     <nav class="public-view-controls" aria-label="Graph controls">
-      ${graphButton('crosshair', 'Fit view', { 'data-fit': true }, 'Fit view (F)')}
+      ${graphButton('center-focus', 'Fit view', { 'data-fit': true }, 'Fit view (F)')}
       ${graphButton('clock', 'Toggle timeline', { 'data-timeline': true, 'aria-expanded': 'true' }, 'Timeline')}
       ${graphButton('panel-right', 'Toggle session details', { 'data-detail': true, 'aria-expanded': 'false', hidden: true }, 'Session details')}
       ${graphButton('circle-help', 'Help', { 'data-help': true, 'aria-haspopup': 'dialog' })}

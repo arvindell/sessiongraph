@@ -15,7 +15,7 @@ export function graphButton(glyph: IconName, label: string, attributes: Record<s
 
 export const mapShortcut = {
   search: ['search', '/', 'Search'],
-  fit: ['crosshair', 'F', 'Fit view'],
+  fit: ['center-focus', 'F', 'Fit view'],
   panels: ['panels', 'H', 'Panels'],
   clear: ['x', 'Esc', 'Clear selection'],
 } as const;

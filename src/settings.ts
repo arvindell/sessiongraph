@@ -11,7 +11,7 @@ const toggle = (key: keyof Preferences, label: string, hint: string) => `<label 
 const range = (key: keyof Preferences, label: string, hint: string, min: number, max: number, unit = '%', step = 1) => `<label class="setting-row setting-range"><span><strong>${label}</strong><small>${hint}</small></span><span class="setting-slider"><input type="range" data-pref="${key}" aria-label="${label}" min="${min}" max="${max}" step="${step}"/><output data-output="${key}" data-unit="${unit}"></output></span></label>`;
 const select = (key: keyof Preferences, label: string, hint: string, options: [string, string][]) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><select data-pref="${key}" aria-label="${label}">${options.map(([value, title]) => `<option value="${value}">${title}</option>`).join('')}</select></label>`;
 
-export function createSettings(callbacks: { publishing: () => void; change: (patch: Partial<Preferences>) => void; getArchived: () => boolean; changeArchived: (value: boolean) => void; visibility: () => void; previewSound: () => void; resetPanels: () => void; getSources: () => Promise<SourceStatus[]>; importSources: (ids: string[]) => Promise<void> }) {
+export function createSettings(callbacks: { publishing: () => void; change: (patch: Partial<Preferences>) => void; getArchived: () => boolean; changeArchived: (value: boolean) => void; visibility: () => void; previewSound: () => void; getSources: () => Promise<SourceStatus[]>; importSources: (ids: string[]) => Promise<void> }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'settings-dialog'; dialog.setAttribute('aria-labelledby', 'settings-title');
   dialog.innerHTML = `<header class="settings-heading"><div><h2 id="settings-title">Settings</h2><p>Import, appearance, and playback preferences.</p></div><button class="icon-button settings-close" aria-label="Close settings">${icon('x')}</button></header>
@@ -23,7 +23,6 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
         ${select('density', 'Session list', 'Adjust spacing between sessions.', [['comfortable', 'Comfortable'], ['compact', 'Compact']])}
         <label class="setting-row"><span><strong>Show archived sessions</strong><small>Include archived history in the map and session list.</small></span><input class="settings-archived" type="checkbox" role="switch" aria-label="Show archived sessions"/></label>
         ${range('panelOpacity', 'Panel opacity', 'Adjust panel background transparency.', 55, 100)}
-        <div class="settings-note"><span>Restore the default panel layout.</span><button class="secondary-button settings-reset-panels">Reset panel positions</button></div>
       </section>
       <section id="settings-sources" role="tabpanel" aria-labelledby="settings-tab-sources" hidden><h3>Sources</h3><p class="settings-description">Choose the local apps to import. Importing is read-only.</p>
         ${toggle('autoImport', 'Auto-import sessions', 'Check selected sources on startup, on return, and every minute while visible.')}
@@ -129,7 +128,6 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
   }, options);
   dialog.querySelector('.settings-preview')!.addEventListener('click', callbacks.previewSound, options);
   dialog.querySelector('.settings-reset')!.addEventListener('click', () => { callbacks.changeArchived(false); callbacks.change({ ...DEFAULT_PREFERENCES }); }, options);
-  dialog.querySelector('.settings-reset-panels')!.addEventListener('click', callbacks.resetPanels, options);
   return {
     open(section?: Section) {
       if (dialog.open && !section) return;

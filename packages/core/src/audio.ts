@@ -23,7 +23,7 @@ export class InteractionAudio {
     scope.addEventListener('click', (event) => {
       if (!event.isTrusted || !owns(event)) return;
       const target = (event.target as Element)?.closest<HTMLElement>('button, a[href], summary, input[type="checkbox"], [role="option"]');
-      if (!target || target.matches(':disabled') || target.closest('[data-sound="none"], [data-drag-panel]')) return;
+      if (!target || target.matches(':disabled') || target.closest('[data-sound="none"]')) return;
       this.play(target.matches('[data-session], [data-related], [role="option"]') ? 'select' : 'click');
     }, options);
     scope.addEventListener('change', (event) => {

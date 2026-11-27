@@ -1,6 +1,6 @@
 .timeline-controls { padding: 9px 14px 18px; border-radius: 16px; }
 .timeline-controls .timeline-top { display: flex; align-items: center; gap: 4px; margin-bottom: 14px; }
-.timeline-controls .timeline-top .panel-handle { font-size: 12px; font-weight: 400; white-space: nowrap; }
+.timeline-controls .timeline-top .panel-title { font-size: 12px; font-weight: 400; white-space: nowrap; }
 .timeline-controls .range-buttons { display: flex; gap: 2px; margin-left: 8px; }
 .timeline-controls .range-buttons button { font-size: 11px; color: #859d8e; border-radius: 6px; padding: 6px 8px; }
 .timeline-controls .range-buttons button:hover { color: #b0e9d6; }

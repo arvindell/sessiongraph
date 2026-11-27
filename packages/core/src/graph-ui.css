@@ -26,5 +26,5 @@
 .graph-help-rows > div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12px; }
 .graph-help-rows span { display: flex; align-items: center; gap: 6px; }
 .graph-help-rows svg { width: 14px; height: 14px; }
-.scene-labels .scene-label.month-label { padding: 3px 5px; background: #080f1280; letter-spacing: .035em; }
+.scene-labels .scene-label.month-label { padding: 3px 5px; background: transparent; letter-spacing: .085em; text-transform: uppercase; text-shadow: 0 1px 3px #080f12; }
 .scene-labels .scene-label.month-label.visible { opacity: .8; }

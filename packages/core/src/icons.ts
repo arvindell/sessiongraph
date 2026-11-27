@@ -1,8 +1,8 @@
 import {
   AppleIcon, ArrowDown01Icon, ArrowDownToLineIcon, ArrowLeft01Icon, ArrowLeft02Icon,
   ArrowRight01Icon, ArrowRight02Icon, ArrowUpRight01Icon, BotIcon, Calendar03Icon,
-  Cancel01Icon, Clock01Icon, Coins01Icon, ComputerTerminal01Icon, Copy01Icon, CpuIcon,
-  Database01Icon, Dollar01Icon, Drag01Icon, FileCodeIcon, FilterIcon, Folder01Icon,
+  Cancel01Icon, CenterFocusIcon, Clock01Icon, Coins01Icon, ComputerTerminal01Icon, Copy01Icon, CpuIcon,
+  Database01Icon, Dollar01Icon, FileCodeIcon, FilterIcon, Folder01Icon,
   GitBranchIcon, GitCommitHorizontalIcon, GitForkIcon, GithubIcon, HelpCircleIcon,
   HierarchyIcon, KeyboardIcon, Loading03Icon, LockKeyholeIcon, Message01Icon,
   MicrosoftIcon, Orbit01Icon, PackageIcon, PanelRightIcon, PanelsTopLeftIcon,
@@ -16,7 +16,7 @@ const icons = {
   'arrow-down': ArrowDownToLineIcon, 'arrow-left': ArrowLeft02Icon, 'arrow-right': ArrowRight02Icon,
   'arrow-up-right': ArrowUpRight01Icon, bot: BotIcon, calendar: Calendar03Icon, x: Cancel01Icon,
   clock: Clock01Icon, coins: Coins01Icon, terminal: ComputerTerminal01Icon, copy: Copy01Icon,
-  cpu: CpuIcon, database: Database01Icon, 'dollar-sign': Dollar01Icon, grip: Drag01Icon,
+  cpu: CpuIcon, database: Database01Icon, 'dollar-sign': Dollar01Icon,
   'file-code-2': FileCodeIcon, 'sliders-horizontal': FilterIcon, folder: Folder01Icon,
   'git-branch': GitBranchIcon, 'git-commit': GitCommitHorizontalIcon, 'git-fork': GitForkIcon,
   'circle-help': HelpCircleIcon, network: HierarchyIcon, keyboard: KeyboardIcon,
@@ -24,7 +24,7 @@ const icons = {
   orbit: Orbit01Icon, box: PackageIcon, 'panel-right': PanelRightIcon, panels: PanelsTopLeftIcon,
   pause: PauseIcon, play: PlayIcon, 'refresh-cw': RefreshIcon, 'rotate-ccw': RefreshIcon,
   'settings-2': Settings02Icon, 'share-2': Share08Icon, sparkles: SparklesIcon,
-  crosshair: Target01Icon, check: Tick02Icon, user: UserIcon, 'volume-2': VolumeHighIcon, 'volume-x': VolumeOffIcon,
+  crosshair: Target01Icon, 'center-focus': CenterFocusIcon, check: Tick02Icon, user: UserIcon, 'volume-2': VolumeHighIcon, 'volume-x': VolumeOffIcon,
 };
 export type IconName = keyof typeof icons;
 export const escapeMarkup = (value: string) => value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
