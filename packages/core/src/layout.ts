@@ -1,4 +1,5 @@
 import type { Graph, GraphNode, Lane, Project, Session } from './types';
+import type { GraphGrouping } from './preferences';
 
 export const PALETTE = ['#b0e9d6', '#8eaff4', '#d7a1f1', '#eac594', '#8cdbdf', '#e7a3b8', '#a8ca91'];
 
@@ -43,15 +44,17 @@ export const connectionPositions = (from: GraphNode, to: GraphNode) => [
   trailPosition(from, Math.max(from.startPosition[0], Math.min(to.startPosition[0], from.position[0]))), to.startPosition,
 ] as const;
 
-export function makeGraph(sessions: Session[], projects: Project[], previous?: Graph): Graph {
+export function makeGraph(sessions: Session[], projects: Project[], previous?: Graph, grouping?: GraphGrouping): Graph {
   if (!sessions.length) return { nodes: [], edges: [], lanes: [], start: 0, end: 0 };
+  const keyFor = (session: Session) => !grouping ? laneKey(session)
+    : JSON.stringify([grouping, (grouping === 'repository' ? session.checkout?.repository : session.checkout?.worktree) ?? null]);
   const ordered = [...sessions].sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
   const start = ordered[0].created;
   const end = ordered.reduce((latest, session) => Math.max(latest, sessionEnd(session)), start + 3_600_000);
   const timeFrame = previous?.nodes.length ? previous.timeFrame || { start: previous.start, end: previous.end } : { start, end };
   const groups = new Map<string, Session[]>();
   for (const session of ordered) {
-    const key = laneKey(session);
+    const key = keyFor(session);
     const group = groups.get(key) || [];
     group.push(session);
     groups.set(key, group);
@@ -76,8 +79,11 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
     const project = projects.find((p) => p.id === group[0].projectID);
     const directory = group[0].directory;
     const lane: Lane = {
-      key, slot: index, label: directory ? directoryLabel(directory) : project?.name || group[0].projectID || 'Unknown directory', color,
-      kind: directory && worktrees.has(directoryPath(directory)) ? 'worktree' : 'directory',
+      key, slot: index, color,
+      label: grouping === 'repository' ? group[0].checkout?.repositoryLabel || 'Unknown repository'
+        : grouping === 'worktree' ? (group[0].checkout ? directoryLabel(group[0].checkout.worktree) : 'Unknown worktree')
+        : directory ? directoryLabel(directory) : project?.name || group[0].projectID || 'Unknown directory',
+      kind: grouping === 'worktree' && group[0].checkout || !grouping && directory && worktrees.has(directoryPath(directory)) ? 'worktree' : 'directory',
       y, z, nodes: [],
     };
     for (const session of group) {
@@ -111,9 +117,9 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
   const byID = new Map(nodes.map((node) => [node.session.id, node]));
   const placed = new Set<string>();
   // Newly discovered ancestors can add links without moving an existing branch.
-  for (const old of previous?.nodes || []) {
+  for (const lane of previous?.lanes || []) for (const old of lane.nodes) {
     const node = byID.get(old.session.id);
-    if (node && laneKey(node.session) === laneKey(old.session)) {
+    if (node && keyFor(node.session) === lane.key) {
       node.position[1] = old.position[1]; node.position[2] = old.position[2];
       placed.add(node.session.id);
     }
@@ -127,7 +133,7 @@ export function makeGraph(sessions: Session[], projects: Project[], previous?: G
       visited.add(current.session.id);
       const parentID: string | undefined = current.session.forkID || current.session.parentID;
       const candidate: GraphNode | undefined = parentID ? byID.get(parentID) : undefined;
-      const parent: GraphNode | undefined = candidate && laneKey(candidate.session) === laneKey(current.session) ? candidate : undefined;
+      const parent: GraphNode | undefined = candidate && keyFor(candidate.session) === keyFor(current.session) ? candidate : undefined;
       chain.push({ node: current, parent }); current = parent;
     }
     for (const { node, parent } of chain.reverse()) {

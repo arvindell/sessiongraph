@@ -15,6 +15,8 @@ export interface Session {
   /** Explicit provider-native conversations recorded as part of this app thread. */
   linkedSessionIDs?: string[];
   directory: string;
+  /** Verified against local Git metadata; never part of a public graph. */
+  checkout?: { worktree: string; repository: string; repositoryLabel: string };
   created: number;
   updated: number;
   activity?: { firstMessageAt: number | null; lastMessageAt: number | null; userMessages: number; untimedUserMessages: number };

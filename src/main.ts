@@ -170,6 +170,7 @@ function changePreferences(patch: Partial<Preferences>) {
   preferences = normalizePreferences({ ...preferences, ...patch });
   try { preferencesSaved = savePreferences(localStorage, preferences); } catch { preferencesSaved = false; }
   applyPreferences();
+  if (data && preferences.grouping !== graphGrouping) updateFilters(true);
   saveLibrarySettings({ preferences: { ...preferences }, ...(changedImport ? { autoImport: preferences.autoImport } : {}) });
 }
 function saveLibrarySettings(patch: LibrarySettingsPatch) { settingsSaver?.save(patch); }
@@ -177,7 +178,7 @@ function currentView(): ViewState { return { sourceID, projectID, directory, day
 $('#open-settings').addEventListener('click', settings.open);
 $('#mute-audio').addEventListener('click', () => changePreferences({ muted: !preferences.muted }));
 const onSystemMotion = () => applyPreferences(); reducedMotion.addEventListener('change', onSystemMotion);
-const onPreferencesStorage = (event: StorageEvent) => { if (event.key === PREFERENCES_KEY) { try { preferences = { ...loadPreferences(localStorage), autoImport: preferences.autoImport }; applyPreferences(); } catch {} } };
+const onPreferencesStorage = (event: StorageEvent) => { if (event.key === PREFERENCES_KEY) { try { preferences = { ...loadPreferences(localStorage), autoImport: preferences.autoImport }; applyPreferences(); if (data && preferences.grouping !== graphGrouping) updateFilters(true); } catch {} } };
 window.addEventListener('storage', onPreferencesStorage);
 applyPreferences();
 settingsSaver = new LibrarySettingsSaver(async (patch) => {
@@ -319,7 +320,7 @@ async function load(background = false) {
     $('#connection-label').textContent = 'Local library';
     $('.connection').classList.add('connected');
     $('.connection').title = `Connected · ${count(data.sessions.length)} sessions`;
-    if (previous && JSON.stringify(previous.sessions) === JSON.stringify(next.sessions) && JSON.stringify(previous.projects) === JSON.stringify(next.projects)) { renderGraphMessage(); return; }
+    if (previous && preferences.grouping === graphGrouping && JSON.stringify(previous.sessions) === JSON.stringify(next.sessions) && JSON.stringify(previous.projects) === JSON.stringify(next.projects)) { renderGraphMessage(); return; }
     timelineClient.clear();
     sessionsByID = new Map(data.sessions.map((session) => [session.id, session]));
     $<HTMLSelectElement>('#source').innerHTML = '<option value="">All sources</option>' + (data.sources || []).map((s) => `<option value="${escape(s.id)}">${escape(s.name)} · ${s.sessions.toLocaleString()}</option>`).join('');
@@ -375,8 +376,11 @@ function updateDirectories() {
   $<HTMLSelectElement>('#directory').value = directory;
 }
 
+let graphGrouping: Preferences['grouping'] | undefined;
 function updateFilters(fit = false, preserve = false) {
   if (!data) return;
+  if (graphGrouping !== preferences.grouping) { fit = true; preserve = false; }
+  graphGrouping = preferences.grouping;
   if (!preserve) { stopPlayback(); playback = 1; listLimit = 60; }
   const scroll = $('#session-list').scrollTop;
   const focused = document.activeElement?.closest<HTMLElement>('[data-session]')?.dataset.session;
@@ -391,7 +395,7 @@ function updateFilters(fit = false, preserve = false) {
   sortedSessions = [...filtered].sort((a, b) => sessionEnd(b) - sessionEnd(a));
   filteredIDs = new Set(filtered.map((s) => s.id));
   sessionSearch.setScope(filtered.map((s) => s.id));
-  graph = makeGraph(filtered, data.projects, preserve ? graph : undefined);
+  graph = makeGraph(filtered, data.projects, preserve ? graph : undefined, graphGrouping);
   nodeColors = new Map(graph.nodes.map((n) => [n.session.id, n.color]));
   scene?.setCutoff(playback);
   scene?.setGraph(graph, fit, preserve);

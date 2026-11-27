@@ -11,6 +11,7 @@ import { PublishingClient, PublishingError } from './publishing';
 import { publishingSettings } from '@sessiongraph/core/public-graph';
 import { withSourcePaths } from './source-paths';
 import { LibraryError } from './library-query';
+import { annotateGitCheckouts } from './git-checkouts';
 
 const publishing = new PublishingClient();
 
@@ -90,7 +91,9 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
     }
     if (url.pathname === '/api/sessiongraph' && req.method === 'GET') {
       const sources = adapters.map((a) => ({ id: a.id, name: a.name, description: a.description, capabilities: a.capabilities, selected: store.selected().includes(a.id), available: false, ...store.sourceInfo(a.id) }));
-      return json(200, store.library(sources, importer.status.running));
+      const data = store.library(sources, importer.status.running);
+      data.sessions = await annotateGitCheckouts(data.sessions);
+      return json(200, data);
     }
     const match = /^\/api\/sessiongraph\/session\/([^/]+)(?:\/(content|timeline|commits|events|event-markers|connection|prepare-launch|open-terminal))?$/.exec(url.pathname);
     if (match) {
