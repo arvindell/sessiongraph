@@ -10,6 +10,12 @@ Every push to `main` runs `.github/workflows/release.yml`:
 
 The unscoped `sessiongraph` launcher and `sessiongraph-app-*` platform packages are configured for public publication.
 
+The npm launcher exposes `sessiongraph` and `ssg`. Desktop bundles include the CLI
+and install per-user commands and PATH registration on first launch. CLI payloads
+and runtimes are versioned outside the app bundle for portable AppImage support.
+Debug builds skip registration.
+Each native build host tests npm aliases and desktop CLI setup before packaging.
+
 ## Desktop updates
 
 `tauri.release.conf.json` enables updater archives. `collect-release.mjs` signs macOS app archives, Windows installers, and Linux AppImage/DEB/RPM with the exact release version. `updater-manifest.mjs` rejects incomplete or stale signatures and maps both architecture and installed package format. URLs in the manifest are pinned to the release tag; installer filenames stay stable for README `/latest/download/` links. Runtime verification is enforced by the official Tauri updater with `requireSignedVersion`.

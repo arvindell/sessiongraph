@@ -1,12 +1,12 @@
 import { DEFAULT_PREFERENCES, type Preferences } from '@sessiongraph/core/preferences';
-import { createElement, PanelsTopLeft, Database, Volume2, Sparkles, Orbit, LockKeyhole, type IconNode } from 'lucide';
+import { icon, type IconName } from '@sessiongraph/core/icons';
 import { refreshSelects } from './controls';
 import type { SaveState } from './library-settings';
 import type { ImportStatus, SourceStatus } from '@sessiongraph/core/types';
 import { sourceOption, sortSources } from '@sessiongraph/core/sources';
 
 type Section = 'interface' | 'sources' | 'audio' | 'graphics' | 'trails' | 'privacy';
-const tabs: [Section, string, IconNode][] = [['interface', 'Interface', PanelsTopLeft], ['sources', 'Sources', Database], ['audio', 'Sound', Volume2], ['graphics', 'Graphics', Sparkles], ['trails', 'Trails & playback', Orbit], ['privacy', 'Privacy', LockKeyhole]];
+const tabs: [Section, string, IconName][] = [['interface', 'Interface', 'panels'], ['sources', 'Sources', 'database'], ['audio', 'Sound', 'volume-2'], ['graphics', 'Graphics', 'sparkles'], ['trails', 'Trails & playback', 'orbit'], ['privacy', 'Privacy', 'lock']];
 const toggle = (key: keyof Preferences, label: string, hint: string) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><input type="checkbox" role="switch" data-pref="${key}" aria-label="${label}"/></label>`;
 const range = (key: keyof Preferences, label: string, hint: string, min: number, max: number, unit = '%', step = 1) => `<label class="setting-row setting-range"><span><strong>${label}</strong><small>${hint}</small></span><span class="setting-slider"><input type="range" data-pref="${key}" aria-label="${label}" min="${min}" max="${max}" step="${step}"/><output data-output="${key}" data-unit="${unit}"></output></span></label>`;
 const select = (key: keyof Preferences, label: string, hint: string, options: [string, string][]) => `<label class="setting-row"><span><strong>${label}</strong><small>${hint}</small></span><select data-pref="${key}" aria-label="${label}">${options.map(([value, title]) => `<option value="${value}">${title}</option>`).join('')}</select></label>`;
@@ -14,11 +14,11 @@ const select = (key: keyof Preferences, label: string, hint: string, options: [s
 export function createSettings(callbacks: { publishing: () => void; change: (patch: Partial<Preferences>) => void; getArchived: () => boolean; changeArchived: (value: boolean) => void; visibility: () => void; previewSound: () => void; resetPanels: () => void; getSources: () => Promise<SourceStatus[]>; importSources: (ids: string[]) => Promise<void> }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'settings-dialog'; dialog.setAttribute('aria-labelledby', 'settings-title');
-  dialog.innerHTML = `<header class="settings-heading"><div><h2 id="settings-title">Settings</h2><p>Import, appearance, and playback preferences.</p></div><button class="icon-button settings-close" aria-label="Close settings">×</button></header>
-    <div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="Settings categories">${tabs.map(([id, name, glyph], i) => `<button role="tab" id="settings-tab-${id}" aria-controls="settings-${id}" aria-selected="${!i}" tabindex="${i ? -1 : 0}" data-tab="${id}">${createElement([glyph[0], { ...glyph[1], 'aria-hidden': 'true', 'stroke-width': 1.5 }, glyph[2]]).outerHTML}${name}</button>`).join('')}</nav>
+  dialog.innerHTML = `<header class="settings-heading"><div><h2 id="settings-title">Settings</h2><p>Import, appearance, and playback preferences.</p></div><button class="icon-button settings-close" aria-label="Close settings">${icon('x')}</button></header>
+    <div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="Settings categories">${tabs.map(([id, name, glyph], i) => `<button role="tab" id="settings-tab-${id}" aria-controls="settings-${id}" aria-selected="${!i}" tabindex="${i ? -1 : 0}" data-tab="${id}">${icon(glyph)}${name}</button>`).join('')}</nav>
     <div class="settings-content">
       <section id="settings-interface" role="tabpanel" aria-labelledby="settings-tab-interface"><h3>Interface</h3><p class="settings-description">View preferences and filters are saved with your library.</p>
-        ${select('view', 'Default view', 'Switch between depth and a flat timeline.', [['3d', '3D galaxy'], ['2d', '2D timeline']])}
+        ${select('grouping', 'Cluster sessions by', 'Worktree keeps checkouts separate. Repository combines them. Both use the session directory when Git metadata is unavailable.', [['worktree', 'Worktree / Directory'], ['repository', 'Repository']])}
         ${select('motion', 'Motion', 'Camera transitions, reveals, and ambient movement.', [['system', 'Follow system'], ['on', 'On'], ['off', 'Off']])}
         ${select('density', 'Session list', 'Adjust spacing between sessions.', [['comfortable', 'Comfortable'], ['compact', 'Compact']])}
         <label class="setting-row"><span><strong>Show archived sessions</strong><small>Include archived history in the map and session list.</small></span><input class="settings-archived" type="checkbox" role="switch" aria-label="Show archived sessions"/></label>
@@ -43,7 +43,7 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
         ${range('bloom', 'Glow strength', 'Soft light around bright nodes; disabled in Performance.', 0, 75)}
         ${range('nodeScale', 'Node size', 'Scale the lights without changing their positions.', 60, 180)}
         ${toggle('stars', 'Starfield', 'A faint field of stars behind the timeline.')}
-        ${toggle('labels', 'Map labels', 'Directory names and the selected session title.')}
+        ${toggle('labels', 'Map labels', 'Month labels, cluster names, and the selected session title.')}
         ${toggle('focusDimming', 'Focus dimming', 'Dim surrounding nodes when a session is selected.')}
       </section>
       <section id="settings-trails" role="tabpanel" aria-labelledby="settings-tab-trails" hidden><h3>Trails &amp; playback</h3><p class="settings-description">Trails start at creation and end at the latest recorded message.</p>
@@ -102,18 +102,18 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
   for (const selector of ['.settings-close', '.settings-done']) dialog.querySelector(selector)!.addEventListener('click', close, options);
   dialog.addEventListener('close', () => { callbacks.visibility(); focus?.focus({ preventScroll: true }); }, options);
   dialog.addEventListener('keydown', (event) => { event.stopPropagation(); }, options);
-  function activate(id: string) {
-    active = id as Section;
+  function activate(id: Section) {
+    active = id;
     for (const [section] of tabs) {
       const tab = dialog.querySelector<HTMLButtonElement>(`[data-tab="${section}"]`)!;
       tab.setAttribute('aria-selected', String(section === id)); tab.tabIndex = section === id ? 0 : -1;
       dialog.querySelector<HTMLElement>(`#settings-${section}`)!.hidden = section !== id;
     }
     dialog.querySelector('.settings-content')!.scrollTop = 0;
-    if (active === 'sources') void loadSources();
+    if (dialog.open && active === 'sources') void loadSources();
   }
   for (const tab of dialog.querySelectorAll<HTMLButtonElement>('[data-tab]')) {
-    tab.addEventListener('click', () => activate(tab.dataset.tab!), options);
+    tab.addEventListener('click', () => activate(tab.dataset.tab as Section), options);
     tab.addEventListener('keydown', (event) => {
       const index = tabs.findIndex(([id]) => id === tab.dataset.tab);
       const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : ['ArrowRight', 'ArrowDown'].includes(event.key) ? (index + 1) % tabs.length : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? (index + tabs.length - 1) % tabs.length : -1;
@@ -131,7 +131,18 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
   dialog.querySelector('.settings-reset')!.addEventListener('click', () => { callbacks.changeArchived(false); callbacks.change({ ...DEFAULT_PREFERENCES }); }, options);
   dialog.querySelector('.settings-reset-panels')!.addEventListener('click', callbacks.resetPanels, options);
   return {
-    open() { if (dialog.open) return; archived.checked = callbacks.getArchived(); focus = document.activeElement as HTMLElement; dialog.showModal(); callbacks.visibility(); dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus(); if (active === 'sources') void loadSources(); },
+    open(section?: Section) {
+      if (dialog.open && !section) return;
+      if (section) activate(section);
+      if (!dialog.open) {
+        archived.checked = callbacks.getArchived();
+        focus = document.activeElement as HTMLElement;
+        dialog.showModal();
+        callbacks.visibility();
+        if (active === 'sources') void loadSources();
+      }
+      dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus();
+    },
     importStatus(status: ImportStatus) {
       const wasRunning = sourcesRunning; sourcesRunning = status.running; sourceControls();
       dialog.querySelector('.settings-import-progress')!.textContent = status.running ? `Importing · ${status.imported.toLocaleString()} saved` : `${status.imported.toLocaleString()} imported · ${status.unchanged.toLocaleString()} unchanged${status.failed ? ` · ${status.failed} unavailable` : ''}${status.errors.length ? ` · ${status.errors[0]}` : ''}`;

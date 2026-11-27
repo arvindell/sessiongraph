@@ -64,7 +64,7 @@ test('Copilot Chat reads legacy and modern JSON, preserves identities, metadata,
   assert.equal(candidate.session.created, date - 1000); assert.equal(candidate.session.cost, null); assert.equal(candidate.session.tokens, null);
   assert.deepEqual(messages.map(m => m.id), ['u1', 'a1', 'u2', 'a2']); assert.deepEqual(messages.map(m => m.time), [date, 0, 0, date + 1000]);
   assert.deepEqual(messages.filter(m => m.role === 'user').map(m => m.fragments[0].text), ['Again', 'Again']);
-  assert.match(page.note!, /Missing message timestamps remain unknown/); assert.match(page.note!, /File snapshots are unavailable/);
+  assert.equal(page.note, 'Earlier messages may be missing.');
   assert.deepEqual(await readFile(path), before);
   await writeFile(path, JSON.stringify({ ...value, version: 2, customTitle: undefined, computedTitle: 'Old title' }));
   assert.equal((await only()).candidate.session.title, 'Old title');
@@ -142,7 +142,7 @@ test('Copilot Chat preserves saved imports when authoritative logs are corrupt, 
     const before = store.content('copilot-chat:session');
     for (const broken of [lines([{ kind: 0, v: current }]) + '{"kind":1', lines([{ kind: 1, k: ['customTitle'], v: 'No initial' }])]) {
       await writeFile(path, broken); importer.start(); await importer.settled();
-      assert.match(importer.status.errors.join(' '), /Saved imports are kept/);
+      assert.deepEqual(importer.status.errors, ['GitHub Copilot Chat (VS Code): Could not read history for 1 session.']);
       assert.equal(store.getSession('copilot-chat:session')!.title, 'Current log');
       assert.deepEqual(store.content('copilot-chat:session'), before);
     }

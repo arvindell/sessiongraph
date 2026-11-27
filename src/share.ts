@@ -1,4 +1,4 @@
-import { createElement, Share2 } from 'lucide';
+import { iconElement } from '@sessiongraph/core/icons';
 import { TimelineScene } from '@sessiongraph/core/scene';
 import { BRAND_TEXT, drawBrandMark } from '@sessiongraph/core/brand';
 import { shareGraph } from './share-graph';
@@ -13,13 +13,14 @@ import type { Graph } from '@sessiongraph/core/types';
 import type { Preferences } from '@sessiongraph/core/preferences';
 
 const WIDTH = 960, HEIGHT = 600;
+const overlaySans = '"Katagami Sans", sans-serif';
 const compact = (value: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 
 function overlay(context: CanvasRenderingContext2D, graph: Graph, progress: number, buckets: number[], usage: ReturnType<typeof playbackTokens>, sessions: ReturnType<typeof playbackSessions>) {
   const x = 260, width = 440, y = HEIGHT - 122, peak = Math.max(1, ...buckets);
   context.save();
   drawBrandMark(context, 24, 14, 28);
-  context.fillStyle = BRAND_TEXT; context.font = '600 14px "Geist Variable", sans-serif';
+  context.fillStyle = BRAND_TEXT; context.font = `600 14px ${overlaySans}`;
   context.textAlign = 'left'; context.textBaseline = 'middle';
   context.fillText('SessionGraph', 58, 28);
   context.restore();
@@ -33,10 +34,10 @@ function overlay(context: CanvasRenderingContext2D, graph: Graph, progress: numb
   const tokens = usage.at(time, progress === 1).tokens;
   context.textAlign = 'center'; context.fillStyle = '#a0baae'; context.font = '12px "IBM Plex Mono", monospace';
   context.fillText(playbackDate(time, graph.end - graph.start), WIDTH / 2, y + 23);
-  context.fillStyle = '#e7f5ee'; context.font = '36px "Geist Variable", sans-serif';
+  context.fillStyle = '#e7f5ee'; context.font = `36px ${overlaySans}`;
   context.fillText(sessions(time, progress === 1).toLocaleString('en'), WIDTH / 2 - 105, y + 66);
   context.fillText(usage.recorded ? compact(tokens) : '—', WIDTH / 2 + 105, y + 66);
-  context.font = '12px "Geist Variable", sans-serif'; context.fillStyle = '#92b0a3';
+  context.font = `12px ${overlaySans}`; context.fillStyle = '#92b0a3';
   context.fillText('Sessions', WIDTH / 2 - 105, y + 87);
   context.fillText('Burnt tokens', WIDTH / 2 + 105, y + 87);
   context.textAlign = 'left';
@@ -102,7 +103,7 @@ export function createPlaybackShare(visibility: () => void, publish: () => void)
   const tray = dialog.querySelector<HTMLElement>('.share-tray')!, notice = dialog.querySelector<HTMLElement>('.share-notice')!;
   const traySave = dialog.querySelector<HTMLButtonElement>('.share-tray-save')!, copy = dialog.querySelector<HTMLButtonElement>('.share-copy')!;
   const caption = dialog.querySelector<HTMLTextAreaElement>('.share-caption')!; caption.value = SHARE_CAPTION;
-  const shareIcon = createElement(Share2); shareIcon.setAttribute('aria-hidden', 'true'); shareIcon.setAttribute('stroke-width', '1.5'); share.prepend(shareIcon);
+  share.prepend(iconElement('share-2'));
   let controller: AbortController | undefined, blob: Blob | undefined, file: File | undefined, url: string | undefined, graph: Graph | undefined, preferences: Preferences | undefined;
   let generation = Promise.resolve();
   const showNotice = (text: string) => { notice.textContent = text; notice.hidden = !text; };

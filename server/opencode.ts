@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import type { SessionGraphData, FileChange, Project, Session, SessionDetail } from '@sessiongraph/core/types';
 import { serviceFile } from './config';
 import { sumRecordedTokens } from '../src/playback-tokens';
+import { openCodeUsage, recordedCost, sessionUsage } from './usage';
 
 export interface RawSession {
   id: string;
@@ -30,7 +31,13 @@ interface ToolPart {
 export interface RawMessage {
   id: string;
   type: string;
-  time: { created: number };
+  time: { created: number; firstToken?: number; streamed?: number; completed?: number };
+  model?: { id?: string; providerID?: string };
+  agent?: string;
+  finish?: string;
+  rawFinish?: string;
+  tokens?: RawSession['tokens'];
+  cost?: number;
   snapshot?: { files?: string[]; start?: string; end?: string };
   content?: ToolPart[];
   location?: { directory: string };
@@ -101,9 +108,10 @@ async function loadSessionGraph(): Promise<SessionGraphData> {
         model: raw.model?.id || 'Unknown model',
         provider: raw.model?.providerID || '',
         agent: raw.agent || 'build',
-        cost: raw.cost || 0,
+        cost: recordedCost(raw.cost),
         // Input + output + cache tokens; reasoning is generally part of output.
         tokens: sumRecordedTokens([t?.input, t?.output, t?.cache?.read, t?.cache?.write]),
+        usage: sessionUsage(openCodeUsage(t, raw.cost)),
         outcome: raw.outcome,
       });
     }
@@ -111,7 +119,7 @@ async function loadSessionGraph(): Promise<SessionGraphData> {
     if (cursor && seenCursors.has(cursor)) throw new Error('OpenCode returned a repeated session cursor.');
     if (cursor) seenCursors.add(cursor);
   } while (cursor && sessions.size < 20_000);
-  if (cursor) warnings.push('Showing the newest 20,000 sessions. Older sessions are not loaded.');
+  if (cursor) warnings.push('OpenCode: Showing the newest 20,000 sessions.');
   const projects: Project[] = rawProjects.map((p) => ({
     id: p.id,
     name: p.name || basename(p.canonical) || 'Global',

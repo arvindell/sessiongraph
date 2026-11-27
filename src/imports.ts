@@ -1,3 +1,4 @@
+import { icon } from '@sessiongraph/core/icons';
 import type { ImportStatus, SourceStatus } from '@sessiongraph/core/types';
 import { sourceName, sourceOption, sortSources } from '@sessiongraph/core/sources';
 
@@ -5,7 +6,7 @@ const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<':
 export function createImports(onChange: (background: boolean) => Promise<void>, onVisibility: () => void, notice: (message: string) => void) {
   const dialog = document.createElement('dialog'); dialog.className = 'imports-dialog';
   dialog.setAttribute('aria-labelledby', 'imports-heading');
-  dialog.innerHTML = `<button class="icon-button dialog-close" aria-label="Close sources">×</button><span class="eyebrow">SessionGraph</span><h2 id="imports-heading">Explore &amp; visualize all your LLM sessions</h2><p class="imports-intro">Your history stays local. Choose the apps to read; import, search, and visualization run on this computer. No account, cloud sync, or telemetry.</p><details class="privacy-disclosure"><summary>Local data &amp; network access</summary><p>Imports are read-only and never start an AI agent. Desktop update checks contact GitHub without session content. Explicitly continuing a session opens another harness, which may contact its model provider.</p><p>Saved history and handoff files are not encrypted by SessionGraph. Your device permissions and backups affect who can access them.</p></details><div class="import-sources"></div><div class="imports-progress" role="status"></div><details class="imports-notes" hidden><summary>Import details</summary><div></div></details><footer><span>Saved locally in SQLite</span><button class="primary-button import-start">Import sessions <span>↗</span></button></footer>`;
+  dialog.innerHTML = `<button class="icon-button dialog-close" aria-label="Close sources">${icon('x')}</button><span class="eyebrow">SessionGraph</span><h2 id="imports-heading">Explore &amp; visualize all your LLM sessions</h2><p class="imports-intro">Your history stays local. Choose the apps to read; import, search, and visualization run on this computer. No account, cloud sync, or telemetry.</p><details class="privacy-disclosure"><summary>Local data &amp; network access</summary><p>Imports are read-only and never start an AI agent. Desktop update checks contact GitHub without session content. Explicitly continuing a session opens another harness, which may contact its model provider.</p><p>Saved history and handoff files are not encrypted by SessionGraph. Your device permissions and backups affect who can access them.</p></details><div class="import-sources"></div><div class="imports-progress" role="status"></div><details class="imports-notes" hidden><summary>Import details</summary><div></div></details><footer><span>Saved locally in SQLite</span><button class="primary-button import-start">Import sessions <span>↗</span></button></footer>`;
   document.body.append(dialog);
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => dialog.querySelector<T>(s)!;
   let running = false, timer = 0, disposed = false, returnFocus: HTMLElement | null = null;
@@ -30,9 +31,9 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
     $('.imports-progress').textContent = running
       ? `${status.source ? sourceName(status.source) : 'Importing'} · ${status.imported.toLocaleString()} imported · ${status.unchanged.toLocaleString()} unchanged${status.discovered ? ` / ${status.discovered.toLocaleString()} found` : ' · discovering…'}`
       : `${status.imported.toLocaleString()} imported · ${status.unchanged.toLocaleString()} already up to date${status.failed ? ` · ${status.failed} unavailable` : ''}`;
-    $('.imports-notes').hidden = !status.errors.length;
-    const errors = new Map<string, number>(); status.errors.forEach((error) => errors.set(error, (errors.get(error) || 0) + 1));
-    $('.imports-notes div').innerHTML = [...errors].map(([error, count]) => `<p>${escape(error)}${count > 1 ? ` (${count} occurrences)` : ''}</p>`).join('');
+    const diagnostics = [...status.errors, ...(status.warnings || [])];
+    $('.imports-notes').hidden = !diagnostics.length;
+    $('.imports-notes div').innerHTML = diagnostics.map(message => `<p>${escape(message)}</p>`).join('');
     document.dispatchEvent(new CustomEvent('sessiongraph-import-status', { detail: status }));
   }
   async function poll() {

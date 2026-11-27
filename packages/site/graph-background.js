@@ -2,7 +2,8 @@
 export async function animateGraphBackground(canvas) {
   const context = canvas.getContext('2d');
   if (!context) return;
-  const response = await fetch(new URL('./assets/graph-field.svg', import.meta.url));
+  // Keep this fetch same-origin under the production Content Security Policy.
+  const response = await fetch(new URL('./assets/graph-field.svg?no-inline', import.meta.url));
   if (!response.ok) return;
   const svg = new DOMParser().parseFromString(await response.text(), 'image/svg+xml');
   const trails = [...svg.querySelectorAll('path')].map((path, index) => {
@@ -32,8 +33,9 @@ export async function animateGraphBackground(canvas) {
   }
 
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  animatePageField(canvas, glows, motion);
   let width = 0, height = 0, ratio = 1, scale = 1, offset = 0;
-  let frame = 0, elapsed = 0, previousTime = 0, lastPaint = 0;
+  let frame = 0, elapsed = 0, previousTime = 0;
   let inView = !('IntersectionObserver' in window);
 
   const position = (trail, distance) => {
@@ -88,8 +90,7 @@ export async function animateGraphBackground(canvas) {
   const tick = time => {
     elapsed += previousTime ? Math.min((time - previousTime) / 1000, .1) : 0;
     previousTime = time;
-    // Decorative animation is capped at 30 fps, independent of display refresh rate.
-    if (time - lastPaint >= 1000 / 30) { draw(); lastPaint = time; }
+    draw();
     frame = requestAnimationFrame(tick);
   };
   const update = () => {
@@ -119,6 +120,103 @@ export async function animateGraphBackground(canvas) {
     new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; update(); }).observe(canvas);
   }
   window.addEventListener('resize', resize);
+  document.addEventListener('visibilitychange', update);
+  motion.addEventListener('change', update);
+  resize();
+}
+
+/** Keep the lower canvas viewport-sized, even when the source list expands. */
+function animatePageField(hero, glows, motion) {
+  const canvas = document.createElement('canvas');
+  canvas.className = 'graph-page-field';
+  canvas.setAttribute('aria-hidden', 'true');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  hero.after(canvas);
+
+  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+  const colors = [...glows.keys()];
+  const lanes = Array.from({ length: 8 }, (_, i) => ({
+    i, color: colors[i % colors.length], spacing: 290 + (i * 67) % 180, speed: 36 + (i * 11) % 33,
+  }));
+  let width = 0, height = 0, ratio = 1, frame = 0, elapsed = 0, previousTime = 0;
+  let geometry, start = 0;
+  const xAt = (i, y) => {
+    const band = Math.min(width * .30, 350);
+    const sway = .46 + .24 * Math.sin(y / (250 + i * 23) + i * 2.4) + .13 * Math.sin(y / 117 - i * .85);
+    const x = band * (sway + ((i >> 1) - 1.5) * .17);
+    return i % 2 ? width - x : x;
+  };
+
+  function visiblePaths(scroll) {
+    const first = Math.floor(scroll / 240) * 240 - 24;
+    if (geometry?.first === first) return geometry.paths;
+    const paths = lanes.map(({ i }) => {
+      const path = new Path2D();
+      path.moveTo(xAt(i, first), first);
+      for (let y = first + 12; y <= first + height + 288; y += 12) path.lineTo(xAt(i, y), y);
+      return path;
+    });
+    geometry = { first, paths };
+    return paths;
+  }
+
+  function paint() {
+    const scroll = window.scrollY;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    if (scroll + height <= start) return;
+    const fade = ctx.createLinearGradient(0, start - scroll, 0, start + 330 - scroll);
+    fade.addColorStop(0, 'transparent');
+    fade.addColorStop(1, '#fff');
+    const paths = visiblePaths(scroll);
+    ctx.translate(0, -scroll);
+    ctx.lineWidth = 1;
+    for (const { i, color, spacing, speed } of lanes) {
+      ctx.strokeStyle = `rgb(${color})`;
+      ctx.globalAlpha = .08 + (i % 3) * .027;
+      ctx.stroke(paths[i]);
+      if (motion.matches) continue;
+      const offset = (elapsed * speed + i * 113) % spacing;
+      for (let y = Math.floor((scroll - offset - 14) / spacing) * spacing + offset; y < scroll + height + 14; y += spacing) {
+        const x = xAt(i, y);
+        ctx.globalAlpha = .48 + .15 * Math.sin(y / 130 + i);
+        ctx.drawImage(glows.get(color), x - 11, y - 11, 22, 22);
+        ctx.fillStyle = `rgb(${color})`;
+        ctx.beginPath(); ctx.arc(x, y, 1.2, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    if (scroll < start + 330) {
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.fillStyle = fade;
+      ctx.fillRect(0, 0, width, height);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+
+  function tick(time) {
+    frame = 0;
+    if (!document.hidden && !motion.matches && window.scrollY + height > start) {
+      elapsed += previousTime ? clamp((time - previousTime) / 1000, 0, .05) : 0;
+      previousTime = time;
+      frame = requestAnimationFrame(tick);
+    } else previousTime = 0;
+    paint();
+  }
+  function update() {
+    if (!frame && !document.hidden) frame = requestAnimationFrame(tick);
+  }
+  function resize() {
+    width = canvas.clientWidth; height = canvas.clientHeight;
+    ratio = Math.min(window.devicePixelRatio || 1, 1.5);
+    canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
+    start = hero.offsetTop + hero.clientHeight * .63;
+    geometry = undefined; update();
+  }
+  new ResizeObserver(resize).observe(canvas);
+  window.addEventListener('scroll', update, { passive: true });
   document.addEventListener('visibilitychange', update);
   motion.addEventListener('change', update);
   resize();

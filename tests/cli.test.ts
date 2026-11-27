@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, cp, access } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
 import { promisify } from 'node:util';
 import { build } from 'esbuild';
 import { SessionGraphStore } from '../server/store';
@@ -11,6 +12,8 @@ import { LibraryService } from '../server/library-service';
 import { Importer } from '../server/importer';
 import { blankMessage, blankSession } from '../server/adapters/common';
 import { codexAdapter } from '../server/adapters/codex';
+import { createCursorAdapter } from '../server/adapters/cursor';
+import { databaseHarnessAdapters } from '../server/adapters/harness-databases';
 import { claudeAdapter } from '../server/adapters/claude';
 import { qwenAdapter } from '../server/adapters/qwen';
 import { resumeArgs } from '../src/launch-links';
@@ -43,11 +46,165 @@ test('CLI help, catalog and docs are discoverable without opening a library or d
     if (args.includes('--json')) { const data = JSON.parse(output); assert.equal(data.schemaVersion, 1); assert.ok(data.data.commands.length); }
   }
   const catalog = JSON.parse(await capture(['commands', '--json']));
+  assert.deepEqual(catalog.data.executableAliases, ['ssg']);
   assert.deepEqual(catalog.data.commands.map((c: any) => c.name), commands.map(c => c.name));
   assert.ok(catalog.data.commands.every((c: any) => c.result && c.effect && c.examples.length));
 });
 
 async function capture(args: string[]) { let output = ''; await runCli(args, { stdout: s => output += s }); return output; }
+
+test('CLI help and generated docs are concise while JSON retains command schemas', async () => {
+  const boilerplate = /Never starts agents|No background daemon|Does not import|No command publishes|No library access|without opening the library|without importing/;
+  for (const args of [['--help'], ['docs'], ...commands.map(c => [...c.name.split(' '), '--help'])]) {
+    const output = await capture(args);
+    assert.doesNotMatch(output, boilerplate, args.join(' '));
+    assert.doesNotMatch(output, /^(Effect|Result):/m, args.join(' '));
+  }
+  const show = await capture(['show', '--help']);
+  assert.match(show, /Usage: sessiongraph show <session-id>/);
+  assert.match(show, /Show session details\./);
+  assert.match(show, /--json/);
+  const sync = await capture(['sync', '--help']);
+  assert.match(sync, /Refresh sessions from configured sources\./);
+  assert.match(sync, /Aliases: sync, import/);
+  const sessions = await capture(['sessions', '--help']);
+  assert.match(sessions, /Results per page, 1–200\. Default: 50\./);
+  assert.match(sessions, /may double-count usage/);
+  const schema = JSON.parse(await capture(['help', 'show', '--json']));
+  assert.equal(schema.schemaVersion, 1);
+  assert.equal(schema.data.commands[0].effect, 'read');
+  assert.match(schema.data.commands[0].result, /Session/);
+  const docs = JSON.parse(await capture(['docs', 'sources', 'setup', '--json']));
+  assert.match(docs.data.markdown, /Configure session sources\./);
+  assert.doesNotMatch(docs.data.markdown, boilerplate);
+});
+
+async function fixtureCli(path: string, args: string[], sources = [adapter('codex')]) {
+  let out = '', err = '';
+  const code = await runCli(args, { stdout: s => out += s, stderr: s => err += s,
+    openLibrary: () => new LibraryService(new SessionGraphStore(path), sources) });
+  return { code, out, err };
+}
+
+test('CLI source output gives next steps for setup and retention details for removal', async t => {
+  const dir = await directory(t), path = join(dir, 'library.sqlite'), store = new SessionGraphStore(path);
+  save(store, 'retained'); store.close();
+  assert.deepEqual(await fixtureCli(path, ['sources', 'setup', '--auto-import', 'off']),
+    { code: 0, out: 'Sources: (none)\nAuto-import: off\n', err: '' });
+  assert.deepEqual(await fixtureCli(path, ['sources', 'setup', 'codex']),
+    { code: 0, out: 'Sources: codex\nAuto-import: off\nRun sessiongraph sync to import sessions.\n', err: '' });
+  const sources = await fixtureCli(path, ['sources']);
+  assert.equal(sources.code, 0); assert.equal(sources.err, '');
+  assert.match(sources.out, /codex\tyes\tyes/);
+  assert.doesNotMatch(sources.out, /Use --json|Saved history/);
+  assert.deepEqual(await fixtureCli(path, ['sync']),
+    { code: 0, out: 'Imported 0; unchanged 0; failed 0; discovered 0.\n', err: 'Syncing local sources…\n' });
+  const setup = await fixtureCli(path, ['sources', 'setup', 'codex', '--json']);
+  assert.equal(setup.code, 0); assert.equal(setup.err, '');
+  assert.deepEqual(JSON.parse(setup.out), { schemaVersion: 1, command: 'sources setup',
+    data: { selected: ['codex'], paths: {}, autoImport: false, historyRetained: true } });
+  assert.deepEqual(await fixtureCli(path, ['sources', 'remove', '--all']),
+    { code: 0, out: 'Sources: (none)\nAuto-import: off\nSaved history kept.\n', err: '' });
+  const retained = await fixtureCli(path, ['show', 'codex:retained', '--json']);
+  assert.equal(retained.code, 0);
+  assert.equal(JSON.parse(retained.out).data.id, 'codex:retained');
+});
+
+test('clean Codex and Cursor sync is quiet and empty Hermes sessions preserve saved history', async t => {
+  const dir = await directory(t), path = join(dir, 'library.sqlite'), codex = join(dir, 'codex'), cursor = join(dir, 'cursor'), hermes = join(dir, 'hermes');
+  await mkdir(join(codex, 'sessions'), { recursive: true });
+  await mkdir(join(cursor, 'projects', 'project', 'agent-transcripts'), { recursive: true });
+  await mkdir(hermes);
+  const timestamp = new Date(at).toISOString(), sourceDb = join(hermes, 'state.db');
+  await writeFile(join(codex, 'sessions', 'session.jsonl'), [
+    { type: 'session_meta', timestamp, payload: { id: 'codex-fixture', cwd: dir } },
+    { type: 'response_item', timestamp, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Codex prompt' }] } },
+  ].map(row => JSON.stringify(row)).join('\n') + '\n');
+  await writeFile(join(cursor, 'projects', 'project', 'agent-transcripts', 'cursor-fixture.jsonl'), JSON.stringify({ role: 'user', content: 'Cursor prompt', timestamp }) + '\n');
+  function writeHermes(update: (db: DatabaseSync) => void) {
+    const db = new DatabaseSync(sourceDb);
+    try { update(db); } finally { db.close(); }
+  }
+  writeHermes(db => {
+    db.exec(`CREATE TABLE sessions(id TEXT, started_at REAL);
+      CREATE TABLE messages(id INTEGER, session_id TEXT, role TEXT, content TEXT, timestamp REAL);`);
+    db.prepare('INSERT INTO sessions VALUES (?, ?)').run('hermes-fixture', at / 1000);
+    db.prepare('INSERT INTO messages VALUES (?, ?, ?, ?, ?)').run(1, 'hermes-fixture', 'user', 'Hermes prompt', at / 1000);
+  });
+  const adapters = [codexAdapter, createCursorAdapter({ home: cursor, userData: cursor }), databaseHarnessAdapters.find(source => source.id === 'hermes')!];
+  assert.equal((await fixtureCli(path, ['sources', 'setup', 'codex', '--path', codex], adapters)).code, 0);
+  assert.equal((await fixtureCli(path, ['sources', 'setup', 'cursor'], adapters)).code, 0);
+  assert.equal((await fixtureCli(path, ['sources', 'setup', 'hermes', '--path', hermes], adapters)).code, 0);
+  assert.deepEqual(await fixtureCli(path, ['sync'], adapters), {
+    code: 0, out: 'Imported 3; unchanged 0; failed 0; discovered 3.\n', err: 'Syncing local sources…\n',
+  });
+  writeHermes(db => db.exec('DELETE FROM messages'));
+  assert.deepEqual(await fixtureCli(path, ['sync'], adapters), {
+    code: 0, out: 'Imported 0; unchanged 2; failed 0; discovered 2.\n', err: 'Syncing local sources…\n',
+  });
+  const doctor = await fixtureCli(path, ['doctor'], adapters);
+  assert.equal(doctor.code, 0);
+  assert.match(doctor.out, /codex\tok\tAvailable/);
+  assert.doesNotMatch(doctor.out, /Run sessiongraph sync/);
+  const saved = await fixtureCli(path, ['messages', 'hermes:hermes-fixture'], adapters);
+  assert.match(saved.out, /Hermes prompt/);
+});
+
+test('sync deduplicates diagnostics and distinguishes coverage warnings from source failures', async t => {
+  const dir = await directory(t), path = join(dir, 'library.sqlite'), source = adapter('codex');
+  const warning = 'Codex: Transcript listing limited.', error = 'Codex: Could not read history.';
+  let errors: string[] = [];
+  source.discover = async () => ({ sessions: [], projects: [], warnings: [warning, warning], errors });
+  assert.equal((await fixtureCli(path, ['sources', 'setup', 'codex'], [source])).code, 0);
+  assert.deepEqual(await fixtureCli(path, ['sync'], [source]), {
+    code: 0, out: `Imported 0; unchanged 0; failed 0; discovered 0.\nWarning: ${warning}\n`, err: 'Syncing local sources…\n',
+  });
+  assert.equal((await fixtureCli(path, ['doctor'], [source])).code, 0);
+  errors = [error, error];
+  const failed = await fixtureCli(path, ['sync', '--json'], [source]);
+  assert.equal(failed.code, 1); assert.equal(failed.err, '');
+  const { data } = JSON.parse(failed.out);
+  assert.equal(data.failed, 1);
+  assert.deepEqual(data.errors, [error]);
+  assert.deepEqual(data.warnings, [warning]);
+  const doctor = await fixtureCli(path, ['doctor'], [source]);
+  assert.equal(doctor.code, 1);
+  assert.match(doctor.out, /codex\tfailed\tCodex: Could not read history\./);
+  errors = [];
+  assert.equal((await fixtureCli(path, ['sync'], [source])).code, 0);
+  assert.equal((await fixtureCli(path, ['doctor'], [source])).code, 0);
+});
+
+test('CLI keeps coverage and lifetime usage notes without repeating search guidance on complete results', async t => {
+  const dir = await directory(t), path = join(dir, 'library.sqlite');
+  let store = new SessionGraphStore(path);
+  save(store, 'complete', { tokens: null, cost: null }, ['OAuth callback']); store.close();
+  const complete = await fixtureCli(path, ['search', 'OAuth']);
+  assert.equal(complete.code, 0); assert.equal(complete.err, '');
+  assert.match(complete.out, /1 matches\.\n$/);
+  assert.doesNotMatch(complete.out, /coverage|Search samples|messages\/events/);
+  const empty = await fixtureCli(path, ['search', 'missing']);
+  assert.equal(empty.code, 0); assert.match(empty.out, /0 matches\.\n$/);
+  assert.doesNotMatch(empty.out, /coverage|Search samples/);
+  store = new SessionGraphStore(path);
+  save(store, 'long', { tokens: null, cost: null }, ['x'.repeat(90000)]); store.close();
+  const partial = await fixtureCli(path, ['search', 'OAuth']);
+  assert.equal(partial.code, 0);
+  assert.match(partial.out, /Partial search coverage \(1\/2 sessions complete\)/);
+  assert.match(partial.out, /Narrow filters for more coverage/);
+  const json = await fixtureCli(path, ['search', 'OAuth', '--json']);
+  assert.equal(json.code, 0); assert.equal(json.err, '');
+  assert.equal(JSON.parse(json.out).data.coverage.limited, true);
+  assert.match(JSON.parse(json.out).data.note, /Search samples saved content/);
+  const messages = await fixtureCli(path, ['messages', 'codex:long']);
+  assert.equal(messages.code, 0);
+  assert.match(messages.out, /\[truncated\]/);
+  assert.match(messages.out, /Partial history or truncated text\. Use events for details\./);
+  const stats = await fixtureCli(path, ['stats']);
+  assert.equal(stats.code, 0);
+  assert.match(stats.out, /unknown \(2 unknown\)/);
+  assert.match(stats.out, /Totals use matched sessions’ lifetime usage\. Unknown usage is reported separately\./);
+});
 
 test('v5 source retirement clears obsolete configuration, preserves history, and keeps default sync working', async t => {
   const dir = await directory(t), path = join(dir, 'library.sqlite');
@@ -269,7 +426,9 @@ test('standalone npm launcher loads the bundled CLI without native packages or n
   const dir = await directory(t), root = join(dir, 'package'), data = join(dir, 'data');
   await mkdir(join(root, 'bin'), { recursive: true });
   await cp('bin/sessiongraph.mjs', join(root, 'bin', 'sessiongraph.mjs'));
-  await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'sessiongraph', version: '9.8.7', type: 'module' }));
+  const pkg = JSON.parse(await readFile('package.json', 'utf8'));
+  assert.deepEqual(pkg.bin, { sessiongraph: 'bin/sessiongraph.mjs', ssg: 'bin/sessiongraph.mjs' });
+  await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'sessiongraph', version: '9.8.7', type: 'module', bin: pkg.bin }));
   await build({ entryPoints: ['server/cli.ts'], bundle: true, platform: 'node', target: 'node24', format: 'esm', outfile: join(root, 'dist-server', 'cli.mjs'), banner: { js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);" } });
   const exec = promisify(execFile), bin = join(root, 'bin', 'sessiongraph.mjs');
   const options = { env: { ...process.env, SESSIONGRAPH_DATA_DIR: data }, cwd: dir, maxBuffer: 2_000_000 };
@@ -287,4 +446,20 @@ test('standalone npm launcher loads the bundled CLI without native packages or n
   });
   const removed = await exec(process.execPath, [bin, 'sources', 'remove', '--all', '--json'], options);
   assert.deepEqual(JSON.parse(removed.stdout).data.selected, []);
+  const prefix = join(dir, 'global'), globalBin = process.platform === 'win32' ? prefix : join(prefix, 'bin');
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const installedOptions = { ...options, shell: process.platform === 'win32', env: { ...options.env,
+    npm_config_cache: join(dir, 'npm-cache'), npm_config_userconfig: join(dir, 'empty-npmrc'),
+    PATH: `${globalBin}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH || ''}` } };
+  await writeFile(join(dir, 'empty-npmrc'), '');
+  await exec(npm, ['install', '--global', '--prefix', prefix, '--offline', '--ignore-scripts', '--no-audit', '--no-fund', root], installedOptions);
+  for (const name of ['sessiongraph', 'ssg']) {
+    const executable = process.platform === 'win32' ? `${name}.cmd` : name;
+    const result = await exec(executable, ['commands', '--json'], installedOptions);
+    assert.equal(JSON.parse(result.stdout).data.commands.length, commands.length);
+    const version = await exec(executable, ['--version', '--json'], installedOptions);
+    assert.equal(JSON.parse(version.stdout).data.version, '9.8.7');
+  }
+  await exec(npm, ['uninstall', '--global', '--prefix', prefix, '--offline', '--ignore-scripts', '--no-audit', '--no-fund', 'sessiongraph'], installedOptions);
+  for (const name of ['sessiongraph', 'ssg']) await assert.rejects(access(join(globalBin, process.platform === 'win32' ? `${name}.cmd` : name)));
 });

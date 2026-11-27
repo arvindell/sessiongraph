@@ -9,6 +9,7 @@ import { digest } from './common';
 // Query a private copy instead. Keep only two copies, never a connection to the source.
 const copies = new Map<string, { revision: string; directory: string; db: DatabaseSync }>();
 export class SqliteSnapshotChangedError extends Error {}
+export class SqliteSnapshotFileError extends Error {}
 const close = (path: string) => {
   const copy = copies.get(path); if (!copy) return;
   copies.delete(path);
@@ -20,8 +21,9 @@ function snapshotFiles(path: string, large: boolean) {
   return [path, `${path}-wal`].map((file, i) => {
     try {
       const s = lstatSync(file);
-      if (!s.isFile()) throw new Error('History database and WAL must be regular files.');
-      if (!large && s.size > 8_000_000_000) throw new Error('History database exceeds the 8 GB snapshot limit for this source.');
+      const kind = i ? 'History database WAL' : 'History database';
+      if (!s.isFile()) throw new SqliteSnapshotFileError(`${kind} is not a regular file.`);
+      if (!large && s.size > 8_000_000_000) throw new SqliteSnapshotFileError(`${kind} exceeds 8 GB.`);
       return s;
     } catch (error) { if (i && (error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
   });

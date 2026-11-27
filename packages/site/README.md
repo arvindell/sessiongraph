@@ -72,4 +72,4 @@ Before an approved rollout, configure the project for the build in `vercel.json`
 
 Only explicitly confirmed snapshots are public. Imports stay local; disabled publication fields are omitted and rejected by the server if supplied. Profiles use GitHub usernames while ownership uses immutable GitHub IDs. Organizations provide membership and invitation groundwork; they do not grant access to anyone's local history. See [privacy details](../../PRIVACY.md).
 
-The screenshot and video use synthetic demo data. Fonts are self-hosted Geist and IBM Plex Mono subsets, with licenses in `assets/licenses/`. Source marks are reused from `../../public/sources/`. The canonical domain is `sessiongraph.ai`; `www` redirects to the apex.
+The screenshot and video use synthetic demo data. The site self-hosts Katagami Sans (landing page), Geist, and IBM Plex Mono web fonts, with licenses in `assets/licenses/`. Source marks are reused from `../../public/sources/`. The canonical domain is `sessiongraph.ai`; `www` redirects to the apex.

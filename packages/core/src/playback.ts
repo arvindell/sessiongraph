@@ -7,14 +7,16 @@ export const SHARE_FRAMES = (PLAYBACK_DURATION + PLAYBACK_ORBIT_DURATION + PLAYB
 export const shareFrameProgress = (frame: number) => Math.min(1, frame / (PLAYBACK_FRAMES - 1));
 export const shareFrameOutro = (frame: number) => frame < PLAYBACK_FRAMES ? null : Math.min(1, (frame - PLAYBACK_FRAMES + 1) / (PLAYBACK_ORBIT_DURATION / 1000 * SHARE_FPS));
 
-/** Smooth velocity ramps, with a longer coast into the exact ending view. */
-export function overviewTurn(progress: number) {
-  const p = Math.max(0, Math.min(1, progress)), start = .08, end = .35, area = 1 - (start + end) / 2;
+/** Continue the incoming rotation, then coast into the exact ending view. */
+export function overviewTurn(progress: number, incomingTurnsPerSecond = 0) {
+  const p = Math.max(0, Math.min(1, progress)), start = .2, end = .34;
+  const incoming = Math.max(0, Math.min(1, incomingTurnsPerSecond * PLAYBACK_ORBIT_DURATION / 1000));
+  const cruise = (1 - incoming * start / 2) / (1 - (start + end) / 2);
   // Integral of smoothstep: both speed and acceleration reach zero at the end.
   const ramp = (t: number) => t ** 3 - t ** 4 / 2;
-  if (p < start) return start * ramp(p / start) / area;
-  if (p > 1 - end) return 1 - end * ramp((1 - p) / end) / area;
-  return (p - start / 2) / area;
+  if (p < start) return incoming * p + (cruise - incoming) * start * ramp(p / start);
+  if (p > 1 - end) return 1 - cruise * end * ramp((1 - p) / end);
+  return cruise * (p - start / 2) + incoming * start / 2;
 }
 const monthDate = new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric' });
 const dayDate = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' });

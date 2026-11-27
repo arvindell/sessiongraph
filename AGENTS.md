@@ -16,7 +16,7 @@
 - The headless CLI uses `server/library-service.ts`, the existing store/importer/adapters, and shared search modules. `server/cli-schema.ts` drives parsing, help, and `sessiongraph commands --json` for agent discovery. See `docs/cli.md`; after `pnpm build`, use `node bin/sessiongraph.mjs <command>`. Keep CLI documentation in the repo rather than adding it to the landing page or README yet.
 - Add sources via `server/adapters/types.ts` and `server/adapters/index.ts`. `server/importer.ts` coordinates reads; `server/store.ts` owns SQLite migrations and snapshot replacement. Shared models live in `packages/core/src/types.ts` and `packages/core/src/timeline.ts`.
 - Search runs in `src/search/worker.ts`; persisted checkpoints use SQLite through `src/search/sqlite-cache.ts`, not IndexedDB. Clearing the search index must preserve imported history.
-- Storage resolution in `server/config.ts` honors `SESSIONGRAPH_DATA_DIR` and reuses legacy Session Atlas/Atlas libraries in place. Preserve legacy environment aliases and database precedence. See `docs/guide.md` for source-specific coverage and storage details.
+- Storage resolution in `server/config.ts` honors `SESSIONGRAPH_DATA_DIR` and reuses legacy libraries in place. Preserve legacy environment aliases and database precedence. See `docs/guide.md` for source-specific coverage and storage details.
 
 ## History invariants
 

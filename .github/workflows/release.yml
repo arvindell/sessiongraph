@@ -72,6 +72,8 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf rpm
       - run: pnpm install --frozen-lockfile
+      - name: Verify CLI installation
+        run: pnpm exec tsx --test tests/cli-install.test.ts tests/cli.test.ts
       - run: node scripts/set-release-version.mjs ${{ env.RELEASE_VERSION }}
       - run: pnpm desktop:build --config src-tauri/tauri.release.conf.json --bundles ${{ matrix.bundles }}
         env:

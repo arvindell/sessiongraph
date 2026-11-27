@@ -8,8 +8,9 @@ export function sumRecordedTokens(values: unknown[]): number | null {
 }
 
 /** Session totals are recorded at the saved endpoint, never interpolated across a trail. */
-export function playbackTokens(sessions: Session[], options: { allSources?: boolean } = {}) {
-  const recorded = sessions.filter((session) => (options.allSources || ['opencode', 'continue'].includes(session.source || 'opencode')) && validTokenCount(session.tokens));
+export function playbackTokens(sessions: Session[], _options: { allSources?: boolean } = {}) {
+  // Importers supply native totals; usage support is no longer restricted to two apps.
+  const recorded = sessions.filter((session) => validTokenCount(session.tokens));
   const timed = recorded.filter((session) => Number.isFinite(session.activity?.lastMessageAt) && session.activity!.lastMessageAt! > 0)
     .sort((a, b) => Math.max(a.created, a.activity!.lastMessageAt!) - Math.max(b.created, b.activity!.lastMessageAt!));
   const times: number[] = [], totals = [0];
@@ -21,6 +22,7 @@ export function playbackTokens(sessions: Session[], options: { allSources?: bool
   return {
     recorded: recorded.length,
     missing: sessions.length - recorded.length,
+    partial: recorded.filter(session => session.usage?.partial).length,
     untimed: recorded.length - timed.length,
     at(time: number, complete = false) {
       if (complete) return { tokens: allTokens, sessions: recorded.length };

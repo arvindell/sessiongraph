@@ -9,6 +9,7 @@ import { blankSession, digest, identity, project } from './common';
 import { cursorMessage, cursorTime } from './cursor-message';
 import { cursorStoreMetadata, readCursorStore } from './cursor-store';
 import { discoverComposers, readComposer } from './cursor-composer';
+import { SqliteSnapshotFileError } from './sqlite-snapshot';
 import { readJSONL } from './jsonl';
 import type { Candidate, SessionAdapter } from './types';
 
@@ -46,7 +47,7 @@ async function entries(path: string, warnings: string[]) {
       if (!entry.isSymbolicLink()) result.push(entry);
       if (result.length === LIMIT) { warnings.push('Cursor directory listing limited to 20,000 entries.'); break; }
     }
-  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') warnings.push('A Cursor history directory could not be listed. Saved imports are retained.'); }
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') warnings.push('Cursor: Could not list a history directory.'); }
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -72,7 +73,7 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
   const root = () => options.home || sourcePath('cursor') || process.env.SESSIONGRAPH_CURSOR_HOME || process.env.SESSION_ATLAS_CURSOR_HOME || join(homedir(), '.cursor');
   const editor = () => options.userData || process.env.SESSIONGRAPH_CURSOR_USER_DATA_DIR || process.env.SESSION_ATLAS_CURSOR_USER_DATA_DIR || userData();
   return {
-    id: 'cursor', name: 'Cursor', description: 'Local IDE transcripts, legacy Composer, subagents, and CLI / ACP stores · read-only',
+    id: 'cursor', name: 'Cursor', description: 'Local IDE, Composer, and CLI sessions',
     capabilities: { history: true, forks: false, children: true, files: false },
     async detect() {
       if (await fileStats(join(editor(), 'User/globalStorage/state.vscdb'))) return true;
@@ -85,7 +86,7 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
       return false;
     },
     async discover() {
-      const warnings: string[] = [], found = new Map<string, Candidate>(), blocked = new Set<string>();
+      const warnings: string[] = [], errors: string[] = [], found = new Map<string, Candidate>(), blocked = new Set<string>();
       const workspaceStores = await workspacePaths(editor(), warnings);
       const paths = [...new Set([...workspaceStores.values()].filter(Boolean))];
       const legacyStores = new Map([[join(editor(), 'User/globalStorage/state.vscdb'), ''], ...workspaceStores]);
@@ -102,13 +103,13 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
             selected.revision = digest([selected.revision, selected.session.directory]);
             found.set(candidate.session.id, selected);
           }
-        } catch { warnings.push('A legacy Cursor database could not be read consistently; saved imports are retained.'); }
+        } catch (error) { errors.push(`Cursor Composer: ${error instanceof SqliteSnapshotFileError ? error.message : 'Could not read a history database.'}`); }
       }
       const composers = new Map(found);
       const match = (key: string, encode: (value: string) => string) => {
         const matches = paths.filter((path) => encode(path) === key); return matches.length === 1 ? matches[0] : '';
       };
-      let unreadable = 0, legacy = 0, scanned = 0;
+      let unreadable = 0, unreadableStores = 0, legacy = 0, scanned = 0;
       const add = async (path: string, id: string, kind: string, directory: string, parent = '', workspaceHash = '') => {
         if (!validID(id) || ++scanned > LIMIT) return;
         try {
@@ -145,7 +146,7 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
             }
             if (!session.created && first) { session.created = first; locator.timeNote = 'Session start estimated from the first recorded message.'; }
           }
-          if (!session.created) { session.created = stats.birthtimeMs > 0 ? stats.birthtimeMs : stats.mtimeMs; locator.timeNote = 'Session creation time unavailable; file creation/modification time is used for placement.'; }
+          if (!session.created) { session.created = stats.birthtimeMs > 0 ? stats.birthtimeMs : stats.mtimeMs; locator.timeNote = 'Session start estimated from file time.'; }
           if (!session.directory) locator.directoryNote = 'Working directory is unknown; choose one when continuing.';
           session.projectID = project('cursor', session.directory).id;
           session.nativeResume = kind === 'cli' && Boolean(session.directory) && hashCwd(session.directory) === workspaceHash && root() === join(homedir(), '.cursor');
@@ -166,8 +167,10 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
           }
           const candidate = { session, locator, revision: digest([5, kind, path, before, session.created, session.directory, session.parentID]) };
           if (!previous || rank(candidate) > rank(previous) || (rank(candidate) === rank(previous) && session.updated > previous.session.updated)) found.set(session.id, candidate);
-        } catch {
-          unreadable++;
+        } catch (error) {
+          if (error instanceof SqliteSnapshotFileError) errors.push(`Cursor: ${error.message}`);
+          else if (kind !== 'transcript') unreadableStores++;
+          else unreadable++;
           // An unreadable primary store must not replace saved history with a
           // shorter transcript export. Retry it on the next discovery instead.
           if (kind !== 'transcript') blocked.add(identity('cursor', id));
@@ -210,11 +213,11 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
         if (scanned >= LIMIT) break;
       }
       if (scanned >= LIMIT) warnings.push('Cursor discovery limited to 20,000 history files.');
-      if (unreadable) warnings.push(`${unreadable} Cursor histories were unreadable or changed during discovery; saved imports are retained. Re-import to retry.`);
-      if (legacy) warnings.push(`${legacy} older plain-text Cursor transcripts are not supported.`);
-      warnings.push('Cursor imports local IDE JSONL, legacy Composer databases, and CLI/ACP stores. Plain-text exports, cloud-only and SDK-only history are not imported. Formats are not a stable public API.');
+      if (unreadable) warnings.push(`Cursor: Skipped ${unreadable} unreadable or changing histories.`);
+      if (unreadableStores) errors.push(`Cursor: Skipped ${unreadableStores} unreadable or changing ${unreadableStores === 1 ? 'session store' : 'session stores'}.`);
+      if (legacy) warnings.push(`Cursor: Skipped ${legacy} plain-text transcripts.`);
       const sessions = [...found.values()].filter((c) => !blocked.has(c.session.id));
-      return { sessions, projects: [...new Map(sessions.map((c) => { const p = project('cursor', c.session.directory); return [p.id, p]; })).values()], warnings: [...new Set(warnings)] };
+      return { sessions, projects: [...new Map(sessions.map((c) => { const p = project('cursor', c.session.directory); return [p.id, p]; })).values()], warnings: [...new Set(warnings)], errors: [...new Set(errors)] };
     },
     async read(candidate, cursor) {
       const { locator } = candidate;
@@ -224,13 +227,12 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
       }
       const verify = async () => { if (await snapshot(locator) !== locator.snapshot) throw new Error('Cursor session changed during import; re-import to capture the latest history.'); };
       await verify();
-      const note = [locator.kind === 'transcript' ? 'Cursor IDE JSONL export; tool results and pre-compaction history may be absent.' : 'Cursor committed conversation root; abandoned branches and system prompts are excluded.',
-        'No file snapshots or inferred edit evidence. Missing message timestamps stay unknown.', locator.timeNote, locator.directoryNote].filter(Boolean).join(' ');
+      const notes = [locator.kind === 'transcript' ? 'Tool results and earlier messages may be missing.' : undefined, locator.timeNote, locator.directoryNote];
       if (locator.kind !== 'transcript') {
         if (cursor) throw new Error('Invalid Cursor store cursor.');
         const result = readCursorStore(locator.path);
         await verify();
-        return { messages: result.messages, partial: result.partial, note: `${note}${result.partial ? ' Unsupported, missing, or bounded store records were omitted (2 MB per blob, 64 MB / 50,000 nodes / 16 million text characters per session).' : ''}` };
+        return { messages: result.messages, partial: result.partial, note: [...notes, result.partial ? 'Some messages or tool records could not be imported.' : undefined].filter(Boolean).join(' ') || undefined };
       }
       const offset = Number(cursor || 0);
       if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid Cursor transcript cursor.');
@@ -241,8 +243,8 @@ export function createCursorAdapter(options: { home?: string; userData?: string 
         return message && (message.role !== 'system' || row.value?.type === 'turn_ended') ? [message] : [];
       });
       await verify();
-      if (!offset && page.cursor === undefined && !messages.length) throw new Error('Cursor transcript has no readable conversation. Previous imports are retained.');
-      return { messages, cursor: page.cursor === undefined ? undefined : String(page.cursor), partial: true, note: `${note}${page.partial ? ' Malformed or unsupported transcript records were skipped.' : ''}` };
+      if (!offset && page.cursor === undefined && !messages.length) throw new Error('Transcript has no readable messages.');
+      return { messages, cursor: page.cursor === undefined ? undefined : String(page.cursor), partial: true, note: [...notes, page.partial ? 'Some transcript records could not be imported.' : undefined].filter(Boolean).join(' ') };
     },
   };
 }

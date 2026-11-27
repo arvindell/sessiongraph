@@ -13,6 +13,17 @@ import { publicGraphThumbnail } from '@sessiongraph/core/public-thumbnail';
 
 const secretSession = (id = 'native-secret') => ({ ...blankSession('opencode', id), title: 'Secret client', directory: '/private/customer/code', projectID: 'private-project', nativeID: id, model: 'openai/gpt-6-astra', created: 1700000000000, tokens: 123, activity: { firstMessageAt: 1700000000100, lastMessageAt: 1700000000900, userMessages: 1, untimedUserMessages: 0 }, coverage: { history: 'complete' as const } });
 
+test('publishing defaults include every shareable field and use the Harness label', () => {
+  assert.equal(PUBLIC_FIELDS.harness, 'Harness');
+  for (const key of Object.keys(PUBLIC_FIELDS) as (keyof typeof PUBLIC_FIELDS)[]) assert.equal(DEFAULT_PUBLISHING[key], true);
+  assert.deepEqual(publishingSettings(undefined), DEFAULT_PUBLISHING);
+  assert.deepEqual(publishingSettings({}), DEFAULT_PUBLISHING);
+  const settings = publishingSettings(undefined);
+  settings.harness = false;
+  assert.equal(DEFAULT_PUBLISHING.harness, true);
+  assert.equal(publishingSettings(settings).harness, false);
+});
+
 test('all publishing field combinations omit disabled fields and sensitive metadata', () => {
   for (let mask = 0; mask < 64; mask++) {
     const settings = publishingSettings(Object.fromEntries(Object.keys(PUBLIC_FIELDS).map((key, index) => [key, !!(mask & 1 << index)])));
@@ -147,6 +158,27 @@ test('publishing queries conversation counts/times without tool content and disc
     assert.throws(() => preparePublicGraph(store, ['missing'], DEFAULT_PUBLISHING));
     assert.throws(() => preparePublicGraph(store, [session.id, session.id], DEFAULT_PUBLISHING));
   } finally { store.close(); }
+});
+
+test('message-time index upgrades saved libraries without rewriting history and serves publishing queries', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sessiongraph-preview-index-')), path = join(directory, 'library.sqlite');
+  let store = new SessionGraphStore(path);
+  try {
+    const candidate = { session: secretSession(), revision: 'saved', locator: {} };
+    store.upsert(candidate);
+    store.replace(candidate, [{ ...blankMessage('user', candidate.session.created, 'user'), fragments: [{ kind: 'You', text: 'Saved history', time: candidate.session.created }] }], false);
+    const before = preparePublicGraph(store, [candidate.session.id], DEFAULT_PUBLISHING);
+    const rows = store.db.prepare('SELECT * FROM timeline_items').all();
+    assert.equal(rows.length, 1);
+    store.db.exec('DROP INDEX timeline_messages_time; PRAGMA user_version=6');
+    store.close(); store = new SessionGraphStore(path);
+    assert.deepEqual(store.db.prepare('SELECT * FROM timeline_items').all(), rows);
+    assert.deepEqual(preparePublicGraph(store, [candidate.session.id], DEFAULT_PUBLISHING), before);
+    const plan = store.db.prepare("EXPLAIN QUERY PLAN SELECT time FROM timeline_items WHERE session_id=? AND kind='message' AND role IN ('user','assistant') AND time IS NOT NULL ORDER BY time,ordinal LIMIT 2000").all(candidate.session.id);
+    assert.match(JSON.stringify(plan), /timeline_messages_time/);
+    assert.doesNotMatch(JSON.stringify(plan), /TEMP B-TREE/);
+    assert.equal(store.db.prepare('PRAGMA user_version').get()!.user_version, 8);
+  } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
 test('publishing converts native fractional timestamps to integer milliseconds without changing saved history', () => {

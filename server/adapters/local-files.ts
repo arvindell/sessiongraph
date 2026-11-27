@@ -21,7 +21,7 @@ export interface LocalHistory {
   parent?: string;
   fork?: string;
   partial?: boolean;
-  note: string;
+  note?: string;
 }
 interface LocalSource {
   id: string;
@@ -130,7 +130,7 @@ export function localFileAdapter(source: LocalSource): SessionAdapter {
     async discover() {
       const listing = await historyFiles(source.roots(), source.match), found = new Map<string, Candidate>();
       let failed = 0;
-      const blocked = new Set<string>();
+      const blocked = new Set<string>(), unreadable = new Set<string>();
       for (const path of listing.files) {
         try {
           const before = await states(path), rev = revision(before);
@@ -158,15 +158,18 @@ export function localFileAdapter(source: LocalSource): SessionAdapter {
           const preferred = candidate.locator.path.endsWith('.jsonl'), previousPreferred = previous?.locator.path.endsWith('.jsonl');
           if (!previous || preferred && !previousPreferred || preferred === previousPreferred && candidate.session.updated > previous.session.updated) found.set(candidate.session.id, candidate);
         } catch {
-          failed++;
           const nativeID = source.authoritativeIdentity?.(path);
-          if (nativeID) blocked.add(identity(source.id, nativeID));
+          if (nativeID) {
+            const id = identity(source.id, nativeID);
+            blocked.add(id); unreadable.add(id);
+          } else failed++;
         }
       }
       const listed = new Set(listing.files); for (const path of metadata.keys()) if (!listed.has(path)) metadata.delete(path);
-      if (failed) listing.warnings.push(`${failed} ${source.name} histories were unreadable, changing, unsupported, or over the size limit. Saved imports are kept.`);
+      if (failed) listing.warnings.push(`${source.name}: Skipped ${failed} unreadable, changing, unsupported, or oversized ${failed === 1 ? 'history file' : 'history files'}.`);
       const sessions = [...found.values()].filter(c => !blocked.has(c.session.id));
-      return { sessions, projects: [...new Map(sessions.map(c => { const p = project(source.id, c.session.directory); return [p.id, p]; })).values()], warnings: listing.warnings, blocked: [...blocked] };
+      const errors = unreadable.size ? [`${source.name}: Could not read history for ${unreadable.size} ${unreadable.size === 1 ? 'session' : 'sessions'}.`] : undefined;
+      return { sessions, projects: [...new Map(sessions.map(c => { const p = project(source.id, c.session.directory); return [p.id, p]; })).values()], warnings: listing.warnings, errors, blocked: [...blocked] };
     },
     async read(candidate, cursor) {
       const offset = cursor === undefined ? 0 : Number(cursor);
@@ -174,9 +177,8 @@ export function localFileAdapter(source: LocalSource): SessionAdapter {
       const history = await load(candidate.locator.path, candidate.revision, await states(candidate.locator.path));
       if (!history) throw new Error('History representation is no longer available.');
       const messages = history.messages.slice(offset, offset + 100);
-      const untimed = history.messages.some(m => !time(m.time));
       return { messages, cursor: offset + messages.length < history.messages.length ? String(offset + messages.length) : undefined, partial: Boolean(history.partial || messages.some(m => m.partial)),
-        note: `${history.note}${untimed ? ' Missing message timestamps remain unknown; session placement falls back to recorded metadata or file time.' : ''} File snapshots are unavailable.` };
+        note: history.note };
     },
   };
 }

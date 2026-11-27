@@ -8,13 +8,14 @@ import { MAX_CHARACTERS, validRecord, type CachedContent } from '../src/search/p
 import type { Candidate, ImportedMessage } from './adapters/types';
 import { databasePath } from './config';
 import { activitySQL, isUserMessage, messageTime } from './activity';
-import { EVENT_SCHEMA, writeEvents, readEvents, readEventMarkers } from './event-store';
+import { EVENT_SCHEMA, MESSAGE_TIME_INDEX, writeEvents, readEvents, readEventMarkers } from './event-store';
 import { normalizePreferences, type Preferences } from '@sessiongraph/core/preferences';
 import { normalizeViewState } from '@sessiongraph/core/view-state';
 import { visibleSessions } from '../src/session-links';
 import { fingerprint, pageLimit, pageOffset, nextCursor, type PageOptions } from './library-query';
 import { COMMIT_SCHEMA, writeCommits, readCommits, pendingCommits } from './commit-store';
 import { COMMIT_EXTRACTOR_VERSION } from './commit-extraction';
+import { IMPORT_METADATA_VERSION, summarizeUsage } from './usage';
 
 /** SessionGraph owns this database. No adapter opens or modifies a harness database. */
 export class SessionGraphStore {
@@ -26,7 +27,7 @@ export class SessionGraphStore {
     if (path !== ':memory:') chmodSync(path, 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
-    if (version > 7) throw new Error('This SessionGraph database requires a newer version of the app.');
+    if (version > 8) throw new Error('This SessionGraph database requires a newer version of the app.');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, last_import INTEGER, error TEXT);
@@ -97,13 +98,18 @@ export class SessionGraphStore {
     }
     if (version < 7) {
       this.db.exec('BEGIN IMMEDIATE');
+      try { this.db.exec(`${MESSAGE_TIME_INDEX} PRAGMA user_version=7; COMMIT;`); }
+      catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    }
+    if (version < 8) {
+      this.db.exec('BEGIN IMMEDIATE');
       try {
-        this.db.exec(`CREATE TABLE IF NOT EXISTS session_pull_requests (
+        this.db.exec(`${MESSAGE_TIME_INDEX} CREATE TABLE IF NOT EXISTS session_pull_requests (
           session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
           host TEXT NOT NULL, repository TEXT NOT NULL, number INTEGER NOT NULL CHECK(number > 0),
           url TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('manual', 'created', 'agent', 'stack')),
           PRIMARY KEY(session_id, host, repository, number)
-        ) STRICT; PRAGMA user_version=7; COMMIT;`);
+        ) STRICT; PRAGMA user_version=8; COMMIT;`);
       } catch (error) { this.db.exec('ROLLBACK'); throw error; }
     }
     if (!this.setting('libraryID')) this.setting('libraryID', randomUUID());
@@ -137,25 +143,30 @@ export class SessionGraphStore {
   revision(id: string) { return this.db.prepare('SELECT imported_revision FROM sessions WHERE id=?').get(id)?.imported_revision; }
   commitsCurrent(id: string) { return this.getSession(id)?.commits?.version === COMMIT_EXTRACTOR_VERSION; }
   historyLimitedByOldBudget(session: Session) {
-    if (session.coverage?.note?.includes('Import limited to 50,000 messages / 16 million text characters / 2,000 pages.')) return true;
+    if (session.coverage?.note?.match(/Import limited to 50,000 messages \/ 16 million text characters \/ 2,000 pages\.|Session import limit reached\./)) return true;
     const timeline = this.db.prepare('SELECT note FROM timeline_coverage WHERE session_id=?').get(session.id);
     return String(timeline?.note || '').includes('Event history limited to 200,000 items / 32 MB per session.');
   }
   upsert(candidate: Candidate) {
     const s = candidate.session, previous = this.getSession(s.id);
     const metadata = { ...s, model: s.model === 'Unknown model' ? previous?.model || s.model : s.model,
+      tokens: previous?.revision === candidate.revision ? previous.tokens : s.tokens,
+      cost: previous?.revision === candidate.revision ? previous.cost : s.cost,
+      usage: previous?.revision === candidate.revision ? previous.usage : s.usage, importVersion: previous?.importVersion,
       parentID: previous?.parentID && candidate.locator.agent ? previous.parentID : s.parentID,
       activity: previous?.activity, commits: previous?.commits || pendingCommits(), revision: previous?.revision || '', coverage: previous?.coverage || { history: 'pending' } };
     this.db.prepare(`INSERT INTO sessions (id,source,native_id,metadata,locator) VALUES (?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata,locator=excluded.locator`).run(s.id, s.source!, s.nativeID!, JSON.stringify(metadata), JSON.stringify(candidate.locator));
   }
   replace(candidate: Candidate, messages: ImportedMessage[], partial: boolean, note?: string) {
-    const s: Session = { ...candidate.session, revision: candidate.revision, coverage: { history: partial ? 'partial' : 'complete', note, importedAt: Date.now() } };
+    const usage = summarizeUsage(candidate.session, messages, partial);
+    const s: Session = { ...candidate.session, tokens: usage.total, cost: usage.cost, usage, importVersion: IMPORT_METADATA_VERSION,
+      revision: candidate.revision, coverage: { history: partial ? 'partial' : 'complete', note, importedAt: Date.now() } };
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.db.prepare('DELETE FROM messages WHERE session_id=?').run(s.id);
       const insert = this.db.prepare('INSERT INTO messages (session_id,id,ordinal,data,time,is_user) VALUES (?,?,?,?,?,?) ON CONFLICT(session_id,id) DO UPDATE SET ordinal=excluded.ordinal,data=excluded.data,time=excluded.time,is_user=excluded.is_user');
-      messages.forEach((message, i) => insert.run(s.id, message.id, i, JSON.stringify(message), messageTime(message.time), Number(isUserMessage(message))));
+      messages.forEach((message, i) => insert.run(s.id, message.id, i, JSON.stringify(message), message.eventOnly ? null : messageTime(message.time), Number(isUserMessage(message))));
       writeEvents(this.db, s.id, this.db.prepare('SELECT data FROM messages WHERE session_id=? ORDER BY ordinal').iterate(s.id));
       const commits = writeCommits(this.db, s);
       if (candidate.pullRequests !== undefined) {
@@ -266,6 +277,7 @@ export class SessionGraphStore {
         });
         truncated ||= !!message.partial;
         return { id: message.id, time: messageTime(message.time), role: message.role, fragments,
+          metadata: message.metadata, usage: message.usage, locations: message.locations,
           files: message.files.slice(0, 200), tools: message.tools.slice(0, 200), partial: !!message.partial || message.fragments.length > 200 || message.files.length > 200 || message.tools.length > 200 || fragments.some(f => f.truncated) };
       });
       return { sessionID: id, revision: session.revision, messages, order: 'newest-first',
@@ -277,12 +289,14 @@ export class SessionGraphStore {
     return this.readSnapshot(id, (session) => {
       const page = this.messagePage(id, Number(cursor || 0), 120);
       const files = new Map<string, SessionDetail['files'][number]>(), tools = new Map<string, number>();
+      const locations: SessionDetail['locations'] = [];
       for (const message of page.messages) {
         for (const file of message.files) {
           const previous = files.get(file.path);
           files.set(file.path, { ...file, source: previous?.source === 'snapshot' ? 'snapshot' : file.source, steps: (previous?.steps || 0) + file.steps });
         }
         message.tools.forEach((tool) => tools.set(tool, (tools.get(tool) || 0) + 1));
+        for (const location of message.locations || []) if (locations.length < 200 && messageTime(location.time) !== null) locations.push(location);
       }
       const pullRequests = !cursor
         ? this.db.prepare('SELECT host, repository, number, url, source FROM session_pull_requests WHERE session_id=? ORDER BY host, repository, number').all(id)
@@ -290,7 +304,7 @@ export class SessionGraphStore {
             host: String(host), repository: String(repository), number: Number(number), url: String(url), source: source as SessionPullRequest['source'],
           }))
         : undefined;
-      return { id, revision: session.revision, pullRequests: pullRequests?.length ? pullRequests : undefined, files: [...files.values()].sort((a, b) => b.steps - a.steps), tools: [...tools].map(([name, count]) => ({ name, count })), locations: [], messagesScanned: page.messages.length,
+      return { id, revision: session.revision, pullRequests: pullRequests?.length ? pullRequests : undefined, files: [...files.values()].sort((a, b) => b.steps - a.steps), tools: [...tools].map(([name, count]) => ({ name, count })), locations, messagesScanned: page.messages.length,
         snapshotSteps: page.messages.reduce((n, m) => n + (m.snapshots || 0), 0), nextCursor: page.next, partial: Boolean(page.next) || session.coverage?.history !== 'complete', loadedAt: Date.now(), note: session.coverage?.note || (session.coverage?.history === 'pending' ? 'Waiting for import.' : undefined) };
     });
   }

@@ -1,4 +1,4 @@
-import type { Preferences } from '@sessiongraph/core/preferences';
+import type { Preferences } from './preferences';
 
 type Voice = { sources: AudioScheduledSourceNode[]; nodes: AudioNode[]; gain: GainNode };
 
@@ -17,19 +17,20 @@ export class InteractionAudio {
   private active = true;
   private interacted = false;
 
-  constructor(private preferences: Preferences, private status: (text: string) => void) {
+  constructor(private preferences: Preferences, private status: (text: string) => void, scope: HTMLElement | Document = document) {
     const options = { signal: this.events.signal };
-    document.addEventListener('click', (event) => {
-      if (!event.isTrusted) return;
+    const owns = (event: Event) => scope !== document || !(event.target as Element)?.closest?.('[data-graph-audio]');
+    scope.addEventListener('click', (event) => {
+      if (!event.isTrusted || !owns(event)) return;
       const target = (event.target as Element)?.closest<HTMLElement>('button, a[href], summary, input[type="checkbox"], [role="option"]');
       if (!target || target.matches(':disabled') || target.closest('[data-sound="none"], [data-drag-panel]')) return;
       this.play(target.matches('[data-session], [data-related], [role="option"]') ? 'select' : 'click');
     }, options);
-    document.addEventListener('change', (event) => {
-      if (event.isTrusted && (event.target as Element)?.matches('select, input[type="range"]')) this.play('click');
+    scope.addEventListener('change', (event) => {
+      if (event.isTrusted && owns(event) && (event.target as Element)?.matches('select, input[type="range"]')) this.play('click');
     }, options);
-    document.addEventListener('pointerdown', (event) => { if (event.isTrusted) { this.interacted = true; void this.unlock(); } }, { ...options, passive: true });
-    document.addEventListener('keydown', (event) => { if (event.isTrusted && !event.repeat && ['Enter', ' ', 'ArrowUp', 'ArrowDown'].includes(event.key)) { this.interacted = true; void this.unlock(); } }, options);
+    scope.addEventListener('pointerdown', (event) => { if (event.isTrusted && owns(event)) { this.interacted = true; void this.unlock(); } }, { ...options, passive: true });
+    scope.addEventListener('keydown', (event) => { const { repeat, key } = event as KeyboardEvent; if (event.isTrusted && owns(event) && !repeat && ['Enter', ' ', 'ArrowUp', 'ArrowDown'].includes(key)) { this.interacted = true; void this.unlock(); } }, options);
     document.addEventListener('visibilitychange', () => this.sync(), options);
     window.addEventListener('pagehide', () => { this.active = false; this.sync(); }, options);
     window.addEventListener('pageshow', () => { this.active = true; this.sync(); }, options);

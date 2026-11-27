@@ -23,7 +23,7 @@ fn main() {
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources")
             } else { app.path().resource_dir()?.join("resources") };
             let node = resource.join(if cfg!(windows) { "node.exe" } else { "node" });
-            let mut command = Command::new(node);
+            let mut command = Command::new(&node);
             command.arg(resource.join("server.mjs")).arg("--assets").arg(resource.join("web"))
                 .arg("--parent-pid").arg(std::process::id().to_string()).arg("--desktop")
                 .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit());
@@ -79,6 +79,28 @@ fn main() {
                     if ["http", "https"].contains(&url.scheme()) { let _ = handle.opener().open_url(url.as_str(), None::<&str>); }
                     false
                 }).build()?;
+            // Release installs expose the bundled CLI without requiring a system Node.
+            // Keep setup separate from the backend so failures do not block the app.
+            #[cfg(not(debug_assertions))]
+            {
+                let executable = std::env::var_os("APPIMAGE").map(std::path::PathBuf::from)
+                    .or_else(|| std::env::current_exe().ok());
+                if let Some(executable) = executable {
+                    let mut installer = Command::new(&node);
+                    installer.arg(resource.join("install-cli.mjs")).arg(executable)
+                        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::inherit());
+                    #[cfg(windows)] {
+                        use std::os::windows::process::CommandExt;
+                        installer.creation_flags(0x08000000);
+                    }
+                    match installer.spawn() {
+                        Ok(mut child) => { std::thread::spawn(move || {
+                            if let Err(error) = child.wait() { eprintln!("SessionGraph CLI setup failed: {error}"); }
+                        }); },
+                        Err(error) => eprintln!("SessionGraph CLI setup failed: {error}"),
+                    }
+                }
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

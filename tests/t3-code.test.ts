@@ -40,7 +40,10 @@ test('T3 V2 imports app threads, ordered activity, explicit lineage, and strong 
   thread.run('parent', 'p', 'Parent', 'codex', at, at, JSON.stringify({ modelSelection: { model: 'gpt-6' }, lineage: { parentThreadId: null } }));
   thread.run('fork', 'p', 'Fork', 'claudeAgent', at, at, JSON.stringify({ worktreePath: '/fixture/worktree', lineage: { parentThreadId: 'parent', relationshipToParent: 'fork' } }));
   db.prepare('INSERT INTO orchestration_v2_projection_provider_threads VALUES (?,?,?)').run('parent', 'codex', JSON.stringify({ nativeThreadRef: { driver: 'codex', nativeId: 'native-codex', strength: 'strong' } }));
+  db.prepare('INSERT INTO orchestration_v2_projection_provider_threads VALUES (?,?,?)').run('parent', 'opencode', JSON.stringify({ nativeThreadRef: { driver: 'opencode', nativeId: 'ses_native', strength: 'strong' } }));
   db.prepare('INSERT INTO orchestration_v2_projection_provider_threads VALUES (?,?,?)').run('fork', 'claudeAgent', JSON.stringify({ nativeThreadRef: { driver: 'claudeAgent', nativeId: 'weak-id', strength: 'weak' } }));
+  db.prepare('INSERT INTO orchestration_v2_projection_provider_threads VALUES (?,?,?)').run('fork', 'opencode', JSON.stringify({ nativeThreadRef: { driver: 'opencode', nativeId: 'ses_weak', strength: 'weak' } }));
+  db.prepare('INSERT INTO orchestration_v2_projection_provider_threads VALUES (?,?,?)').run('fork', 'opencode', JSON.stringify({ nativeThreadRef: { driver: 'codex', nativeId: 'ses_mismatch', strength: 'strong' } }));
   const item = db.prepare('INSERT INTO orchestration_v2_projection_turn_items VALUES (?,?,?,?,?,?,?)');
   const put = (id: string, ordinal: number, type: string, status: string, data: object) => item.run(id, 'parent', ordinal, type, status, at, JSON.stringify({ id, startedAt: at, completedAt: at, ...data }));
   put('u', 1, 'user_message', 'completed', { text: 'Please edit the file' });
@@ -52,7 +55,7 @@ test('T3 V2 imports app threads, ordered activity, explicit lineage, and strong 
   const found = await t3CodeAdapter.discover();
   assert.equal(found.sessions.length, 2);
   const parent = found.sessions.find(c => c.session.nativeID === 'parent')!;
-  assert.deepEqual(parent.session.linkedSessionIDs, ['codex:native-codex']);
+  assert.deepEqual(parent.session.linkedSessionIDs, ['codex:native-codex', 'opencode:ses_native']);
   assert.equal(parent.session.model, 'gpt-6');
   assert.equal(found.sessions.find(c => c.session.nativeID === 'fork')?.session.forkID, 't3-code:parent');
   assert.equal(found.sessions.find(c => c.session.nativeID === 'fork')?.session.directory, '/fixture/worktree');
@@ -286,4 +289,22 @@ test('ambiguous or empty T3 bindings do not hide provider history', () => {
   assert.equal(visibleSessions([native, { ...first, activity: { ...first.activity, userMessages: 0 } }]).length, 2);
   assert.equal(visibleSessions([native, { ...first, coverage: { history: 'pending' } }]).length, 2);
   assert.equal(visibleSessions([native, { ...first, linkedSessionIDs: [native.id, native.id], coverage: { history: 'partial' } }]).length, 1);
+});
+
+test('OpenCode duplicates use explicit T3 bindings, preserve provider snapshots, and remap child and fork links', () => {
+  const native = blankSession('opencode', 'ses_native', '/fixture');
+  const app = { ...blankSession('t3-code', 'app', '/fixture'), linkedSessionIDs: [native.id], coverage: { history: 'partial' as const },
+    activity: { firstMessageAt: 1, lastMessageAt: 2, userMessages: 1, untimedUserMessages: 0 } };
+  const child = { ...blankSession('opencode', 'ses_child', '/fixture'), parentID: native.id };
+  const fork = { ...blankSession('opencode', 'ses_fork', '/fixture'), forkID: native.id };
+  const unrelated = { ...blankSession('opencode', 'ses_unrelated', '/fixture'), title: app.title, created: app.created };
+  const visible = visibleSessions([native, app, child, fork, unrelated]);
+  assert.deepEqual(visible.map(s => s.id), [app.id, child.id, fork.id, unrelated.id]);
+  assert.equal(visible.find(s => s.id === child.id)?.parentID, app.id);
+  assert.equal(visible.find(s => s.id === fork.id)?.forkID, app.id);
+  assert.ok(sessionMatchesSource(app, 'opencode'));
+  assert.ok(sessionMatchesSource(app, 't3-code'));
+  assert.equal(child.parentID, native.id, 'saved provider metadata is not mutated');
+  assert.equal(fork.forkID, native.id);
+  assert.deepEqual(visibleSessions([native, { ...app, linkedSessionIDs: [] }]).map(s => s.id), [native.id, app.id]);
 });

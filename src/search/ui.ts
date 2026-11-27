@@ -1,3 +1,4 @@
+import { icon } from '@sessiongraph/core/icons';
 import { excerpt, normalize, parseQuery, words } from './engine';
 import type { SessionGraphData, Session } from '@sessiongraph/core/types';
 import { sourceName, sourceIcon } from '@sessiongraph/core/sources';
@@ -26,7 +27,7 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
   dialog.className = 'search-dialog';
   dialog.setAttribute('aria-label', 'Search sessions');
   dialog.innerHTML = `
-    <div class="search-command"><span class="search-command-icon" aria-hidden="true">⌕</span><input id="session-query" type="search" placeholder="Search sessions, messages, files…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search all sessions" aria-autocomplete="list" aria-expanded="true" aria-controls="search-results"/><button class="icon-button search-close" aria-label="Close search" title="Close (Esc)">×</button></div>
+    <div class="search-command"><span class="search-command-icon" aria-hidden="true">${icon('search')}</span><input id="session-query" type="search" placeholder="Search sessions, messages, files…" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search all sessions" aria-autocomplete="list" aria-expanded="true" aria-controls="search-results"/><button class="icon-button search-close" aria-label="Close search" title="Close (Esc)">${icon('x')}</button></div>
     <div class="search-options"><select id="search-scope" aria-label="Search scope" title="Switch scope (Alt+S)"><option value="all">All history</option><option value="view">Current view</option></select><button id="search-conversations" class="search-chip" aria-label="Index conversations" aria-pressed="true" title="Pause or resume background indexing. Indexed messages, tools, and files remain searchable.">Conversations</button><span id="search-index-state" role="status">Loading index…</span></div>
     <div class="search-body"><div id="search-results" class="search-results" role="listbox" aria-label="Matching sessions"><div class="search-results-inner"></div></div><aside id="search-preview" class="search-preview" aria-label="Session preview"></aside></div>
     <div class="search-footer"><span id="search-result-status" role="status">Loading sessions…</span><button id="search-more" hidden>More results</button><details class="search-syntax"><summary title="Search filters and cache">Filters</summary><div><code>project:sessiongraph</code><code>model:claude</code><code>in:files package.json</code><code>is:fork</code><code>after:2026-09-01</code><code>"exact phrase"</code><button id="search-clear-cache" title="Clear saved search text and pause indexing. Titles remain searchable; enable Conversations to rebuild.">Clear saved index</button></div></details><span class="search-keys"><kbd>↑↓</kbd> navigate <kbd>↵</kbd> open</span></div>`;
@@ -48,6 +49,9 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
   let errorMessage = '', selectionTouched = false;
   const cache = new Map<string, ContentPage>();
   const ROW_HEIGHT = 86;
+  const resultDates = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+  const mounted = new Map<number, HTMLElement>();
+  let renderedHits: SearchHit[] | undefined, rowsFrame = 0;
   const send = (message: SearchRequest) => worker.postMessage(message);
 
   function updateStatus() {
@@ -57,6 +61,8 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
     state.title = `Titles and metadata cover all ${status.total.toLocaleString()} imported sessions. ${status.complete.toLocaleString()} conversations have all supported text indexed. ${status.failed ? `${status.failed} unavailable; toggle Conversations to retry. ` : ''}${status.limited ? 'Large histories are sampled; missing matches may be in unindexed text. ' : ''}${status.storage === 'memory' ? 'Saving unavailable; search continues in memory.' : `Saved in local SQLite. ${status.restored.toLocaleString()} conversations restored; unchanged pages are reused. Clear saved index under Filters. Imported sessions remain saved.`}`;
   }
   function renderRows() {
+    cancelAnimationFrame(rowsFrame); rowsFrame = 0;
+    if (renderedHits !== hits) { mounted.clear(); inner.replaceChildren(); renderedHits = hits; }
     inner.style.height = `${hits.length * ROW_HEIGHT}px`;
     if (!hits.length) {
       inner.innerHTML = `<div class="search-empty">${escape(errorMessage || (pending ? 'Searching…' : input.value ? 'No matching sessions' : 'No sessions available'))}</div>`;
@@ -65,15 +71,27 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
     }
     const start = Math.max(0, Math.floor(list.scrollTop / ROW_HEIGHT) - 3);
     const end = Math.min(hits.length, start + Math.ceil(list.clientHeight / ROW_HEIGHT) + 7);
-    inner.innerHTML = hits.slice(start, end).map((hit, offset) => {
-      const i = start + offset, session = sessions.get(hit.id)!;
-      if (!session) return '';
-      const meta = `${sourceName(session.source)} · ${projects.get(session.projectID) || session.directory.split('/').at(-1) || 'Global'} · ${new Date(session.updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-      return `<div id="search-hit-${i}" class="search-result ${i === active ? 'active' : ''}" role="option" aria-selected="${i === active}" aria-posinset="${i + 1}" aria-setsize="${total}" data-result-index="${i}" style="top:${i * ROW_HEIGHT}px"><div class="search-result-title">${highlight(session.title, hit.terms)}</div><div class="search-result-meta"><span>${sourceIcon(session.source)}${escape(meta)}</span><span class="match-kind">${escape(hit.source)}</span></div>${hit.excerpt ? `<div class="search-result-excerpt">${highlight(hit.excerpt, hit.terms)}</div>` : `<div class="search-result-excerpt">${escape(session.model)}</div>`}</div>`;
-    }).join('');
+    for (const [index, element] of mounted) if (index < start || index >= end) { element.remove(); mounted.delete(index); }
+    for (let i = start; i < end; i++) {
+      let element = mounted.get(i);
+      if (!element) {
+        const hit = hits[i], session = sessions.get(hit.id);
+        if (!session) continue;
+        const meta = `${sourceName(session.source)} · ${projects.get(session.projectID) || session.directory.split('/').at(-1) || 'Global'} · ${resultDates.format(session.updated)}`;
+        const template = document.createElement('template');
+        template.innerHTML = `<div id="search-hit-${i}" class="search-result" role="option" aria-posinset="${i + 1}" aria-setsize="${total}" data-result-index="${i}" style="top:${i * ROW_HEIGHT}px"><div class="search-result-title">${highlight(session.title, hit.terms)}</div><div class="search-result-meta"><span>${sourceIcon(session.source)}${escape(meta)}</span><span class="match-kind">${escape(hit.source)}</span></div>${hit.excerpt ? `<div class="search-result-excerpt">${highlight(hit.excerpt, hit.terms)}</div>` : `<div class="search-result-excerpt">${escape(session.model)}</div>`}</div>`;
+        element = template.content.firstElementChild as HTMLElement;
+        mounted.set(i, element);
+        const next = [...mounted.keys()].filter(index => index > i).sort((a, b) => a - b)[0];
+        inner.insertBefore(element, mounted.get(next) ?? null);
+      }
+      const selected = String(i === active);
+      if (element.getAttribute('aria-selected') !== selected) { element.classList.toggle('active', i === active); element.setAttribute('aria-selected', selected); }
+    }
     if (active >= start && active < end) input.setAttribute('aria-activedescendant', `search-hit-${active}`);
     else input.removeAttribute('aria-activedescendant');
   }
+  function scheduleRows() { if (!rowsFrame) rowsFrame = requestAnimationFrame(renderRows); }
   function renderPreview(page?: ContentPage, loading = false, failed = false) {
     const hit = hits[active], session = hit && sessions.get(hit.id);
     if (!session) { preview.innerHTML = ''; return; }
@@ -88,7 +106,7 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
     preview.querySelector('.search-open')?.addEventListener('click', choose, options);
     if (onOpen) {
       const button = document.createElement('button');
-      button.className = 'text-button search-launch'; button.innerHTML = `${sourceIcon(session.source)}Open in ${escape(sourceName(session.source))} ↗`;
+      button.className = 'text-button search-launch'; button.innerHTML = `${sourceIcon(session.source)}Open in ${escape(sourceName(session.source))}${icon('arrow-up-right')}`;
       button.addEventListener('click', () => onOpen(session), options);
       preview.querySelector('.search-preview-heading')?.append(button);
     }
@@ -179,7 +197,7 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
   input.addEventListener('compositionstart', () => { composing = true; }, options);
   input.addEventListener('compositionend', () => { composing = false; changeQuery(); }, options);
   scope.addEventListener('change', changeQuery, options);
-  list.addEventListener('scroll', renderRows, options);
+  list.addEventListener('scroll', scheduleRows, { ...options, passive: true });
   list.addEventListener('click', (event) => {
     const row = (event.target as Element).closest<HTMLElement>('[data-result-index]');
     if (!row) return;
@@ -218,7 +236,7 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
       event.preventDefault(); open();
     }
   }, options);
-  const observer = new ResizeObserver(() => { if (dialog.open) renderRows(); });
+  const observer = new ResizeObserver(() => { if (dialog.open) scheduleRows(); });
   observer.observe(list);
   return {
     open,
@@ -226,10 +244,11 @@ export function createSessionSearch(onChoose: (id: string) => void, onVisibility
       if (sourceID !== data.sourceID) { cache.clear(); previewKey = ''; previewController?.abort(); window.clearTimeout(previewTimer); }
       sourceID = data.sourceID;
       sessions = new Map(data.sessions.map((s) => [s.id, s])); projects = new Map(data.projects.map((p) => [p.id, p.name]));
+      renderedHits = undefined;
       send({ type: 'data', sessions: data.sessions, projects: data.projects, sourceID });
     },
     setScope(ids: string[]) { send({ type: 'scope', ids }); },
     diagnostics: () => ({ open: dialog.open, query: input.value, matches: total, renderedRows: inner.querySelectorAll('[role="option"]').length, roundTripMs: elapsed, pending, index: status }),
-    dispose() { worker.terminate(); events.abort(); observer.disconnect(); previewController?.abort(); window.clearTimeout(previewTimer); cancelAnimationFrame(queryFrame); dialog.remove(); },
+    dispose() { worker.terminate(); events.abort(); observer.disconnect(); previewController?.abort(); window.clearTimeout(previewTimer); cancelAnimationFrame(queryFrame); cancelAnimationFrame(rowsFrame); dialog.remove(); },
   };
 }

@@ -8,6 +8,7 @@ import { hasTable } from './sqlite-snapshot';
 import { appPath, dataPath, envHome, harnessRoots, homePath } from './harness-paths';
 import { openclawRoots } from './harness-files';
 import { sourcePath } from '../source-paths';
+import { anthropicUsage, messageMetadata, recordedCost, recordedUsage, sessionUsage, sumTokens, sumUsage } from '../usage';
 
 // Hermes encodes structured content with a reserved marker. Ordinary strings,
 // including valid JSON examples and bracket-prefixed notices, stay verbatim.
@@ -16,13 +17,24 @@ function hermesContent(value: unknown) {
   try { return JSON.parse(value.slice(6)); } catch { return value; }
 }
 const millisOrSeconds = (v: unknown) => typeof v === 'number' && v > 0 && v < 10_000_000_000 ? seconds(v) : time(v);
+const usageColumns = ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens', 'reasoning_tokens', 'actual_cost_usd', 'estimated_cost_usd'];
+function hermesUsage(row: Raw) {
+  const actual = recordedCost(row.actual_cost_usd);
+  return recordedUsage({ input: row.input_tokens, output: row.output_tokens, cacheRead: row.cache_read_tokens, cacheWrite: row.cache_write_tokens,
+    reasoning: row.reasoning_tokens, total: sumTokens([row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_write_tokens]),
+    inputIncludesCache: false, outputIncludesReasoning: true, cost: actual ?? recordedCost(row.estimated_cost_usd),
+    costEstimated: actual === null && recordedCost(row.estimated_cost_usd) !== null });
+}
+function usageJSON(value: unknown): Raw {
+  try { return object(optionalJSON(value)); } catch { return {}; }
+}
 function dbPaths(id: string, defaults: () => string[], match: (path: string) => boolean) {
   return async () => {
     const override = sourcePath(id) || process.env[`SESSIONGRAPH_${id.replace(/-/g, '_').toUpperCase()}_HISTORY_DIR`];
     return override ? (await historyFiles([override], match)).files : existingDatabases(defaults());
   };
 }
-function sessionHistory(r: Raw, messages: LocalHistory['messages'], note: string): LocalHistory {
+function sessionHistory(r: Raw, messages: LocalHistory['messages'], note?: string): LocalHistory {
   return { nativeID: nativeText(r.id), messages, partial: true,
     session: { title: text(r.title || r.name), directory: text(r.directory || r.cwd || r.working_directory || r.working_dir), created: time(r.created_at), updated: time(r.updated_at), model: text(r.model) || 'Unknown model', provider: text(r.provider || r.provider_name) }, note };
 }
@@ -30,13 +42,18 @@ function sessionHistory(r: Raw, messages: LocalHistory['messages'], note: string
 const hermes: DatabaseHarness = {
   id: 'hermes', name: 'Hermes Agent', version: 3,
   paths: async () => (await historyFiles(harnessRoots('hermes', () => [envHome('HERMES_HOME', '.hermes')])(), p => p === 'state.db' || /^profiles\/[^/]+\/state\.db$/.test(p))).files,
-  table: 'sessions', key: 'id', fields: ['id', 'title', 'cwd', 'model', 'billing_provider', 'started_at', 'last_activity_at', 'parent_session_id', 'source', 'model_config', 'archived'],
+  table: 'sessions', key: 'id', fields: ['id', 'title', 'cwd', 'model', 'billing_provider', 'started_at', 'last_activity_at', 'parent_session_id', 'source', 'model_config', 'archived', ...usageColumns],
   parse(db, r) {
     const messages = rows(db, 'messages', ['id', 'message_uid', 'role', 'content', 'timestamp', 'tool_call_id', 'tool_calls', 'tool_name', '_compressed_summary'], ['session_id', r.id], 'id').map(m => {
       if (m._compressed_summary) return recordEvent(m, text(m.message_uid) || nativeText(m.id), 'Context summary', seconds(m.timestamp), m.content);
       return conversationMessage({ role: m.role, content: hermesContent(m.content), timestamp: seconds(m.timestamp), tool_call_id: m.tool_call_id, toolCalls: optionalJSON(m.tool_calls), toolName: m.tool_name }, text(m.message_uid) || nativeText(m.id));
     });
-    const h = sessionHistory({ ...r, created_at: seconds(r.started_at), updated_at: seconds(r.last_activity_at), provider: r.billing_provider }, messages, 'Hermes saved message rows, including retained summaries. Compression/reset parent links are not subagent ancestry. Session usage aggregates are not used as message times.');
+    const h = sessionHistory({ ...r, created_at: seconds(r.started_at), updated_at: seconds(r.last_activity_at), provider: r.billing_provider }, messages);
+    const perModel = hasTable(db, 'session_model_usage') ? rows(db, 'session_model_usage', usageColumns, ['session_id', r.id]).map(hermesUsage).filter(value => value !== undefined) : [];
+    const aggregate = hermesUsage(r), modelTotals = sumUsage(perModel);
+    const usage = modelTotals?.total != null ? modelTotals : aggregate ?? modelTotals;
+    if (usage && usage.cost === null && aggregate?.cost != null) { usage.cost = aggregate.cost; usage.costEstimated = aggregate.costEstimated; }
+    h.session!.usage = sessionUsage(usage);
     if (r.source === 'subagent') h.parent = text(r.parent_session_id) || undefined;
     h.fork = text(optionalJSON(r.model_config)._branched_from) || undefined;
     h.session!.archived = r.archived === 1;
@@ -46,13 +63,17 @@ const hermes: DatabaseHarness = {
 
 const goose: DatabaseHarness = {
   id: 'goose', name: 'Goose', paths: dbPaths('goose', () => process.env.GOOSE_PATH_ROOT && isAbsolute(process.env.GOOSE_PATH_ROOT) ? [join(process.env.GOOSE_PATH_ROOT, 'data/sessions/sessions.db')] : [dataPath('goose/sessions/sessions.db'), dataPath('Block/goose/sessions/sessions.db'), appPath('goose/sessions/sessions.db'), appPath('Block/goose/sessions/sessions.db'), appPath('Block/goose/data/sessions/sessions.db')], p => p.endsWith('sessions.db')),
-  table: 'sessions', key: 'id', fields: ['id', 'name', 'description', 'working_dir', 'created_at', 'updated_at', 'model_config_json', 'provider_name', 'session_type', 'parent_session_id', 'archived_at'],
+  table: 'sessions', key: 'id', fields: ['id', 'name', 'description', 'working_dir', 'created_at', 'updated_at', 'model_config_json', 'provider_name', 'session_type', 'parent_session_id', 'archived_at',
+    'total_tokens', 'input_tokens', 'output_tokens', 'accumulated_total_tokens', 'accumulated_input_tokens', 'accumulated_output_tokens'],
   parse(db, r) {
     const messages = rows(db, 'messages', ['id', 'message_id', 'role', 'content_json', 'created_timestamp'], ['session_id', r.id], 'id').map(m => {
       const content = sqliteJSON(m.content_json);
       return conversationMessage({ role: m.role, content, timestamp: millisOrSeconds(m.created_timestamp) }, text(m.message_id) || nativeText(m.id));
     });
-    const h = sessionHistory({ ...r, name: r.name || r.description, model: optionalJSON(r.model_config_json).model_name }, messages, 'Goose saved conversation rows. Tool/content variants not represented as text are marked partial.');
+    const h = sessionHistory({ ...r, name: r.name || r.description, model: optionalJSON(r.model_config_json).model_name }, messages);
+    const input = r.accumulated_input_tokens ?? r.input_tokens, output = r.accumulated_output_tokens ?? r.output_tokens;
+    h.session!.usage = sessionUsage(recordedUsage({ input, output, total: r.accumulated_total_tokens ?? r.total_tokens ?? sumTokens([input, output]),
+      inputIncludesCache: true, outputIncludesReasoning: true }), r.accumulated_total_tokens == null);
     if (r.session_type === 'sub_agent') h.parent = text(r.parent_session_id) || undefined;
     h.session!.archived = Boolean(r.archived_at);
     return h;
@@ -66,11 +87,15 @@ const openclaw: DatabaseHarness = {
     const events = rows(db, 'transcript_events', ['seq', 'event_json', 'event_zstd'], ['session_id', r.session_id], 'seq');
     const messages = events.flatMap(e => {
       const raw = object(sqliteJSON(e.event_json ?? e.event_zstd));
-      if (raw.type !== 'message') return [];
+      if (raw.type !== 'message') {
+        const event = recordEvent(raw, text(raw.id) || `event:${e.seq}`, text(raw.type) || 'OpenClaw event', raw.timestamp, raw.summary ?? raw);
+        for (const item of event.events || []) item.parentID = text(raw.parentId) || undefined;
+        return [event];
+      }
       const m = message(object(raw.message), text(raw.id) || `event:${e.seq}`, raw.timestamp ?? raw.message?.timestamp);
       return m ? [m] : [];
     });
-    return sessionHistory({ ...r, id: r.session_id, provider: r.model_provider }, messages, 'OpenClaw authoritative transcript events, including zstd payloads. Database sessions take precedence over migrated JSONL copies. Session rollover and event-parent links are not session ancestry.');
+    return sessionHistory({ ...r, id: r.session_id, provider: r.model_provider }, messages);
   },
 };
 
@@ -92,7 +117,7 @@ function forkStore(id: string, name: string, defaultPath: () => string, desktop?
         });
         return conversationMessage({ ...body, content, timestamp: body.time?.created ?? m.time_created }, text(m.id));
       });
-      return sessionHistory({ ...r, created_at: r.time_created, updated_at: r.time_updated }, messages, `${name} native session/message/part tables. Only this harness's database is read; ancestry semantics not explicitly exposed by this format remain unknown.`);
+      return sessionHistory({ ...r, created_at: r.time_created, updated_at: r.time_updated }, messages);
     },
   };
 }
@@ -112,7 +137,12 @@ const zed: DatabaseHarness = {
       return conversationMessage({ role: raw.User ? 'user' : 'assistant', content }, text(b.id) || `message:${i}`);
     });
     const folders = optionalJSON(r.folder_paths);
-    return sessionHistory({ ...r, title: r.summary || body.title, directory: Array.isArray(folders) && folders.length === 1 ? folders[0] : '', model: body.model?.model, provider: body.model?.provider }, messages, 'Zed native thread messages, JSON or zstd. Native message times are absent in this format; no timing is invented. Imported/shared copies and external ACP histories are excluded from this native-thread store.');
+    const h = sessionHistory({ ...r, title: r.summary || body.title, directory: Array.isArray(folders) && folders.length === 1 ? folders[0] : '', model: body.model?.model, provider: body.model?.provider }, messages, 'Message times unavailable.');
+    const requests = body.request_token_usage;
+    const values = Array.isArray(requests) ? requests : Object.values(object(requests));
+    const recorded = values.slice(0, 50_000).map(value => anthropicUsage(value)).filter(value => value !== undefined);
+    h.session!.usage = sessionUsage(anthropicUsage(body.cumulative_token_usage) ?? sumUsage(recorded), recorded.length < values.length && !body.cumulative_token_usage);
+    return h;
   },
 };
 
@@ -124,7 +154,7 @@ const devin: DatabaseHarness = {
       const raw = object(sqliteJSON(m.chat_message)), result = message(raw, nativeText(m.node_id), millisOrSeconds(m.created_at));
       return result ? [result] : [recordEvent(raw, nativeText(m.node_id), 'Devin message node', millisOrSeconds(m.created_at))];
     });
-    return sessionHistory({ ...r, created_at: millisOrSeconds(r.created_at), updated_at: millisOrSeconds(r.last_activity_at) }, messages, 'Devin saved message nodes. All retained in-session branches are included; node-parent edges are not session ancestry.');
+    return sessionHistory({ ...r, created_at: millisOrSeconds(r.created_at), updated_at: millisOrSeconds(r.last_activity_at) }, messages);
   },
 };
 
@@ -154,7 +184,7 @@ const crush: DatabaseHarness = {
       if (m.is_summary_message) return recordEvent(m, text(m.id), 'Context summary', millisOrSeconds(m.created_at), content);
       return conversationMessage({ role: m.role, content, timestamp: millisOrSeconds(m.created_at) }, text(m.id));
     });
-    const h = sessionHistory({ ...r, directory: crushDirectories.get(path) || '', created_at: millisOrSeconds(r.created_at), updated_at: millisOrSeconds(r.updated_at) }, messages, 'Crush per-project saved message parts. Session cost is retained when recorded; unreliable token counters remain unknown.');
+    const h = sessionHistory({ ...r, directory: crushDirectories.get(path) || '', created_at: millisOrSeconds(r.created_at), updated_at: millisOrSeconds(r.updated_at) }, messages);
     h.session!.cost = typeof r.cost === 'number' && r.cost >= 0 ? r.cost : null;
     return h;
   },
@@ -177,7 +207,7 @@ const octofriend: DatabaseHarness = {
       const m = message({ ...ir, content, role: ir.role === 'tool-output' ? 'tool' : ir.role }, nativeText(node.id), node.created_at);
       messages.push(m || recordEvent(ir, nativeText(node.id), text(ir.role), node.created_at));
     }
-    const h = sessionHistory({ ...r, created_at: nodes[0]?.created_at }, messages, 'Octofriend native history trees and versioned IR. Retained branches are preserved; nested subagent trajectories and unsupported IR variants are partial. Provider attribution remains with the harness.');
+    const h = sessionHistory({ ...r, created_at: nodes[0]?.created_at }, messages, 'Some subagent history may be missing.');
     return h;
   },
 };
@@ -186,10 +216,17 @@ const unsloth: DatabaseHarness = {
   id: 'unsloth', name: 'Unsloth Studio', paths: dbPaths('unsloth', () => [envHome('UNSLOTH_STUDIO_HOME', '.unsloth/studio', 'studio.db')], p => p.endsWith('studio.db')),
   table: 'chat_threads', key: 'id', fields: ['id', 'title', 'model_id', 'created_at', 'updated_at', 'archived', 'forked_from_thread_id'],
   parse(db, r) {
-    const messages = rows(db, 'chat_messages', ['id', 'role', 'content_json', 'created_at'], ['thread_id', r.id], 'created_at').flatMap(row => {
-      const m = message({ role: row.role, content: sqliteJSON(row.content_json) }, text(row.id), seconds(row.created_at)); return m ? [m] : [];
+    const messages = rows(db, 'chat_messages', ['id', 'role', 'content_json', 'created_at', 'metadata_json'], ['thread_id', r.id], 'created_at').flatMap(row => {
+      const metadata = usageJSON(row.metadata_json), usage = object(metadata.contextUsage);
+      const m = message({ role: row.role, content: sqliteJSON(row.content_json) }, text(row.id), seconds(row.created_at));
+      if (m?.role === 'assistant') {
+        m.usage = recordedUsage({ input: usage.promptTokens, output: usage.completionTokens, total: usage.totalTokens ?? sumTokens([usage.promptTokens, usage.completionTokens]),
+          cacheRead: usage.cachedTokens, cacheWrite: usage.cacheWriteTokens, reasoning: usage.reasoningTokens, inputIncludesCache: true, outputIncludesReasoning: true }, 'message', row.id);
+        m.metadata = messageMetadata({ model: metadata.responseDetails?.responseModelId || usage.modelId, provider: metadata.responseDetails?.providerType });
+      }
+      return m ? [m] : [];
     });
-    const h = sessionHistory({ ...r, model: r.model_id, created_at: seconds(r.created_at), updated_at: seconds(r.updated_at) }, messages, 'Unsloth Studio native chat threads and message content. Content-free API usage, training runs, attachments, and unsupported tool blocks are excluded.');
+    const h = sessionHistory({ ...r, model: r.model_id, created_at: seconds(r.created_at), updated_at: seconds(r.updated_at) }, messages);
     h.fork = text(r.forked_from_thread_id) || undefined; h.session!.archived = r.archived === 1;
     return h;
   },
@@ -209,7 +246,7 @@ const kiro: DatabaseHarness = {
       return result;
     });
     const created = body.history.map((t: Raw) => time(t.request_metadata?.request_start_timestamp_ms)).find(Boolean);
-    return { nativeID: text(r.conversation_id), messages, partial: true, session: { directory: text(r.key), created, model: text(body.model_info?.model_id) || 'Unknown model' }, note: 'Kiro retained SQLite conversation turns. Request-start metadata places the session; untimed user prompts remain untimed. Tool-use variants and compacted context are partial.' };
+    return { nativeID: text(r.conversation_id), messages, partial: true, session: { directory: text(r.key), created, model: text(body.model_info?.model_id) || 'Unknown model' }, note: 'Earlier messages and some tool details may be missing.' };
   },
 };
 

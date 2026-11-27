@@ -62,15 +62,15 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
-      lucide:
-        specifier: ^0.468.0
-        version: 0.468.0
       mediabunny:
         specifier: ^1.65.0
         version: 1.65.0
       minisearch:
         specifier: ^7.2.0
         version: 7.2.0
+      playwright:
+        specifier: ^1.65.1
+        version: 1.65.1
       three:
         specifier: ^0.180.0
         version: 0.180.0
@@ -86,15 +86,15 @@ importers:
 
   packages/core:
     dependencies:
+      '@hugeicons/core-free-icons':
+        specifier: ^4.4.0
+        version: 4.4.0
       '@zag-js/select':
         specifier: ^1.47.0
         version: 1.47.0
       '@zag-js/vanilla':
         specifier: ^1.47.0
         version: 1.47.0
-      lucide:
-        specifier: ^0.468.0
-        version: 0.468.0
       three:
         specifier: ^0.180.0
         version: 0.180.0
@@ -484,6 +484,9 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4 || ^5.0.0-0
+
+  '@hugeicons/core-free-icons@4.4.0':
+    resolution: {integrity: sha512-7Mz8bmGoY6tZ6l3C2TXwNMLVSr0I8HPwjjFIERAuJFj3rWwLxdF2ZLkDqdrVuEE1dx5b/VXyIsP4WoSU6Q40KQ==}
 
   '@internationalized/date@3.12.4':
     resolution: {integrity: sha512-M1dEn4c1U1HsSlaVR8upZtSqvXrTkHDfv18H01uCSJyjVLDxnBR38v/fMxecmlwXKR4i9HeZcmgQAPE6A+aGJQ==}
@@ -1530,9 +1533,6 @@ packages:
     resolution: {integrity: sha512-5J9ysMYUpYIg9RF2vJpy9SinEmSviFSe0GyPpCQ4L5QSkLAgeLXlTAOu2ZwWUU5m+0SBl6gUU1R1ZQB3aKypfA==}
     engines: {bun: '>=1.0.0', deno: '>=1.30.0', node: '>=8.0.0'}
 
-  lucide@0.468.0:
-    resolution: {integrity: sha512-UFbgwji/ZnAV7iTTE4jujyTV7J95AILKyATDUrqOJrMcUGfXvGjw3c1mcuHZUX2oJfkrAGU9KoxkrLQk2jjtiA==}
-
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
@@ -1685,6 +1685,16 @@ packages:
 
   pkg-types@2.4.0:
     resolution: {integrity: sha512-07Fys7iVx0X6TcviMOgogM1Lk33ZyqOezMnU79S+kffWqwolG/5W9V8EgQSeYCIfFTYVgssRbnH630Oa2+soBA==}
+
+  playwright-core@1.65.1:
+    resolution: {integrity: sha512-hqPpz7blSMPxWVdoeE1yiBSzXsKiVOd2k+kjCvmUywD2GPO2Dd9HfcWnq9NN0GHbNZDFgZ9JfBFr+X5/BLo0qw==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.65.1:
+    resolution: {integrity: sha512-vJ1FuoOrNwOKHUIVEvSt3jT1L+wjjDpwhwIstKtfvTh8XIG4FG4bIFuvNdMxi81LGfAhUgUZleVFaOLY4RIUUw==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   postcss@8.5.32:
     resolution: {integrity: sha512-LJlKCCAUFKOuZxipUdYw1NzIITEsPcgyOG9LkvRJvuKj/bRzbuRY0ARXvL0pWGpsZvn8jku+LMep2eU0seHp8g==}
@@ -2334,6 +2344,8 @@ snapshots:
   '@hono/node-server@2.1.5(hono@4.13.14)':
     dependencies:
       hono: 4.13.14
+
+  '@hugeicons/core-free-icons@4.4.0': {}
 
   '@internationalized/date@3.12.4':
     dependencies:
@@ -3418,8 +3430,6 @@ snapshots:
 
   lru.min@1.1.5: {}
 
-  lucide@0.468.0: {}
-
   math-intrinsics@1.1.0: {}
 
   media-typer@1.1.1: {}
@@ -3548,6 +3558,12 @@ snapshots:
       confbox: 0.3.2
       exsolve: 1.2.0
       pathe: 2.0.3
+
+  playwright-core@1.65.1: {}
+
+  playwright@1.65.1:
+    dependencies:
+      playwright-core: 1.65.1
 
   postcss@8.5.32:
     dependencies:

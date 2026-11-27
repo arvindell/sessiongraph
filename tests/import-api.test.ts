@@ -57,7 +57,7 @@ test('auto-import settings API validates writes and automatic requests cannot ch
     try {
       const saved = reopened.library([], false);
       assert.equal(saved.autoImport, false);
-      assert.equal(saved.preferences?.view, '2d'); assert.equal(saved.preferences?.muted, true); assert.equal(saved.preferences?.panelOpacity, 75);
+      assert.equal('view' in saved.preferences!, false); assert.equal(saved.preferences?.muted, true); assert.equal(saved.preferences?.panelOpacity, 75);
       assert.deepEqual(saved.viewState, { days: 30, includeChildren: false, includeArchived: false, sourceID: 'codex', projectID: 'project', directory: '/work/project', fromDate: '2026-10-01', toDate: '2026-10-20' });
     } finally { reopened.close(); }
   } finally {

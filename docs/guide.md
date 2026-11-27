@@ -19,6 +19,10 @@ pnpm desktop:build
 
 Installers appear in `src-tauri/target/release/bundle/`. On macOS, open `macos/SessionGraph.app` or install using the DMG. `pnpm desktop:dev` builds and runs the native shell locally. The Rust toolchain is pinned in `rust-toolchain.toml`.
 
+On first launch, desktop releases install the `sessiongraph` and `ssg` commands
+and register their directory in your user PATH. Restart your terminal.
+See the [CLI installation reference](cli.md#install) for paths and shell support.
+
 ### npm launcher
 
 Install and open the public npm launcher with Node 24+:
@@ -30,6 +34,9 @@ npx sessiongraph --browser
 ```
 
 The default command opens the native desktop app from your matching OS/architecture package. `--browser` instead starts a local authenticated server and opens the explorer in your default browser; keep the terminal open and press Ctrl+C to stop it. Both modes share the same saved SQLite library.
+
+`npm install --global sessiongraph` registers both `sessiongraph` and `ssg`
+in npm's global executable directory.
 
 ### Desktop updates
 
@@ -68,7 +75,7 @@ Turn on **Auto-import sessions** in **Settings → Sources** to check all select
 
 The auto-import choice is saved in the local SQLite library, so it survives desktop restarts and is shared by browser and desktop instances using that library. Turning it off stops future automatic checks; an import already running can finish. Manual Refresh remains available. There is no background service after the app closes. OpenCode's local service must still be running to import its new history.
 
-Time presets and custom date ranges, source/project/directory filters, the archived and child-session toggles, 2D/3D mode, and the other Settings preferences are also saved in the library. They are restored before the first graph is shown, including when the desktop app starts on a different local port. Existing browser appearance preferences migrate to the library on first use.
+Time presets and custom date ranges, source/project/directory filters, the archived and child-session toggles, and Settings preferences are also saved in the library. They are restored before the first graph is shown, including when the desktop app starts on a different local port. Existing browser appearance preferences migrate to the library on first use.
 
 Onboarding closes automatically after a successful import and library refresh. Import failures remain visible with retry controls.
 
@@ -142,7 +149,7 @@ See the [harness data matrix](import-coverage.md#imported-data-by-harness) for v
 
 ## Local storage and privacy
 
-**Your session content stays on this computer during import, search, and exploration.** No account. No cloud sync. No telemetry. See [Privacy and local data](../PRIVACY.md) for the full network disclosure and ways to verify the behavior.
+**Your session content stays on this computer during import, search, and exploration.** No account is needed for local use. See [Privacy and local data](../PRIVACY.md) for what stays local and what optional publishing shares.
 
 SessionGraph's own SQLite database stores source selection, the auto-import preference, session metadata, normalized messages and timeline events, evidence-linked commit history, file evidence, import revisions, and bounded search checkpoints. New installations use:
 
@@ -151,7 +158,7 @@ SessionGraph's own SQLite database stores source selection, the auto-import pref
 - Windows: `%LOCALAPPDATA%/SessionGraph/sessiongraph.sqlite`
 - Override with `SESSIONGRAPH_DATA_DIR`.
 
-Existing installations reuse `Session Atlas/session-atlas.sqlite` or `Atlas/atlas.sqlite` in place (lowercase directory names on Linux), including saved sessions, source selection, search checkpoints, WAL files, and import locks. A current `sessiongraph.sqlite` library takes precedence if one already exists. Explicit data-directory overrides search only that directory. The previous `SESSION_ATLAS_*` settings and original `ATLAS_DATA_DIR` / `ATLAS_SERVICE_FILE` remain supported as aliases; `SESSIONGRAPH_*` settings take precedence. Browser preferences and the last launch target also accept their previous storage keys when using the same origin.
+Existing installations reuse libraries from earlier app versions in place, including saved sessions, source selection, search checkpoints, WAL files, and import locks. A current `sessiongraph.sqlite` library takes precedence if one already exists. Explicit data-directory overrides search only that directory. Previous environment settings remain supported as aliases; `SESSIONGRAPH_*` settings take precedence. Browser preferences and the last launch target also accept their previous storage keys when using the same origin.
 
 All parsing, deduplication, indexing, and visualization run on this computer. No telemetry, embeddings service, model inference, uploads, or remote fonts are used. Source histories are read-only. OpenCode uses its authenticated API; Cursor databases are parsed only from temporary private copies. The native app binds its backend to `127.0.0.1` on a random port with an ephemeral authentication cookie; imports from other origins are rejected. Source credentials stay in the backend.
 
@@ -168,9 +175,9 @@ Desktop update checks and downloads contact GitHub without session content; npm 
 - Click a session for a close-up of its orb; click a message dot for a tighter close-up of that message. Focus preserves your current viewing side and angle; zoom and pinch remain unrestricted. All saved timed conversation markers load on selection, including the final message. File history scans automatically in cancellable batches. Bright white message dots follow the same subtle spiral as the comet trail, retaining their recorded X/time positions; small icons distinguish user and assistant messages. Icons are collision-culled and bounded to 64; all plotted dots remain interactive. Untimed and out-of-lifetime messages remain available in the message explorer, which loads message bodies on demand.
 - Hover a marker to preview its message. Click to focus that marker and open message details below the session card, keeping the map interactive. **Previous / Next** and **← / → / ↑ / ↓** step through user and assistant messages and focus their recorded positions. Untimed messages remain readable without inventing a map location. Escape closes message details first; arrow keys on session cards or the map navigate sessions when message details are closed. Form controls and panel-drag handles retain their own arrow-key behavior.
 - **Browse messages** opens 60-message pages of the conversation. Details include message text, recorded time, and source provenance. Tool calls, reasoning, and other detailed events are excluded from the dots and message browser. Underlying imported history and file evidence remain saved. Source order is preserved even without timestamps. Nearby markers can overlap; step through them with the navigation controls.
-- Older libraries migrate to schema v4 using their existing saved messages. Reconstructed events are labeled partial; **Refresh sessions** enriches them with structured source events. The explorer asks you to reload if an import changes its snapshot while browsing.
+- When upgrading an older library, events reconstructed from saved messages are marked partial. **Refresh sessions** can add structured events from the original sources. The explorer asks you to reload if an import changes the history you’re viewing.
 - Click a session for changed-file satellites and source evidence. File details load in 120-message batches; the map displays at most 80 files. Evidence describes historical edits, not today's Git diff.
-- **Play** follows newly appearing clusters with close camera framing, a half-turn around the graph, and a closing pullback (15 seconds at 1×). It then makes a full 360° overview orbit over 5 seconds, slowing gently over the final 1.75 seconds and returning to the exact view where the timeline finished. A 1-second final hold precedes UI restoration: 21 seconds total at 1×. The graph sits above the date and counters; shared animations use the same framing and ending. Orbs appear with a brief, soft sparkle; their trails fade in afterward. Glowing gold forks curve, while lavender subagent links stay straight; both draw from parent to child at the child's recorded start. Rewinding resets their entrances. Recorded token usage has a moderate, logarithmic effect on orb size, capped so large sessions stay readable. Dragging, zooming, scrubbing, fitting, or opening a dialog pauses playback. 2D pans without orbiting; reduced motion keeps the camera still and reveals without animation.
+- **Play** follows new sessions as they appear and ends with an overview. Dragging, zooming, scrubbing, fitting, or opening a dialog pauses playback. Reduced motion keeps the camera still.
 - Playback hides the other panels and controls, leaving a borderless timeline, a compact approximate date, large **Sessions** and **Burnt tokens** counters, and a prominent **Share SessionGraph** button. The date shows month and year for histories spanning at least 90 days, and includes the day for shorter ranges; shared animations use the same date. Session counts include every filtered session as its orb appears, regardless of token coverage. Pausing or pressing **Esc** restores the panels immediately. Recorded token totals from OpenCode and Continue accumulate when each session reaches its latest saved message; cache is included where reported. Token counts skip missing/unsupported usage and include totals without message timestamps only at the end. Missing usage displays **—**; no usage is estimated between messages.
 - **Share SessionGraph** has two options: **Publish** for an explicitly confirmed public snapshot, and **Video** for a private MP4 rendered locally. GitHub sign-in opens your browser; confirm the matching code to connect the app. If opening fails, copy the browser link from the dialog. Signing in does not upload your history.
 - **Video** renders at 960×600 and 30 fps: 15 seconds of playback, a 5-second overview orbit, and a 1-second ending hold (630 frames). MP4 uses H.264 with fixed frame timestamps and requires WebCodecs encoding support. Each directory stream gets a unique random two-word alias such as **Project Cosmic Wombat**. A separate export model excludes original names, paths, session titles, native IDs, messages, and file details. Previews and saved videos contain the map, aliases, timeline, date, session count, and known burnt-token totals. Closing the dialog or switching to Publish cancels unfinished rendering and releases its resources.
@@ -183,7 +190,7 @@ Desktop update checks and downloads contact GitHub without session content; npm 
 
 Open **Settings** using the gear button. Changes apply live and persist on this device:
 
-- **Interface:** 2D/3D, system/on/off motion, list density, archived-session visibility, panel transparency, and reset panel positions.
+- **Interface:** system/on/off motion, list density, archived-session visibility, panel transparency, and reset panel positions.
 - **Sound:** procedural interaction tones, volume, chime preview, and mute. Only control interactions produce sound; there is no ambient audio. The speaker button mutes feedback quickly; no audio is downloaded.
 - **Graphics:** performance/balanced/high rendering, glow, node size, stars, labels, and focus dimming. Balanced and high retain antialiasing and bloom with bounded high-DPI buffers; the soft bloom pyramid uses a lower resolution to reduce GPU work.
 - **Trails & playback:** all/selected/hidden lifetime trails, brightness, decorative flow and speed, relationship links, message dots, and 0.25×–3× playback. Flow respects reduced motion and never changes message timestamps or saved trail endpoints.

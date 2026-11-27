@@ -3,6 +3,7 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path';
 import { databasePath } from './config';
 import type { SessionGraphStore } from './store';
+import type { Session } from '@sessiongraph/core/types';
 import { PUBLIC_GRAPH_MAX_MESSAGE_TIMES, PUBLIC_GRAPH_MAX_SESSIONS, publishableGraph, publishingSettings, type PublicGraph, type PublicMessageStats } from '@sessiongraph/core/public-graph';
 
 export class PublishingError extends Error { constructor(message: string, readonly status = 400) { super(message); } }
@@ -18,22 +19,23 @@ export function preparePublicGraph(store: SessionGraphStore, ids: unknown, input
   const stats = new Map<string, PublicMessageStats>();
   const count = store.db.prepare("SELECT count(*) AS count, count(*) FILTER (WHERE time IS NULL) AS untimed FROM timeline_items WHERE session_id=? AND kind='message' AND role IN ('user','assistant')");
   const times = store.db.prepare("SELECT time FROM timeline_items WHERE session_id=? AND kind='message' AND role IN ('user','assistant') AND time IS NOT NULL ORDER BY time,ordinal LIMIT ?");
-  const coverage = store.db.prepare('SELECT partial FROM timeline_coverage WHERE session_id=?');
+  const metadata = store.db.prepare('SELECT metadata,partial FROM sessions LEFT JOIN timeline_coverage ON timeline_coverage.session_id=sessions.id WHERE sessions.id=?');
   let remaining = PUBLIC_GRAPH_MAX_MESSAGE_TIMES;
   // A synchronous read transaction sees one import revision for all selected sessions.
   store.db.exec('BEGIN');
   try {
     const sessions = ids.map(id => {
-      const session = store.getSession(id);
-      if (!session) throw new PublishingError('Your session selection changed. Reopen publishing.');
+      const row = metadata.get(id);
+      if (!row) throw new PublishingError('Your session selection changed. Reopen publishing.');
+      const session = JSON.parse(String(row.metadata)) as Session;
       if (settings.messageCounts) {
-        const known = session.coverage?.history !== 'pending' && !!coverage.get(id);
+        const known = session.coverage?.history !== 'pending' && row.partial !== null;
         const totals = count.get(id)!;
-        const rows = settings.messageTimestamps ? times.all(id, Math.min(remaining, 2000)) : [];
+        const rows = settings.messageTimestamps && remaining > 0 ? times.all(id, Math.min(remaining, 2000)) : [];
         remaining -= rows.length;
         const values = rows.map(row => Number(row.time));
         stats.set(id, { count: known ? Number(totals.count) : null, untimed: known ? Number(totals.untimed) : null,
-          partial: !known || session.coverage?.history !== 'complete' || Boolean(coverage.get(id)?.partial),
+          partial: !known || session.coverage?.history !== 'complete' || Boolean(row.partial),
           times: values, timesLimited: !known || Number(totals.count) - Number(totals.untimed) > values.length });
       }
       return session;

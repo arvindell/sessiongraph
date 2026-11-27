@@ -8,6 +8,7 @@ import type { ImportedMessage } from './types';
 import type { TimelineEvent } from '@sessiongraph/core/timeline';
 import { vscodeChatLog } from './vscode-chat-log';
 import { sourcePath } from '../source-paths';
+import { messageMetadata, recordedUsage, sumTokens } from '../usage';
 
 /** These are VS Code's own chat stores, rather than the extension's globalStorage. */
 export function copilotChatRoots(platform: NodeJS.Platform = process.platform, home = homedir(), env: NodeJS.ProcessEnv = process.env): string[] {
@@ -85,6 +86,10 @@ function chatMessages(requests: Raw[]): ImportedMessage[] {
     const messages = [user];
     if (request.response !== undefined || request.result?.errorDetails || request.responseErrorDetails || request.editedFileEvents?.length) {
       const assistant = blankMessage(text(request.responseId) || `response:${requestID}`, time(request.responseTimestamp), 'assistant');
+      const metadata = object(request.result?.metadata);
+      const input = request.promptTokens ?? metadata.promptTokens, output = request.completionTokens ?? metadata.outputTokens;
+      assistant.usage = recordedUsage({ input, output, total: sumTokens([input, output]), inputIncludesCache: true, outputIncludesReasoning: true }, 'message', request.responseId || requestID);
+      assistant.metadata = messageMetadata({ model: metadata.resolvedModel || request.modelId });
       assistant.events = [];
       const parts = Array.isArray(request.response) ? request.response : request.response == null ? [] : [request.response];
       if (parts.length > 200) assistant.partial = true;
@@ -129,7 +134,7 @@ const filesAdapter = localFileAdapter({
     const model = [...data.requests].reverse().find(r => text(r.modelId));
     return { nativeID: data.sessionId, messages,
       session: { title: text(data.customTitle) || text(data.computedTitle), created: time(data.creationDate), directory: vscodeChatPath(data.workingDirectory || workspace.folder), model: text(model?.modelId) || 'Unknown model' },
-      note: 'Persisted VS Code Chat UI history, including Copilot participants. Attachments, pre-compaction content, and transient UI state may be absent. Accepted-edit records provide file evidence; proposed edits and references do not. Multi-root workspaces without an explicit working directory remain unassigned. Tool subagent IDs are event correlations, not session ancestry.' };
+      note: 'Earlier messages may be missing.' };
   },
 });
 

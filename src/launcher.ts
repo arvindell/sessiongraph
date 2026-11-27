@@ -1,3 +1,4 @@
+import { icon } from '@sessiongraph/core/icons';
 import type { Session } from '@sessiongraph/core/types';
 import { HARNESSES, isHarness, sessionWebUrl, validSessionID, type LaunchConnection, type PreparedLaunch } from './launch-links';
 import { sourceName } from '@sessiongraph/core/sources';
@@ -8,14 +9,14 @@ export function createSessionLauncher(onVisibility: () => void) {
   dialog.className = 'launch-dialog';
   dialog.setAttribute('aria-labelledby', 'launch-heading');
   dialog.innerHTML = `
-    <button class="icon-button dialog-close" aria-label="Close open session">×</button>
+    <button class="icon-button dialog-close" aria-label="Close open session">${icon('x')}</button>
     <h2 id="launch-heading">Open session</h2><p class="launch-title"></p>
     <label class="launch-destination">Open in<select aria-label="Open in">
       ${HARNESSES.map((h) => `<option value="${h.id}">${h.name}</option>`).join('')}
       <option value="web">OpenCode · Web browser</option>
     </select></label>
     <section class="launch-web" hidden>
-      <a class="primary-button launch-web-link" target="_blank" rel="noopener noreferrer" hidden>Open in browser ↗</a>
+      <a class="primary-button launch-web-link" target="_blank" rel="noopener noreferrer" hidden>Open in browser ${icon('arrow-up-right')}</a>
       <details class="launch-pairing"><summary>First time connecting?</summary><p>Run <code>opencode pair</code> in your terminal and open its pairing link once. Then open this session again.</p><button class="text-button launch-copy-pair">Copy pairing command</button></details>
     </section>
     <section class="launch-cli">
@@ -24,7 +25,7 @@ export function createSessionLauncher(onVisibility: () => void) {
         <details class="launch-context" hidden><summary>Saved context</summary><p class="launch-coverage"></p><code class="launch-context-path"></code></details>
       </div>
       <input class="launch-command" aria-label="CLI command" readonly spellcheck="false" placeholder="Preparing command…"/>
-      <div class="launch-actions"><button class="primary-button launch-terminal" disabled>Open Terminal ↗</button><button class="secondary-button launch-copy" disabled>Copy command</button></div>
+      <div class="launch-actions"><button class="primary-button launch-terminal" disabled>Open Terminal ${icon('arrow-up-right')}</button><button class="secondary-button launch-copy" disabled>Copy command ${icon('copy')}</button></div>
       <p class="launch-availability"></p>
     </section>
     <p class="launch-status" role="status"></p>`;
@@ -68,7 +69,8 @@ export function createSessionLauncher(onVisibility: () => void) {
   function renderPrepared(value: PreparedLaunch) {
     const name = HARNESSES.find((h) => h.id === select.value)?.name || sourceName(select.value);
     command.value = value.command; copyButton.disabled = false; terminal.disabled = !value.terminalAvailable;
-    terminal.textContent = `${value.mode === 'resume' ? 'Resume in' : 'Open in'} ${name} ↗`;
+    terminal.textContent = `${value.mode === 'resume' ? 'Resume in' : 'Open in'} ${name}`;
+    terminal.insertAdjacentHTML('beforeend', icon('arrow-up-right'));
     $('.launch-summary').hidden = false;
     $('.launch-mode').textContent = value.mode === 'resume' ? 'Resume original session' : 'New session · saved context';
     $('.launch-hint').textContent = value.mode === 'resume'

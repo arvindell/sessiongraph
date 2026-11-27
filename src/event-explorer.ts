@@ -1,3 +1,4 @@
+import { icon } from '@sessiongraph/core/icons';
 import { timelineColor, timelineLabel, type TimelineItem, type TimelinePage, type TimelineSummary } from '@sessiongraph/core/timeline';
 import type { Session } from '@sessiongraph/core/types';
 import { sourceName } from '@sessiongraph/core/sources';
@@ -11,7 +12,7 @@ const badge = (item: Pick<TimelineSummary, 'kind' | 'role'>) => `<span class="ev
 export function createEventExplorer(container: HTMLElement, client: TimelineClient, callbacks: { select: (item: TimelineItem | null) => void }) {
   const panel = document.createElement('aside');
   panel.className = 'event-panel glass'; panel.id = 'message-panel'; panel.hidden = true; panel.setAttribute('aria-labelledby', 'event-title');
-  panel.innerHTML = `<header class="event-heading"><h2 id="event-title">Messages</h2><button class="icon-button event-close" aria-label="Close message details">×</button></header>
+  panel.innerHTML = `<header class="event-heading"><h2 id="event-title">Messages</h2><button class="icon-button event-close" aria-label="Close message details">${icon('x')}</button></header>
     <div class="event-detail-nav"><button class="secondary-button" data-step="previous" aria-label="Previous message" title="Previous message (← / ↑)">← Previous</button><span class="event-position" role="status"></span><button class="secondary-button" data-step="next" aria-label="Next message" title="Next message (→ / ↓)">Next →</button></div>
     <div class="event-scroll"><article class="event-content" aria-label="Message details" tabindex="0"></article>
       <details class="event-browser"><summary>Browse messages <span class="event-count"></span></summary>
