@@ -4,6 +4,7 @@ import { galleryQuery, publicRoute, readGallery } from '../server/publications';
 import { explorePage } from '../server/explore-page';
 import { readFile } from 'node:fs/promises';
 import { HttpError, json } from '../server/security';
+import { errorResponse } from '../server/error-page';
 import type { Connect, ViteDevServer } from 'vite';
 import { DEFAULT_PUBLISHING, validatePublicGraph } from '@sessiongraph/core/public-graph';
 
@@ -52,7 +53,7 @@ export function mountPublicApi(server: ViteDevServer) {
         } else response = await publicRoute(request, db, path) ?? json({ error: 'Not found.' }, 404);
       }
     } catch (error) {
-      response = error instanceof HttpError ? json({ error: error.message }, error.status) : json({ error: 'Local public graph database unavailable. Run docker compose up -d --wait and pnpm --filter sessiongraph-site dev:setup.' }, 503);
+      response = errorResponse(new Request(`http://localhost${req.url}`), error);
     }
     res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(Buffer.from(await response.arrayBuffer()));
   };

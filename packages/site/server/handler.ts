@@ -7,6 +7,7 @@ import { PUBLIC_GRAPH_MAX_BYTES, validatePublicGraph } from '@sessiongraph/core/
 import { publicRoute } from './publications';
 import { publicationPreview } from './publication-preview';
 import { purgePublicCache } from './public-cache';
+import { errorResponse } from './error-page';
 
 async function limit(request: Request, db: DB, path: string) {
   // Vercel overwrites x-real-ip. Locally all callers intentionally share a bucket.
@@ -80,9 +81,7 @@ export async function handle(request: Request, provided?: DB): Promise<Response>
     }
     throw new HttpError(404, 'Not found.');
   } catch (error) {
-    if (error instanceof HttpError) return json({ error: error.message }, error.status);
-    if ((error as { code?: string }).code === 'P2002') return json({ error: 'That name or invitation already exists.' }, 409);
-    console.error('[sessiongraph-public]', error instanceof Error ? error.name : 'Unknown error');
-    return json({ error: 'The service is temporarily unavailable. Please try again.' }, 503);
+    if (!(error instanceof HttpError)) console.error('[sessiongraph-public]', error instanceof Error ? error.name : 'Unknown error', (error as { code?: string })?.code ?? '');
+    return errorResponse(request, error);
   }
 }

@@ -24,5 +24,5 @@ export async function explorePage(request: Request, result: GalleryResult, query
     template ??= readFile(new URL('../dist-api/explore.html', import.meta.url), 'utf8').catch(error => { template = undefined; throw error; });
     source = await template;
   }
-  return publicResponse(request, renderExplorePage(source, result, query), 'text/html; charset=utf-8', [galleryTag]);
+  return publicResponse(request, renderExplorePage(source, result, query), 'text/html; charset=utf-8', [galleryTag], { cache: !result.previewsPending });
 }

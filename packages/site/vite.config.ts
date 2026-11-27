@@ -59,7 +59,7 @@ export default defineConfig({
     async closeBundle() {
       await cp('assets', 'dist/assets', { recursive: true });
       await cp(resolve('../../public/sources'), 'dist/assets/sources', { recursive: true });
-      for (const file of ['main.js', 'style.css', 'robots.txt', 'sitemap.xml']) await copyFile(file, `dist/${file}`);
+      for (const file of ['main.js', 'style.css', 'error.css', 'robots.txt', 'sitemap.xml']) await copyFile(file, `dist/${file}`);
     },
   }],
   build: { rollupOptions: { input: { index: resolve('index.html'), account: resolve('account.html'), profile: resolve('profile.html'), explore: resolve('explore.html'), privacy: resolve('privacy.html'), notFound: resolve('404.html') }, output: { manualChunks: id => id.includes('/three/') || id.includes('/three@') ? 'three' : undefined } } },

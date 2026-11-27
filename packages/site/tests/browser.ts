@@ -26,6 +26,7 @@ const pool = new pg.Pool({ connectionString });
 const db = new PrismaClient({ adapter: new PrismaPg(pool, { schema: 'sessiongraph' }) });
 const browser = await chromium.launch({ channel: 'chromium', args: ['--use-angle=metal'] });
 let server: ReturnType<typeof createServer> | undefined;
+let databaseUnavailable = false;
 try {
   await pool.query('DROP SCHEMA IF EXISTS sessiongraph CASCADE');
   const migrations = new URL('../prisma/migrations/', import.meta.url);
@@ -78,10 +79,11 @@ try {
     const url = new URL(req.url!, 'http://localhost');
     try {
       if (url.pathname.startsWith('/api/') || url.pathname === '/explore') {
-        const response = await handle(new Request(url, { headers: { 'x-real-ip': 'browser-fixture' } }), db);
+        const response = await handle(new Request(url, { headers: { 'x-real-ip': 'browser-fixture' } }), databaseUnavailable
+          ? { rateLimit: { upsert: async () => { throw new Error('Database unavailable'); } } } as unknown as typeof db : db);
         res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(Buffer.from(await response.arrayBuffer())); return;
       }
-      const path = resolve(site, 'dist', `.${url.pathname === '/' ? '/index.html' : url.pathname}`);
+      const path = resolve(site, 'dist', `.${url.pathname === '/' ? '/index.html' : url.pathname.startsWith('/@') ? '/profile.html' : url.pathname}`);
       if (!path.startsWith(resolve(site, 'dist') + '/')) { res.writeHead(404).end(); return; }
       res.setHeader('Content-Type', mime[extname(path)] || 'application/octet-stream'); res.end(await readFile(path));
     } catch { res.writeHead(500).end('Fixture server failed'); }
@@ -143,8 +145,40 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'controls fit mobile');
   assert.deepEqual(errors, []);
+  await page.close();
+
+  const resilient = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+  const fallbackPage = await resilient.newPage();
+  await db.publicationPreview.delete({ where: { accountId: 'fixture-00' } });
+  const partial = await fallbackPage.goto(`${origin}/explore?q=person-00`);
+  assert.equal(partial!.status(), 200);
+  assert.equal(partial!.headers()['cache-control'], 'no-store');
+  assert.equal(await fallbackPage.locator('#graph-gallery .graph-card').count(), 1);
+  assert.match(await fallbackPage.locator('#graph-gallery').innerText(), /Open graph to explore/);
+  assert.equal(await fallbackPage.locator('#graph-gallery img').count(), 0);
+  databaseUnavailable = true;
+  const unavailable = await fallbackPage.goto(`${origin}/explore`);
+  assert.equal(unavailable!.status(), 503);
+  assert.equal(await fallbackPage.getByRole('heading', { name: 'Back in a moment.' }).count(), 1);
+  assert.equal(await fallbackPage.getByRole('link', { name: 'Try again' }).getAttribute('href'), '/explore');
+  assert.equal(await fallbackPage.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(8, 14, 19)');
+  assert.equal(await fallbackPage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  databaseUnavailable = false;
+  await fallbackPage.getByRole('link', { name: 'Try again' }).click();
+  assert.equal(await fallbackPage.locator('#graph-gallery .graph-card').count(), 12);
+  await resilient.close();
+
+  const profilePage = await browser.newPage();
+  await profilePage.route('**/assets/public-viewer-*.js', route => route.abort());
+  await profilePage.goto(`${origin}/@person-01`);
+  await profilePage.locator('#profile-notice').waitFor({ state: 'visible' });
+  assert.match(await profilePage.locator('#profile-summary').innerText(), /sessions/);
+  await profilePage.waitForFunction(() => (document.querySelector('#profile-preview') as HTMLImageElement)?.naturalWidth > 0);
+  assert.equal(await profilePage.locator('#profile-retry').isVisible(), true);
+  assert.equal(await profilePage.locator('#public-graph').isVisible(), false);
+  await profilePage.close();
   await writeFile(resolve(output, 'local.json'), JSON.stringify({ measuredAt: new Date().toISOString(), synthetic: true, publications: 18, sessionsPerPublication: '4000–4850', populatedMs, measurements }, null, 2));
-  console.log(`Verified server-rendered HTML, no-JS search, pagination, global search/sorts, cancellation, and mobile layout. Local populated page: ${populatedMs.toFixed(1)} ms.`);
+  console.log(`Verified server-rendered HTML, no-JS search, pagination, global search/sorts, cancellation, mobile layout, branded outage recovery, missing previews, and renderer failure. Local populated page: ${populatedMs.toFixed(1)} ms.`);
 } finally {
   await browser.close();
   if (server) await new Promise<void>(done => { server!.closeAllConnections(); server!.close(() => done()); });

@@ -68,18 +68,20 @@ The schema uses DSQL-compatible UUIDs and application-managed relationships. Mut
 
 Publishing computes counts and a bounded SVG thumbnail once and stores them in `PublicationPreview`, atomically with the graph. Gallery queries read scalar metadata, apply username substring search and a global sort, then paginate. Unknown/hidden token totals remain null and sort last. Thumbnails read the stored SVG without decompressing or laying out the graph.
 
-Public HTML, JSON, and SVG responses are cached on Vercel for five minutes and tagged by gallery/profile. Browsers must revalidate; intermediary CDNs are not allowed to cache these snapshots. Publish, unpublish, and GitHub username changes await foreground tag eviction. There is no stale-while-revalidate window for revoked snapshots. Errors and authenticated account data remain uncached. Cache tags and their actual regional eviction must be verified in a deployment.
+Public HTML, JSON, and SVG responses are cached on Vercel for five minutes and tagged by gallery/profile. Browsers must revalidate; intermediary CDNs are not allowed to cache these snapshots. Publish, unpublish, and GitHub username changes await the foreground tag-eviction request. No stale-while-revalidate grace period is configured, but Vercel's asynchronous edge propagation can briefly serve the previous response after a successful mutation; the purge acknowledgement is not a global consistency barrier. Errors and authenticated account data remain uncached. Cache tags and their actual regional eviction must be verified in a deployment.
+
+Page-route failures return a minimal branded HTML response with the correct error status and a recovery link, independent of the database and compiled page template. API failures remain JSON. Missing/stale previews or an unavailable preview table fall back to current publication links with unknown statistics omitted; these responses are not cached. Unknown counts sort last. Thumbnails fall back to an inert placeholder only after confirming the graph is still published. A failed interactive renderer leaves a profile's summary and static thumbnail available.
 
 ### Existing-publication migration
 
-Apply `202611270001_publication_previews`, wait for its indexes, and backfill **before routing traffic to this version**:
+Apply `202611270001_publication_previews`, wait for its indexes, grant the runtime database role `SELECT, INSERT, UPDATE, DELETE` on the new table, and backfill **before routing traffic to this version**:
 
 ```sh
 pnpm --filter sessiongraph-site generate
 pnpm --filter sessiongraph-site db:backfill-publications
 ```
 
-Run the command in the existing server-side database environment. It uses bounded batches, preserves original publication timestamps, and does not overwrite newer derived records. Quiesce publication writes during the cutover, or repeat the backfill after old application instances drain. Gallery/thumbnail reads require a matching derived record; an incomplete backfill would omit those publications. The local `dev:setup` command also applies this additive migration and backfills existing public snapshots.
+Run the command in the existing server-side database environment. It uses bounded batches, preserves original publication timestamps, and does not overwrite newer derived records. Quiesce publication writes during the cutover, or repeat the backfill after old application instances drain. Reads tolerate incomplete derived data, but uploads still require the preview table so each acknowledged upload has matching statistics and a thumbnail saved atomically. The local `dev:setup` command also applies this additive migration and backfills existing public snapshots.
 
 The build moves the compiled Explore template into `dist-api/explore.html`, which is explicitly included in the Function bundle. Do not restore a public `dist/explore.html` that could shadow the dynamic route.
 

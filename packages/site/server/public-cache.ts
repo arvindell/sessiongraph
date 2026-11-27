@@ -5,13 +5,13 @@ export const galleryTag = 'public-gallery';
 export const profileTag = (username: string) => `public-profile:${username.toLowerCase()}`;
 
 /** Browsers must revalidate; only Vercel may reuse these revocable public snapshots. */
-export function publicResponse(request: Request, body: string, type: string, tags: string[]) {
+export function publicResponse(request: Request, body: string, type: string, tags: string[], { cache = true } = {}) {
   const etag = `"${digest(body)}"`;
   const headers = {
     'Content-Type': type,
-    'Cache-Control': 'public, max-age=0, must-revalidate',
+    'Cache-Control': cache ? 'public, max-age=0, must-revalidate' : 'no-store',
     'CDN-Cache-Control': 'no-store',
-    'Vercel-CDN-Cache-Control': 'public, max-age=300',
+    'Vercel-CDN-Cache-Control': cache ? 'public, max-age=300' : 'no-store',
     'Vercel-Cache-Tag': tags.join(','),
     'X-Content-Type-Options': 'nosniff',
     ETag: etag,
@@ -24,6 +24,7 @@ export function publicResponse(request: Request, body: string, type: string, tag
 export async function purgePublicCache(usernames: string[], remove = dangerouslyDeleteByTag) {
   if (process.env.VERCEL !== '1') return;
   // Unpublish, field removal, and username reuse must not serve stale responses.
-  // Await foreground eviction before acknowledging the mutation, rather than SWR.
+  // Await the foreground eviction request, rather than using SWR. Vercel's
+  // edge propagation is asynchronous; this is not a global consistency barrier.
   await remove([galleryTag, ...new Set(usernames.map(profileTag))], { revalidationDeadlineSeconds: 0 });
 }
