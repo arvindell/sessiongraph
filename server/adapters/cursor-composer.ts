@@ -44,7 +44,7 @@ export function discoverComposers(path: string, workspace = '') {
           sessions.push({ session, revision: digest([2, snapshot, table, nativeID]), locator: { path, kind: 'composer', table, snapshot, nativeID, children: JSON.stringify(children) } });
         } catch { failed++; }
       }
-      if (failed) warnings.push(`${failed} legacy Cursor Composer records were unreadable or oversized; saved imports are retained.`);
+      if (failed) warnings.push(`Cursor Composer: Skipped ${failed} unreadable or oversized ${failed === 1 ? 'record' : 'records'}.`);
     }
     const parents = new Map<string, Set<string>>();
     for (const c of sessions) for (const id of JSON.parse(c.locator.children)) {
@@ -86,7 +86,7 @@ export function readComposer(candidate: Candidate) {
         if (message) messages.push(message);
       } catch { partial = true; }
     }
-    if (!messages.length) throw new Error('Composer has no readable message bodies; saved imports are retained.');
-    return { messages, partial: true, note: `Legacy Cursor Composer conversation order and native bubble IDs. Original creation dates are preserved; absent message timestamps remain unknown. Tool internals, attachments, encrypted bodies, and file snapshots are unavailable.${partial ? ' Some missing, unsupported, or bounded bubbles were omitted.' : ''}` };
+    if (!messages.length) throw new Error('Composer has no readable messages.');
+    return { messages, partial: true, note: partial ? 'Some Composer messages were skipped.' : 'Composer conversation text only.' };
   }, snapshot);
 }

@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, cp, access } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
 import { promisify } from 'node:util';
 import { build } from 'esbuild';
 import { SessionGraphStore } from '../server/store';
@@ -11,6 +12,8 @@ import { LibraryService } from '../server/library-service';
 import { Importer } from '../server/importer';
 import { blankMessage, blankSession } from '../server/adapters/common';
 import { codexAdapter } from '../server/adapters/codex';
+import { createCursorAdapter } from '../server/adapters/cursor';
+import { databaseHarnessAdapters } from '../server/adapters/harness-databases';
 import { claudeAdapter } from '../server/adapters/claude';
 import { qwenAdapter } from '../server/adapters/qwen';
 import { resumeArgs } from '../src/launch-links';
@@ -76,10 +79,10 @@ test('CLI help and generated docs are concise while JSON retains command schemas
   assert.doesNotMatch(docs.data.markdown, boilerplate);
 });
 
-async function fixtureCli(path: string, args: string[]) {
+async function fixtureCli(path: string, args: string[], sources = [adapter('codex')]) {
   let out = '', err = '';
   const code = await runCli(args, { stdout: s => out += s, stderr: s => err += s,
-    openLibrary: () => new LibraryService(new SessionGraphStore(path), [adapter('codex')]) });
+    openLibrary: () => new LibraryService(new SessionGraphStore(path), sources) });
   return { code, out, err };
 }
 
@@ -105,6 +108,71 @@ test('CLI source output gives next steps for setup and retention details for rem
   const retained = await fixtureCli(path, ['show', 'codex:retained', '--json']);
   assert.equal(retained.code, 0);
   assert.equal(JSON.parse(retained.out).data.id, 'codex:retained');
+});
+
+test('clean Codex and Cursor sync is quiet and empty Hermes sessions preserve saved history', async t => {
+  const dir = await directory(t), path = join(dir, 'library.sqlite'), codex = join(dir, 'codex'), cursor = join(dir, 'cursor'), hermes = join(dir, 'hermes');
+  await mkdir(join(codex, 'sessions'), { recursive: true });
+  await mkdir(join(cursor, 'projects', 'project', 'agent-transcripts'), { recursive: true });
+  await mkdir(hermes);
+  const timestamp = new Date(at).toISOString(), sourceDb = join(hermes, 'state.db');
+  await writeFile(join(codex, 'sessions', 'session.jsonl'), [
+    { type: 'session_meta', timestamp, payload: { id: 'codex-fixture', cwd: dir } },
+    { type: 'response_item', timestamp, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Codex prompt' }] } },
+  ].map(row => JSON.stringify(row)).join('\n') + '\n');
+  await writeFile(join(cursor, 'projects', 'project', 'agent-transcripts', 'cursor-fixture.jsonl'), JSON.stringify({ role: 'user', content: 'Cursor prompt', timestamp }) + '\n');
+  function writeHermes(update: (db: DatabaseSync) => void) {
+    const db = new DatabaseSync(sourceDb);
+    try { update(db); } finally { db.close(); }
+  }
+  writeHermes(db => {
+    db.exec(`CREATE TABLE sessions(id TEXT, started_at REAL);
+      CREATE TABLE messages(id INTEGER, session_id TEXT, role TEXT, content TEXT, timestamp REAL);`);
+    db.prepare('INSERT INTO sessions VALUES (?, ?)').run('hermes-fixture', at / 1000);
+    db.prepare('INSERT INTO messages VALUES (?, ?, ?, ?, ?)').run(1, 'hermes-fixture', 'user', 'Hermes prompt', at / 1000);
+  });
+  const adapters = [codexAdapter, createCursorAdapter({ home: cursor, userData: cursor }), databaseHarnessAdapters.find(source => source.id === 'hermes')!];
+  assert.equal((await fixtureCli(path, ['sources', 'setup', 'codex', '--path', codex], adapters)).code, 0);
+  assert.equal((await fixtureCli(path, ['sources', 'setup', 'cursor'], adapters)).code, 0);
+  assert.equal((await fixtureCli(path, ['sources', 'setup', 'hermes', '--path', hermes], adapters)).code, 0);
+  assert.deepEqual(await fixtureCli(path, ['sync'], adapters), {
+    code: 0, out: 'Imported 3; unchanged 0; failed 0; discovered 3.\n', err: 'Syncing local sources…\n',
+  });
+  writeHermes(db => db.exec('DELETE FROM messages'));
+  assert.deepEqual(await fixtureCli(path, ['sync'], adapters), {
+    code: 0, out: 'Imported 0; unchanged 2; failed 0; discovered 2.\n', err: 'Syncing local sources…\n',
+  });
+  const doctor = await fixtureCli(path, ['doctor'], adapters);
+  assert.equal(doctor.code, 0);
+  assert.match(doctor.out, /codex\tok\tAvailable/);
+  assert.doesNotMatch(doctor.out, /Run sessiongraph sync/);
+  const saved = await fixtureCli(path, ['messages', 'hermes:hermes-fixture'], adapters);
+  assert.match(saved.out, /Hermes prompt/);
+});
+
+test('sync deduplicates diagnostics and distinguishes coverage warnings from source failures', async t => {
+  const dir = await directory(t), path = join(dir, 'library.sqlite'), source = adapter('codex');
+  const warning = 'Codex: Transcript listing limited.', error = 'Codex: Could not read history.';
+  let errors: string[] = [];
+  source.discover = async () => ({ sessions: [], projects: [], warnings: [warning, warning], errors });
+  assert.equal((await fixtureCli(path, ['sources', 'setup', 'codex'], [source])).code, 0);
+  assert.deepEqual(await fixtureCli(path, ['sync'], [source]), {
+    code: 0, out: `Imported 0; unchanged 0; failed 0; discovered 0.\nWarning: ${warning}\n`, err: 'Syncing local sources…\n',
+  });
+  assert.equal((await fixtureCli(path, ['doctor'], [source])).code, 0);
+  errors = [error, error];
+  const failed = await fixtureCli(path, ['sync', '--json'], [source]);
+  assert.equal(failed.code, 1); assert.equal(failed.err, '');
+  const { data } = JSON.parse(failed.out);
+  assert.equal(data.failed, 1);
+  assert.deepEqual(data.errors, [error]);
+  assert.deepEqual(data.warnings, [warning]);
+  const doctor = await fixtureCli(path, ['doctor'], [source]);
+  assert.equal(doctor.code, 1);
+  assert.match(doctor.out, /codex\tfailed\tCodex: Could not read history\./);
+  errors = [];
+  assert.equal((await fixtureCli(path, ['sync'], [source])).code, 0);
+  assert.equal((await fixtureCli(path, ['doctor'], [source])).code, 0);
 });
 
 test('CLI keeps coverage and lifetime usage notes without repeating search guidance on complete results', async t => {

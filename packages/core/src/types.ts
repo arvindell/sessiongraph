@@ -3,6 +3,8 @@ export interface Session {
   nativeID?: string;
   nativeResume?: boolean;
   revision?: string;
+  /** Version of normalized import metadata; source revisions alone cannot detect parser upgrades. */
+  importVersion?: number;
   commits?: import('./commits').CommitIndex;
   coverage?: { history: 'complete' | 'partial' | 'pending'; note?: string; importedAt?: number };
   id: string;
@@ -13,6 +15,8 @@ export interface Session {
   /** Explicit provider-native conversations recorded as part of this app thread. */
   linkedSessionIDs?: string[];
   directory: string;
+  /** Verified against local Git metadata; never part of a public graph. */
+  checkout?: { worktree: string; repository: string; repositoryLabel: string };
   created: number;
   updated: number;
   activity?: { firstMessageAt: number | null; lastMessageAt: number | null; userMessages: number; untimedUserMessages: number };
@@ -22,6 +26,7 @@ export interface Session {
   agent: string;
   cost: number | null;
   tokens: number | null;
+  usage?: import('./usage').SessionUsage;
   outcome?: string;
 }
 
@@ -96,6 +101,7 @@ export interface ImportStatus {
   unchanged: number;
   failed: number;
   errors: string[];
+  warnings?: string[];
 }
 
 export interface GraphNode {

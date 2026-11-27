@@ -60,6 +60,7 @@ const sources: Record<string, { name: string; icon: string }> = {
   'antigravity-cli': { name: 'Antigravity CLI', icon: 'antigravity' },
   'antigravity-extension': { name: 'Antigravity IDE Extension', icon: 'antigravity' },
 };
+export const sourceCatalog = () => Object.entries(sources).map(([id, source]) => ({ id, ...source }));
 export const sourceName = (id?: string) => sources[id || 'opencode']?.name || id || 'Unknown';
 export const isKnownSource = (id: unknown): id is string => typeof id === 'string' && Object.hasOwn(sources, id);
 export const sourceIcon = (id?: string) => {

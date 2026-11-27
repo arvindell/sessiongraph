@@ -75,7 +75,7 @@ Session identity, title, source, recorded creation/update dates, and available m
 
 | Harness | Native evidence available | Current treatment |
 | --- | --- | --- |
-| OpenCode V2 | ✅ shell input/result, optional exit/truncation metadata and explicit workdir; ✅ location-switch events | Preserve execution metadata and index conservative confirmed Git operations. Directory moves remain generic events, not a normalized location history. |
+| OpenCode V2 | ✅ shell input/result, optional exit/truncation metadata and explicit workdir; ✅ location-switch events | Preserve execution metadata and index conservative confirmed Git operations. Directory moves are retained as events and normalized location details. |
 | Claude Code | ✅ Bash calls/results and envelope cwd; ⚠️ SDK declares `gitOperation.commit`; ⚠️ recorded `gitBranch` | Correlate calls/results across the full import. Enrich the SDK-visible UUID chain from raw envelopes; accept validated native commit results when present. Native Git persistence is contract/fixture-tested, not confirmed by the small audited live sample. Branch observations are not indexed. |
 | Codex | ✅ tool calls/results; ⚠️ turn cwd; ⚠️ header `git.commit_hash`, branch and repository URL | Preserve execution cwd and parse recognized result envelopes. Starting HEAD is never creation evidence; header Git observations are not indexed. |
 | T3 Code | ✅ V2 command input/output/status; ⚠️ exit code/native call ID/per-call cwd; ✅ thread branch/worktree and separate checkpoint records | Preserve execution metadata. Commands need explicit execution context or absolute `cd` / `git -C`; the thread's latest directory is not substituted. Branch/checkpoint data remains outside this lean index. |
@@ -85,6 +85,72 @@ Session identity, title, source, recorded creation/update dates, and available m
 The index stores only **created**, **amended**, and **cherry-picked** actions with saved execution evidence. Pushes, `git log`, starting HEADs, chat claims, and internal harness checkpoints are excluded. A commit creator need not be the author of every included change. The parser accepts a deliberately small shell grammar: direct Git operations, optional `cd` / `git -C`, and `&&` chains of add/commit/push. Scripts, substitutions, heredocs, pipelines, redirects, ambiguous output, and missing/truncated evidence remain partial. Full SHAs stay full; abbreviated SHAs stay abbreviated. No Git command, repository scan, or network enrichment runs during import or reads.
 
 `session.commits` reports `pending`, `indexed`, `partial`, or `unavailable`, extraction version, recorded count (nullable), and explanatory coverage. `indexed` means the supported extraction completed on the available records—not a complete audit of all real-world commits. Upgraded libraries start pending and refresh even when source revisions are unchanged. Failed refreshes retain the previous index. T3 and linked provider histories keep separate attribution; they are not summed or silently merged. See [commit history](guide.md#recorded-commit-history) for the UI/API and [CLI reference](cli.md).
+
+## Recorded usage and metadata audit
+
+Audit date: **2026-11-27**. This is a code/schema and synthetic-fixture audit, not a claim that every installed harness version has been tested against live history. References are the pinned [Tokscale format parsers](https://github.com/junhoyeo/tokscale/tree/8d9b509c4d719f3385e3c2464b770dc5257cb354/crates/tokscale-core/src/sessions), the [OpenCode V2 API](https://opencode.ai/docs/api), and its [OpenAPI schema](https://opencode.ai/docs/openapi.json).
+
+### Usage now retained
+
+Recorded totals are available to playback and node sizing for **every source**, not an OpenCode/Continue allowlist. Availability still depends on the actual input:
+
+| Input family | Decoded usage | Important limits |
+| --- | --- | --- |
+| OpenCode V2 | Session and assistant input/output/cache/reasoning and native cost | Uses the authenticated read API only. Reasoning is not added twice. |
+| Claude Code | Raw assistant-envelope usage, including retained records outside the SDK-visible chain | Native response IDs deduplicate repeated envelopes. Separately attributed subagents are excluded from the parent. No USD cost is calculated from pricing tables. |
+| Codex | Latest recorded cumulative `total_token_usage`, plus response usage when present | Cumulative snapshots are not summed. Usage-only clocks do not extend conversation activity. Earlier totals are marked partial if the latest parsed snapshot has only a breakdown. |
+| Gemini / Qwen | Recorded native totals, cached input, thoughts/reasoning and tool-token counters | Late Gemini patches are retained. Qwen zero-total placeholders remain unknown; provider-dependent overlaps are not guessed. |
+| Pi and Pi-compatible sources | Assistant input/output/cache and native totals; saved cost with estimate provenance | Includes Prime, Oh My Pi, Senpi, Kimchi, Gajae, OpenClaw exports and Pi-format Proma. |
+| Claude-envelope clients | Recognized structured assistant usage | Droid, Cherry Studio agent mode, Command Code, ZCode legacy, CodeBuddy, WorkBuddy, Aside and legacy Proma; this does not add unsupported databases or log variants. |
+| Cline extension / CLI-SDK | UI request billing rows or SDK message metrics | UI rows remain session aggregates, not extra turns. SDK gross input already includes caches. |
+| Roo / Kilo extensions | UI request breakdowns and cost; explicit totals or unambiguous zero-cache totals | Historical nonzero-cache overlap is ambiguous. Such breakdowns are retained without inventing a total. |
+| Continue | Session prompt/completion breakdown and recorded cost; recognized message usage | Session totals take precedence over message sums. |
+| Copilot Chat | Saved request prompt/output counts and resolved model | Separate Copilot CLI billing/telemetry reconciliation is not implemented. |
+| Amp / Jcode | Structured per-message usage | Amp credits are not USD; the usage ledger is not merged. Jcode journals replace repeated native message IDs with their corrected records. |
+| Hermes | Per-model aggregates, falling back to session counters; native or estimated cost | Per-model and session totals are never added together. Available session cost can fill absent per-model cost. Per-model identity breakdowns are not exposed separately. |
+| Goose / Vibe | Accumulated lifetime counters or saved session statistics | Goose current-context counters are a partial fallback, not extra lifetime usage. |
+| Zed | Cumulative thread usage, with request-usage fallback | Remains session-level; message clocks are not manufactured. |
+| Unsloth | Message `contextUsage` and response-specific model/provider | Content-free API usage and training metrics are excluded. |
+| Kilo CLI / MiMo Code / MiMo desktop | Structured native message tokens and cost | Separate extension Kilo data is not combined. Part-only usage variants are not reconstructed. |
+| Mux / Fx | Session usage sidecar or snapshot | Sidecar-only changes trigger refresh. Fx still has no conversation messages. |
+| Cursor / T3 and other generic message readers | Recognized structured usage on imported message bodies, when present | Not a guarantee of native usage support. Cursor Composer's text projection and T3 provider bindings do not supply missing counters. Linked provider totals are not copied into T3. |
+
+`Session.usage` retains a breakdown, source (`session`, `messages`, or `unavailable`), partial flag, and reported/missing-message counts. Session aggregates have no message attribution; their message counts are zero. API-facing saved messages retain their own usage and bounded metadata.
+
+- Missing or invalid counters stay `null`; real zero stays zero. Totals must be nonnegative safe integers; overflow remains unknown.
+- Cache and reasoning buckets may overlap input/output. Consumers must use `total`, not blindly add all fields. Native totals take precedence.
+- Message-based totals with missing reports or partial history are labeled partial. A native session total can be available even when conversation history is incomplete. A complete total does not imply a complete breakdown or complete cost coverage.
+- Usage deduplicates only within one session using recorded API/message identities, never equal text. Forked, child, and linked-provider histories retain separate attribution; this is not an account-level billing ledger.
+- Costs are imported, not recomputed. Known harness estimates are labeled; “recorded cost” is not a verified invoice amount. Incomplete cost sums remain unknown unless a session cost is available.
+- The importer metadata version forces a one-time re-read of unchanged selected sources on their next refresh. Usage, messages, events, coverage and search invalidation commit together. A failed refresh retains the previous saved snapshot.
+
+### Other dropped data recovered in this change
+
+- Bounded per-message model/provider/agent, stop/native-finish reason, recorded cwd, and explicit or recorded-clock duration/first-token timing where the adapter supplies them. Session-latest cwd/model is not backfilled into earlier messages.
+- Gemini late token/model/thought/timestamp patches and tool-result status updates.
+- OpenCode recorded directory changes in session details, in addition to their timeline events.
+- OpenClaw SQLite non-message events, including retained compaction summaries and native event-parent links. Those links do not establish session ancestry.
+
+These new private metadata fields are not added to anonymous graph or video payloads. They are deliberately allowlisted; importing a whole raw metadata envelope could copy credentials or large binary payloads.
+
+### Remaining completeness gaps
+
+The following are importer limitations or unresolved schema questions, **not** proof the harness lacks the data. They are not closed by adding usage:
+
+| Priority / area | What is still missing | Safe follow-up |
+| --- | --- | --- |
+| High: conversation trees | Claude conversation text still follows the SDK-visible chain; alternate retained chains are not exposed. Compacted/deleted context cannot always be recovered. Pi retains its tree as events, not a branch-switching UI. | Preserve native message-parent edges and explicitly represent alternate chains; do not flatten them into invented sequential turns. |
+| High: native tool variants | Cursor Composer imports text/thoughts, not full tool executions. ACP, Junie, Augment, Kiro and several IR/block variants retain only partial event content. | Add versioned fixtures for native calls, results, errors and cancellation; correlate by call IDs, not proximity. |
+| High: attachments | Images, audio, documents, attachment references, MIME/size metadata and embedded resources lack a shared attachment model. Unsupported blocks may have only a placeholder. | Import bounded descriptors first; keep payloads lazy and local. Do not follow remote URLs, fetch linked files, or include them in sharing by default. |
+| High: file evidence | Most extra harnesses have no confirmed-change extraction. Even supported sources usually keep paths/step counts, not full diffs, rename/delete semantics, line statistics, or before/after content. | Decode authoritative snapshots or successful native results, preserving origin and partial coverage. Never turn reads or proposed edits into changes. |
+| High: usage side channels | Amp ledger-only calls; Kimi wire usage; Copilot CLI telemetry/billing; Antigravity usage cache counters; billing-only DeepSeek/OpenCodeReview records and other captured ledgers remain unnormalized. | Establish native request/session keys and overlap rules first. Keep credits, context-size estimates, and USD separate; do not synthesize messages or apportion totals over turns. |
+| Medium: execution context | Permissions, sandbox/approval mode, context windows, model settings, per-turn environment, tool timing and retries are not normalized consistently. | Add explicit bounded fields with recorded provenance. Do not import credentials, environment dumps, or assume the final cwd applies throughout. |
+| Medium: outcomes and workflow | Native interruption/error/completion events often survive only as timeline events. Session outcome, plans/todos, approvals and checkpoints lack a common model across adapters. | Normalize only explicit native state and keep checkpoint state distinct from user-created Git commits. |
+| Medium: Git observations | Branch/repository/start-HEAD observations and richer Git metadata remain outside the conservative commit index. Most harnesses have no validated commit extractor. | Retain observations separately from commit-creation evidence; extend confirmed execution fixtures. |
+| Medium: alternate stores | Kimi Work desktop; WorkBuddy SQLite; CodeBuddy extension logs; ZCode v2 usage DB; legacy Kiro IDE snapshots; Proma index/journal reconciliation; opaque Antigravity protobuf conversation bodies remain unsupported. | Add read-only, bounded native adapters with explicit representation precedence, rather than silently mixing stale exports. |
+| Ongoing: schema drift and bounds | Historical producer versions, unknown blocks, missing timestamps, encrypted reasoning and records above import limits can remain incomplete. | Keep omissions visible, add real redacted regression fixtures, and bump the import metadata version whenever normalized extraction changes. |
+
+Coverage is tested in `tests/usage.test.ts` alongside the per-adapter, import-retention, timeline, and privacy suites. No live user library is refreshed by those fixtures.
 
 ## Local conversation formats
 
@@ -97,7 +163,7 @@ Paths below use `~` for the user's home. XDG data/config locations respect their
 | `senpi` / Senpi / OmO Native | `~/.senpi/agent/sessions/`, `~/.omo/agent/sessions/` | Pi-format entries. Project-local task children need an explicit history directory override. |
 | `kimchi` / Kimchi | `~/.config/kimchi/harness/sessions/` | Pi-format entries. |
 | `gajae` / Gajae-Code | `~/.gjc/agent/sessions/`, XDG `gjc/sessions/` | Pi-format entries. |
-| `openclaw` / OpenClaw | `~/.openclaw/agents/*/{sessions/,agent/openclaw-agent.sqlite}`; `.clawdbot`, `.moltbot`, `.moldbot` equivalents | SQLite transcript events take precedence over overlapping JSONL/zstd exports. Rollover and event-parent links do not imply ancestry. Non-message SQLite events are currently omitted. |
+| `openclaw` / OpenClaw | `~/.openclaw/agents/*/{sessions/,agent/openclaw-agent.sqlite}`; `.clawdbot`, `.moltbot`, `.moldbot` equivalents | SQLite transcript events take precedence over overlapping JSONL/zstd exports. Non-message events and summaries are retained. Rollover and event-parent links do not imply ancestry. |
 | `hermes` / Hermes Agent | `~/.hermes/state.db`, `profiles/*/state.db` | Native messages and retained summaries. Structured content uses Hermes's explicit NUL + `json:` marker; ordinary JSON-looking text stays text. Only `source=subagent` establishes a child link; `_branched_from` establishes a fork. Compression/reset parents are not ancestry. |
 | `amp` / Amp | XDG `amp/threads/`, Tokscale `amp-cache/threads/` | Local/exported thread messages. No sync is invoked. Usage-ledger times are not assigned to prompts. |
 | `droid` / Factory Droid | `~/.factory/sessions/` | Saved conversation envelopes; excludes usage apportionment. |
@@ -124,7 +190,7 @@ Paths below use `~` for the user's home. XDG data/config locations respect their
 | `mimo-code`, `mimo-desktop` / MiMo Code, Xiaomi MiMo AI | XDG `mimocode/mimocode.db` | Native session/message/part tables. `session.version` starting `desktop-` selects desktop; shared records count once. |
 | `unsloth` / Unsloth Studio | `~/.unsloth/studio/studio.db` | Chat threads and content, including explicit thread forks. Content-free API usage and training metrics are excluded. |
 | `kiro` / Kiro | `~/.kiro/sessions/`; application/XDG `kiro-cli/data.sqlite3` | CLI header/JSONL, IDE `sess_*/session.json` plus messages, and `conversations_v2` tagged turns. Legacy IDE execution/chat snapshots are not yet decoded. |
-| `mux` / Mux | `~/.mux/sessions/*/{chat-archive.jsonl,chat.jsonl}` | Durable archive followed by active chat, deduplicated by message ID. In-flight partials and workspace ancestry are unavailable. |
+| `mux` / Mux | `~/.mux/sessions/*/{chat-archive.jsonl,chat.jsonl,session-usage.json}` | Durable archive followed by active chat, deduplicated by message ID, plus session usage. In-flight partials and workspace ancestry are unavailable. |
 | `minimax-code` / MiniMax Code | Tokscale `headless/mcode/*.jsonl` | Previously captured messages with one explicit session identity. Capture-only usage without message content is not imported. No harness command is executed. |
 
 ## Partial event and metadata formats

@@ -18,7 +18,7 @@
     <link rel="canonical" href="https://sessiongraph.ai/">
     <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
-    <link rel="preload" href="/assets/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/assets/katagami-sans.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/style.css">
     <script type="module" src="/main.js"></script>
   </head>
@@ -33,7 +33,7 @@
         </a>
         <nav aria-label="Main navigation">
           <a class="github-link" href="https://github.com/arvindell/sessiongraph"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .75a11.25 11.25 0 0 0-3.56 21.92c.56.1.77-.24.77-.54v-2.09c-3.13.68-3.79-1.33-3.79-1.33-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.69.08-.69 1.13.08 1.72 1.16 1.72 1.16 1 .1 1.73 2.22 3.3 1.24.1-.73.39-1.24.71-1.52-2.5-.28-5.13-1.25-5.13-5.56 0-1.23.44-2.23 1.16-3.02-.12-.29-.5-1.43.11-2.98 0 0 .94-.3 3.09 1.15a10.77 10.77 0 0 1 5.62 0c2.15-1.46 3.09-1.15 3.09-1.15.61 1.55.23 2.69.11 2.98a4.35 4.35 0 0 1 1.16 3.02c0 4.32-2.64 5.27-5.15 5.55.4.35.76 1.03.76 2.08v2.81c0 .3.2.65.77.54A11.25 11.25 0 0 0 12 .75Z"/></svg>GitHub <span aria-hidden="true">↗</span></a>
-          <a href="/account">Sign in</a>
+          <a href="/explore">Explore</a>
           <a class="nav-download" href="#download"><code>npx sessiongraph</code> <span aria-hidden="true">↓</span></a>
         </nav>
       </header>
@@ -62,35 +62,22 @@
         </section>
 
         <section class="sources" aria-labelledby="sources-title">
-          <h2 id="sources-title">Supports 55 coding agents</h2>
+          <h2 id="sources-title">Supported sources</h2>
           <ul class="source-list">
-            <li><img src="/assets/sources/opencode.svg" alt="" width="32" height="32" loading="lazy">OpenCode</li>
-            <li><img src="/assets/sources/claude.svg" alt="" width="32" height="32" loading="lazy">Claude Code</li>
-            <li><img src="/assets/sources/openai.svg" alt="" width="32" height="32" loading="lazy">Codex</li>
-            <li><img src="/assets/sources/cursor.svg" alt="" width="32" height="32" loading="lazy">Cursor</li>
-            <li><img src="/assets/sources/gemini.svg" alt="" width="32" height="32" loading="lazy">Gemini CLI</li>
-            <li><img src="/assets/sources/copilot.svg" alt="" width="32" height="32" loading="lazy">GitHub Copilot</li>
-            <li><img src="/assets/sources/cline.svg" alt="" width="32" height="32" loading="lazy">Cline</li>
-            <li><img src="/assets/sources/roo.svg" alt="" width="32" height="32" loading="lazy">Roo Code</li>
-            <li><img src="/assets/sources/kilo.svg" alt="" width="32" height="32" loading="lazy">Kilo Code</li>
-            <li><img src="/assets/sources/continue.svg" alt="" width="32" height="32" loading="lazy">Continue</li>
-            <li><img src="/assets/sources/pi.svg" alt="" width="32" height="32" loading="lazy">Pi</li>
-            <li><img src="/assets/sources/amp.svg" alt="" width="32" height="32" loading="lazy">Amp</li>
+            <!-- featured-sources -->
           </ul>
+          <details class="more-sources">
+            <summary aria-label="All supported sources"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+            <ul class="source-list">
+              <!-- more-sources -->
+            </ul>
+          </details>
           <a class="text-link" href="https://github.com/arvindell/sessiongraph/blob/main/docs/import-coverage.md">All sources &amp; coverage <span aria-hidden="true">↗</span></a>
         </section>
 
-        <aside class="local-note" aria-label="Privacy">
-          <p>Your sessions stay on your computer.<br>Public profiles are optional. You choose what to share.</p>
-          <a class="text-link" href="/privacy">Privacy policy <span aria-hidden="true">→</span></a>
-        </aside>
-
         <section class="downloads" id="download" aria-labelledby="download-title">
-          <div class="download-heading">
-            <h2 id="download-title">Explore your own history</h2>
-            <a class="text-link" href="https://github.com/arvindell/sessiongraph/releases/latest">Release notes <span aria-hidden="true">↗</span></a>
-          </div>
-          <div class="install-primary"><div><h3>Start with one command</h3><p>Open SessionGraph locally from your terminal.</p></div><div class="command-box"><span class="command-prompt" aria-hidden="true">$</span><code>npx sessiongraph</code><button type="button" data-copy-command aria-label="Copy npx sessiongraph"><svg data-copy-icon viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="1.5" stroke="currentColor"/><path d="M12 7V4.5A1.5 1.5 0 0 0 10.5 3h-6A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7" stroke="currentColor"/></svg><span class="command-copy-hint" aria-hidden="true">Copy command</span></button></div></div>
+          <h2 id="download-title">Create your graph</h2>
+          <div class="install-primary"><p>Open SessionGraph locally from your terminal.</p><div class="command-box"><span class="command-prompt" aria-hidden="true">$</span><code>npx sessiongraph</code><button type="button" data-copy-command aria-label="Copy npx sessiongraph"><svg data-copy-icon viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="1.5" stroke="currentColor"/><path d="M12 7V4.5A1.5 1.5 0 0 0 10.5 3h-6A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7" stroke="currentColor"/></svg><span class="command-copy-hint" aria-hidden="true">Copy command</span></button></div></div>
           <p id="copy-status" class="sr-only" role="status"></p>
           <div class="installer-options"><p class="installer-label">Prefer installer?</p><div class="platforms">
             <div class="platform">
@@ -117,8 +104,8 @@
 
       <footer class="footer">
         <a class="brand footer-brand" href="/" aria-label="SessionGraph home"><img src="/assets/brand/mark.svg" width="28" height="28" alt="">SessionGraph</a>
-        <p>Free &amp; open source.</p>
-        <div><a href="https://github.com/arvindell/sessiongraph/blob/main/docs/guide.md">Docs</a><a href="/privacy">Privacy</a><a href="https://github.com/arvindell/sessiongraph/issues">Feedback <span aria-hidden="true">↗</span></a></div>
+        <p>Visualize your coding agent history</p>
+        <div><a href="https://github.com/arvindell/sessiongraph/blob/main/docs/guide.md">Docs</a><a href="/privacy">Privacy</a></div>
       </footer>
     </div>
   </body>

@@ -3,6 +3,18 @@ import { extractContent } from '../search';
 import { digest, identity } from './common';
 import type { ImportedMessage, SessionAdapter } from './types';
 import { opencodeEvents } from './opencode-events';
+import { messageMetadata, openCodeUsage } from '../usage';
+
+export function openCodeMessage(raw: RawMessage, sessionID: string): ImportedMessage {
+  const content = extractContent([raw]), detail = summarizeMessages(sessionID, [raw], null);
+  const message: ImportedMessage = { id: raw.id, time: raw.time?.created || 0, role: raw.type === 'user' ? 'user' : raw.type === 'assistant' ? 'assistant' : 'system',
+    fragments: content.fragments, files: detail.files, tools: detail.tools.map(tool => tool.name), snapshots: detail.snapshotSteps, partial: content.truncated };
+  message.metadata = messageMetadata({ ...raw, stopReason: raw.finish });
+  if (raw.type === 'assistant') message.usage = openCodeUsage(raw.tokens, raw.cost, raw.id);
+  if (detail.locations.length) message.locations = detail.locations;
+  message.events = opencodeEvents(raw, message);
+  return message;
+}
 
 export const opencodeAdapter: SessionAdapter = {
   id: 'opencode', name: 'OpenCode', description: 'Local authenticated service · sessions, forks, children, and snapshots',
@@ -12,7 +24,7 @@ export const opencodeAdapter: SessionAdapter = {
     const data = await getSessionGraph(true);
     return {
       projects: data.projects.map((p) => ({ ...p, id: identity('opencode', p.id) })), warnings: data.warnings,
-      sessions: data.sessions.map((s) => ({ locator: {}, revision: digest([4, s.updated, s.created, s.directory]), session: {
+      sessions: data.sessions.map((s) => ({ locator: {}, revision: digest([5, s.updated, s.created, s.directory, s.tokens, s.cost, s.usage]), session: {
         ...s, source: 'opencode', nativeID: s.id, id: identity('opencode', s.id), projectID: identity('opencode', s.projectID),
         parentID: s.parentID ? identity('opencode', s.parentID) : undefined, forkID: s.forkID ? identity('opencode', s.forkID) : undefined,
       } })),
@@ -27,12 +39,6 @@ export const opencodeAdapter: SessionAdapter = {
       const current = await getSessionInfo(candidate.session.nativeID!);
       if (current.time.updated !== candidate.session.updated) throw new Error('Session changed during import; import again to capture its latest messages.');
     }
-    return { cursor: page.cursor?.next || undefined, messages: page.data.map((raw) => {
-      const content = extractContent([raw]);
-      const detail = summarizeMessages(candidate.session.id, [raw], null);
-      const message: ImportedMessage = { id: raw.id, time: raw.time?.created || 0, role: raw.type === 'user' ? 'user' : raw.type === 'assistant' ? 'assistant' : 'system', fragments: content.fragments, files: detail.files, tools: detail.tools.map((t) => t.name), snapshots: detail.snapshotSteps, partial: content.truncated };
-      message.events = opencodeEvents(raw, message);
-      return message;
-    }) };
+    return { cursor: page.cursor?.next || undefined, messages: page.data.map(raw => openCodeMessage(raw, candidate.session.id)) };
   },
 };

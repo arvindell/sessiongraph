@@ -9,6 +9,7 @@ import { hasTable, sqliteRevision, withSqliteSnapshot, SqliteSnapshotChangedErro
 import { eventFor, eventText, messageEvent } from '../events';
 import type { TimelineEvent } from '@sessiongraph/core/timeline';
 import { executionFields } from '../commit-extraction';
+import { messageMetadata, messageUsage } from '../usage';
 
 type Row = Record<string, unknown>;
 const SOURCE = 't3-code';
@@ -162,6 +163,8 @@ function v2Message(row: Row, directory: string): ImportedMessage {
   const parsed = parsedObject(row.payload_json), item = parsed || {}, type = string(row.type), id = string(row.turn_item_id);
   const role = type === 'user_message' ? 'user' : type === 'assistant_message' ? 'assistant' : type === 'reasoning' ? 'assistant' : 'tool';
   const message = blankMessage(`item:${id}`, time(item.startedAt || item.createdAt), role);
+  message.metadata = messageMetadata(item);
+  if (type === 'assistant_message') message.usage = messageUsage(item);
   const recorded = Boolean(message.time), name = string(item.title || item.toolName) || type.replaceAll('_', ' ');
   const fields: Partial<TimelineEvent> = { nativeID: id, nativeType: type, parentID: string(item.parentItemId) || undefined,
     status: status(row.status), endTime: time(item.completedAt) || null, timeSource: recorded ? 'recorded' : 'unknown' };
@@ -228,8 +231,7 @@ function readV2(db: DatabaseSync, candidate: Candidate, cursor?: string) {
   const page = rows.slice(0, PAGE), last = page.at(-1);
   return { messages: page.map((row) => v2Message(row, candidate.session.directory)),
     cursor: rows.length > PAGE && last ? `${last.ordinal}:${last.turn_item_id}` : undefined,
-    partial: candidate.locator.metadataPartial === '1' || page.some((row) => !parsedObject(row.payload_json)),
-    note: 'T3 Code app-owned messages and activity. Attachments and checkpoint file snapshots are not imported; provider-native histories may contain additional detail.' };
+    partial: candidate.locator.metadataPartial === '1' || page.some((row) => !parsedObject(row.payload_json)) };
 }
 
 function readV1(db: DatabaseSync, candidate: Candidate, cursor?: string) {
@@ -248,16 +250,16 @@ function readV1(db: DatabaseSync, candidate: Candidate, cursor?: string) {
     return message;
   });
   return { messages, cursor: rows.length > PAGE ? String(offset + PAGE) : undefined, partial: true,
-    note: 'Legacy T3 Code text messages only. Tool activity, attachments, and provider links are unavailable.' };
+    note: 'Legacy T3 Code: conversation text only.' };
 }
 
 export const t3CodeAdapter: SessionAdapter = {
-  id: SOURCE, name: 'T3 Code', description: 'Local T3 server threads and saved activity · no running agent required',
+  id: SOURCE, name: 'T3 Code', description: 'Local T3 threads and activity',
   capabilities: { history: true, forks: true, children: true, files: true },
   async detect() { return Boolean(await databasePath()); },
   async discover() {
     const path = await databasePath();
-    if (!path) return { sessions: [], projects: [], warnings: ['T3 Code database is unavailable. Saved history is retained.'] };
+    if (!path) return { sessions: [], projects: [], warnings: [], errors: ['T3 Code: History database unavailable.'] };
     for (let attempt = 0; ; attempt++) {
       const databaseRevision = sqliteRevision(path);
       try {

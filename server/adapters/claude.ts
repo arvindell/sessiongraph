@@ -12,6 +12,7 @@ import { combineAdapters } from './sqlite-histories';
 import { sourcePath } from '../source-paths';
 import { executionFields, nativeCommit } from '../commit-extraction';
 import type { SessionStoreEntry } from '@anthropic-ai/claude-agent-sdk';
+import { anthropicUsage, messageMetadata, summarizeUsage } from '../usage';
 
 const root = () => join(sourcePath('claude-code') || process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
 
@@ -21,6 +22,8 @@ export function claudeMessages(rows: SessionMessage[], candidate: Candidate, tim
   return rows.map((row) => {
     const raw = row.message as any;
     const msg = blankMessage(row.uuid, times?.get(row.uuid) ?? (Number.isFinite(Date.parse(raw?.timestamp)) ? Date.parse(raw.timestamp) : 0), row.type);
+    msg.metadata = messageMetadata({ ...raw, cwd: entries?.get(row.uuid)?.cwd });
+    if (row.type === 'assistant') msg.usage = anthropicUsage(raw?.usage, raw?.id);
     if (raw?.model) candidate.session.model = raw.model;
     if (row.parent_agent_id && candidate.locator.parent) candidate.session.parentID = identity('claude-code', `${candidate.locator.parent}/agent/${row.parent_agent_id}`);
     if (typeof raw?.content === 'string') addText(msg, raw.content, row.type === 'user' ? 'You' : 'Assistant');
@@ -109,13 +112,30 @@ const sdkClaudeAdapter: SessionAdapter = {
         } catch { unreadable++; }
       }
     }
-    if (unreadable) warnings.push(`${unreadable} Claude Code histories unavailable or too large. Saved imports are kept.`);
+    if (unreadable) warnings.push(`Claude Code: Skipped ${unreadable} unavailable or oversized transcripts.`);
     return { sessions, projects: [...new Map(sessions.map((c) => { const p = project('claude-code', c.session.directory); return [p.id, p]; })).values()], warnings };
   },
   async read(candidate, cursor) {
     const offset = Number(cursor || 0);
     if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid history cursor.');
     const transcript = await claudeTranscript(candidate.locator.path, candidate.revision);
+    if (!offset) {
+      // Usage can survive outside the SDK's active context chain after compaction.
+      // Count each native API identity once, but never borrow a subagent's usage.
+      const owner = candidate.locator.parent || candidate.session.nativeID!;
+      const usageMessages = transcript.entries.flatMap((entry) => {
+        if (entry.type !== 'assistant' || entry.sessionId !== owner || !candidate.locator.agent && entry.isSidechain === true) return [];
+        if (candidate.locator.agent && entry.agentId && entry.agentId !== candidate.locator.agent) return [];
+        const raw = entry.message as any;
+        const message = blankMessage(String(entry.uuid || ''), 0, 'assistant');
+        message.usage = anthropicUsage(raw?.usage, raw?.id || entry.uuid);
+        return [message];
+      });
+      if (usageMessages.some(message => message.usage)) {
+        const usage = summarizeUsage({ ...candidate.session, usage: undefined, tokens: null, cost: null }, usageMessages, transcript.partial);
+        candidate.session.usage = { ...usage, source: 'session' };
+      }
+    }
     // Overlap one message to retain tool-use/result evidence across page boundaries.
     const start = Math.max(0, offset - 1), count = 120 + offset - start;
     const sessionId = candidate.locator.parent || candidate.session.nativeID!;
@@ -127,7 +147,7 @@ const sdkClaudeAdapter: SessionAdapter = {
     const messages = claudeMessages(rows.slice(0, count), candidate, transcript.times, transcript.byID).slice(offset - start);
     if (!offset && !messages.length && transcript.size > 100) throw new Error('SDK returned no readable conversation for this transcript.');
     if (!more && await revision(candidate.locator.path) !== candidate.revision) throw new Error('Session changed during import; import again to capture the latest messages.');
-    return { messages, cursor: more ? String(offset + 120) : undefined, partial: transcript.partial, note: `SDK-visible conversation chain from the local CLI/VS Code transcript; pre-compaction text and unsupported message types may be absent. Fork ancestry is unavailable.${transcript.partial ? ' Some transcript records or subagent metadata were unreadable.' : ''}` };
+    return { messages, cursor: more ? String(offset + 120) : undefined, partial: transcript.partial, note: transcript.partial ? 'Some transcript or subagent records could not be read.' : undefined };
   },
 };
 

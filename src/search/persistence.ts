@@ -5,7 +5,7 @@ export const MAX_CHARACTERS = 24_000_000;
 export const SESSION_CHARACTERS = 48_000;
 // Bump when extraction, sampling, or the stored search-document format changes.
 const CACHE_VERSION = 2;
-export const contentVersion = (session: Session) => JSON.stringify([CACHE_VERSION, session.revision, session.updated, session.created, session.projectID, session.directory]);
+export const contentVersion = (session: Session) => JSON.stringify([CACHE_VERSION, session.importVersion, session.revision, session.updated, session.created, session.projectID, session.directory]);
 export interface CachedContent {
   id: string;
   version: string;

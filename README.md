@@ -15,6 +15,7 @@ Explore local history from **OpenCode, Claude Code, Codex, T3 Code, Cursor, Gemi
 Search conversations, explore user and assistant messages, inspect changed files, and continue in another harness.
 Hover to preview messages, click to focus, and click empty space to deselect. Tune the glowing map, trails, and click sounds in Settings.
 During playback, session orbs travel through time, leaving trails behind them. Message dots match their session's color.
+Stardust reacts to your cursor, new sessions and forks bloom with sparks, and selected sessions gain orbiting satellites. Scrub the timeline to sweep a gust through the map. Effects follow your motion and rendering-quality settings; turn off Stars to hide ambient dust.
 Importing, searching, and visualization stay on your computer.
 
 ### Your history stays local

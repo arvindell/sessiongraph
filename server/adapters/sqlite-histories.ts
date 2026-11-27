@@ -2,7 +2,7 @@ import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
 import { lstat } from 'node:fs/promises';
 import { blankSession, digest, identity, project } from './common';
 import { text, time, type LocalHistory, type Raw } from './local-files';
-import { hasTable, sqliteRevision, withSqliteSnapshot } from './sqlite-snapshot';
+import { hasTable, sqliteRevision, SqliteSnapshotChangedError, SqliteSnapshotFileError, withSqliteSnapshot } from './sqlite-snapshot';
 import { expandHistory } from './compressed';
 import type { Candidate, SessionAdapter } from './types';
 
@@ -75,13 +75,13 @@ export interface DatabaseHarness {
 }
 
 export function sqliteHistoryAdapter(source: DatabaseHarness): SessionAdapter {
-  const metadata = new Map<string, { revision: string; candidates: Candidate[]; blocked: string[]; warnings: string[] }>();
+  const metadata = new Map<string, { revision: string; candidates: Candidate[]; blocked: string[]; errors: string[] }>();
   return {
-    id: source.id, name: source.name, description: source.description || 'Local SQLite session history · isolated read-only snapshots',
+    id: source.id, name: source.name, description: source.description || 'Local session database',
     capabilities: { history: source.history !== false, forks: false, children: false, files: false },
     async detect() { return (await source.paths()).length > 0; },
     async discover() {
-      const sessions = new Map<string, Candidate>(), warnings: string[] = [], blocked: string[] = []; let unavailable = false;
+      const sessions = new Map<string, Candidate>(), errors: string[] = [], blocked: string[] = []; let unavailable = false;
       for (const path of await source.paths()) {
         try {
           const snapshot = sqliteRevision(path), rev = digest([source.version || 2, source.id, snapshot]);
@@ -90,11 +90,11 @@ export function sqliteHistoryAdapter(source: DatabaseHarness): SessionAdapter {
             cached = withSqliteSnapshot(path, db => {
               const table = typeof source.table === 'string' ? source.table : source.table(db);
               const values = rows(db, table, source.fields, undefined, source.key, 20_000), found: Candidate[] = [];
-              const blocked: string[] = [], warnings: string[] = []; let empty = 0;
+              const blocked: string[] = [], errors: string[] = []; let failed = 0;
               for (const row of values) {
                 try {
                   const h = parseHistory(source, db, row, path); if (!h) continue;
-                  if (source.history !== false && !h.messages.length) { blocked.push(identity(source.id, String(row[source.key]))); empty++; continue; }
+                  if (source.history !== false && !h.messages.length) { blocked.push(identity(source.id, String(row[source.key]))); continue; }
                   if (!h.nativeID || h.nativeID.length > 512) throw new Error('Missing native session identity.');
                   const created = time(h.session?.created) || h.messages.map(m => time(m.time)).find(Boolean);
                   if (!created) throw new Error('Session has no recorded creation or message date.');
@@ -106,23 +106,26 @@ export function sqliteHistoryAdapter(source: DatabaseHarness): SessionAdapter {
                   session.forkID = h.fork ? identity(source.id, h.fork) : undefined;
                   if (!session.title || session.title === 'Untitled session') session.title = h.messages.flatMap(m => m.role === 'user' ? m.fragments.filter(f => f.kind === 'You').map(f => f.text) : []).find(Boolean)?.replace(/\s+/g, ' ').slice(0, 180) || `${source.name} session`;
                   found.push({ session, revision: rev, locator: { path, snapshot, table, key: String(row[source.key]) } });
-                } catch { blocked.push(identity(source.id, String(row[source.key]))); }
+                } catch { blocked.push(identity(source.id, String(row[source.key]))); failed++; }
               }
-              if (blocked.length > empty) warnings.push(`${blocked.length - empty} ${source.name} sessions had unsupported, undated, missing, or oversized history; saved imports are kept.`);
-              if (empty) warnings.push(`${empty} empty ${source.name} sessions had no saved messages; previous imports are kept.`);
-              return { revision: rev, candidates: found, blocked, warnings };
+              if (failed) errors.push(`${source.name}: Skipped ${failed} unreadable, undated, unsupported, or oversized ${failed === 1 ? 'session' : 'sessions'}.`);
+              return { revision: rev, candidates: found, blocked, errors };
             }, snapshot);
             metadata.set(path, cached);
           }
-          warnings.push(...cached.warnings); blocked.push(...cached.blocked);
+          errors.push(...cached.errors); blocked.push(...cached.blocked);
           for (const c of cached.candidates) {
             const old = sessions.get(c.session.id);
             if (!old || c.session.updated > old.session.updated) sessions.set(c.session.id, c);
           }
-        } catch { unavailable = true; warnings.push(`A ${source.name} database could not be read consistently; saved imports are kept.`); }
+        } catch (error) {
+          unavailable = true;
+          const detail = error instanceof SqliteSnapshotFileError || error instanceof SqliteSnapshotChangedError ? error.message : 'Could not read a history database.';
+          errors.push(`${source.name}: ${detail}`);
+        }
       }
       const values = [...sessions.values()];
-      return { sessions: values, projects: [...new Map(values.map(c => { const p = project(source.id, c.session.directory); return [p.id, p]; })).values()], warnings, blocked, unavailable };
+      return { sessions: values, projects: [...new Map(values.map(c => { const p = project(source.id, c.session.directory); return [p.id, p]; })).values()], warnings: [], errors, blocked, unavailable };
     },
     async read(candidate, cursor) {
       if (cursor) throw new Error('Invalid SQLite history cursor.');
@@ -134,7 +137,7 @@ export function sqliteHistoryAdapter(source: DatabaseHarness): SessionAdapter {
         const history = parseHistory(source, db, row, path);
         if (!history || history.nativeID !== candidate.session.nativeID) throw new Error('Session identity changed.');
         if (source.history !== false && !history.messages.length) throw new Error('No readable conversation.');
-        return { messages: history.messages, partial: Boolean(history.partial || history.messages.some(m => m.partial)), note: `${history.note} File snapshots are unavailable. Missing message timestamps remain unknown.` };
+        return { messages: history.messages, partial: Boolean(history.partial || history.messages.some(m => m.partial)), note: history.note };
       }, snapshot);
     },
   };
@@ -152,18 +155,20 @@ export function combineAdapters(parts: SessionAdapter[]): SessionAdapter {
   return { ...first,
     async detect() { for (const p of parts) if (await p.detect().catch(() => false)) return true; return false; },
     async discover() {
-      const sessions = new Map<string, Candidate>(), projects = new Map(), warnings: string[] = [], blocked = new Set<string>();
+      const sessions = new Map<string, Candidate>(), projects = new Map(), warnings: string[] = [], errors: string[] = [], blocked = new Set<string>();
       for (const [i, part] of parts.entries()) {
         let result;
         try { if (!await part.detect()) continue; result = await part.discover(); }
-        catch { warnings.push(`A ${part.name} representation could not be read; saved imports are retained.`); break; }
+        catch { errors.push(`${part.name}: Could not read a history source.`); break; }
         warnings.push(...result.warnings);
+        if (result.errors?.length) errors.push(...result.errors);
+        else if (result.unavailable) errors.push(`${part.name}: History unavailable.`);
         for (const id of result.blocked || []) blocked.add(id);
         for (const p of result.projects) projects.set(p.id, p);
         for (const c of result.sessions) if (!blocked.has(c.session.id) && !sessions.has(c.session.id)) sessions.set(c.session.id, { ...c, revision: digest([i, c.revision]), locator: { ...c.locator, representation: String(i), originalRevision: c.revision } });
         if (result.unavailable) break;
       }
-      return { sessions: [...sessions.values()], projects: [...projects.values()], warnings };
+      return { sessions: [...sessions.values()], projects: [...projects.values()], warnings, errors };
     },
     async read(candidate, cursor) {
       const index = Number(candidate.locator.representation);

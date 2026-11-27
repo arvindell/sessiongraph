@@ -30,9 +30,9 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
     $('.imports-progress').textContent = running
       ? `${status.source ? sourceName(status.source) : 'Importing'} · ${status.imported.toLocaleString()} imported · ${status.unchanged.toLocaleString()} unchanged${status.discovered ? ` / ${status.discovered.toLocaleString()} found` : ' · discovering…'}`
       : `${status.imported.toLocaleString()} imported · ${status.unchanged.toLocaleString()} already up to date${status.failed ? ` · ${status.failed} unavailable` : ''}`;
-    $('.imports-notes').hidden = !status.errors.length;
-    const errors = new Map<string, number>(); status.errors.forEach((error) => errors.set(error, (errors.get(error) || 0) + 1));
-    $('.imports-notes div').innerHTML = [...errors].map(([error, count]) => `<p>${escape(error)}${count > 1 ? ` (${count} occurrences)` : ''}</p>`).join('');
+    const diagnostics = [...status.errors, ...(status.warnings || [])];
+    $('.imports-notes').hidden = !diagnostics.length;
+    $('.imports-notes div').innerHTML = diagnostics.map(message => `<p>${escape(message)}</p>`).join('');
     document.dispatchEvent(new CustomEvent('sessiongraph-import-status', { detail: status }));
   }
   async function poll() {

@@ -24,13 +24,16 @@ function human(command: string, data: any): string {
     const status = `Sources: ${data.selected.join(', ') || '(none)'}\nAuto-import: ${data.autoImport ? 'on' : 'off'}`;
     return status + (command === 'sources remove' ? '\nSaved history kept.' : data.selected.length ? '\nRun sessiongraph sync to import sessions.' : '');
   }
-  if (command === 'sources sync') return `Imported ${data.imported}; unchanged ${data.unchanged}; failed ${data.failed}; discovered ${data.discovered}.${data.errors.length ? `\n${data.errors.map(cell).join('\n')}` : ''}`;
+  if (command === 'sources sync') return [
+    `Imported ${data.imported}; unchanged ${data.unchanged}; failed ${data.failed}; discovered ${data.discovered}.`,
+    ...data.errors.map(cell), ...(data.warnings || []).map((warning: string) => `Warning: ${cell(warning)}`),
+  ].join('\n');
   if (command === 'stats') {
     const metric = (v: any) => `${v.knownTotal ?? 'unknown'} (${v.unknownSessions} unknown)`;
     return `${data.totals.sessions} sessions\n${table([data.groupBy.toUpperCase(), 'SESSIONS', 'TOKENS', 'COST'], data.groups.items.map((g: any) => [g.key, g.sessions, metric(g.tokens), metric(g.cost)]))}${continuation(data.groups)}\n${data.note}`;
   }
   if (command === 'messages') return `${data.messages.map((m: any) => `[${cell(m.id)}] ${cell(m.role)} · ${m.time ? new Date(m.time).toISOString() : 'time unknown'}\n${m.fragments.map((f: any) => `${cell(f.kind)}: ${cell(f.text)}${f.truncated ? ' [truncated]' : ''}`).join('\n')}`).join('\n\n')}${continuation(data)}${data.partial ? '\nPartial history or truncated text. Use events for details.' : ''}`;
-  if (command === 'doctor') return `${data.ok ? 'OK' : 'Needs attention'} — ${cell(data.database)}\n${table(['CHECK', 'STATUS', 'DETAIL'], data.checks.map((c: any) => [c.name, c.ok ? 'ok' : 'failed', c.message]))}\n${data.next}`;
+  if (command === 'doctor') return `${data.ok ? 'OK' : 'Needs attention'} — ${cell(data.database)}\n${table(['CHECK', 'STATUS', 'DETAIL'], data.checks.map((c: any) => [c.name, c.ok ? 'ok' : 'failed', c.message]))}${data.next ? `\n${data.next}` : ''}`;
   if (command === 'commands') return table(['COMMAND', 'EFFECT', 'DESCRIPTION'], commands.map(c => [c.name, c.effect, c.summary]));
   return JSON.stringify(data, null, 2).replace(/[\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, cell);
 }

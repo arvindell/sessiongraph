@@ -5,6 +5,7 @@ import { blankMessage } from './common';
 import { eventFor, eventText } from '../events';
 import { jsonLines, localFileAdapter, object, text, time } from './local-files';
 import { googleMessage, successfulEdits } from './local-messages';
+import { googleUsage, messageMetadata } from '../usage';
 
 export const qwenAdapter = localFileAdapter({
   id: 'qwen-code', name: 'Qwen Code', description: 'Local project chat records · tool results, forks, and child sessions',
@@ -19,6 +20,8 @@ export const qwenAdapter = localFileAdapter({
       const id = text(raw.uuid) || `record:${index}`;
       if (raw.message && !['agent_message', 'agent_mention', 'notification'].includes(raw.subtype)) {
         const message = googleMessage({ id, timestamp: raw.timestamp, role: raw.type === 'assistant' ? 'assistant' : raw.type === 'user' ? 'user' : 'tool', toolCallId: raw.toolCallResult?.callId, content: object(raw.message).parts }, id);
+        message.metadata = messageMetadata(raw);
+        if (raw.type === 'assistant') message.usage = googleUsage(raw.usageMetadata ?? raw.message?.usageMetadata, id);
         // A Google function response alone does not prove execution succeeded.
         for (const event of message.events || []) if (event.kind === 'tool_result') { event.status = raw.toolCallResult?.status === 'success' ? 'completed' : raw.toolCallResult?.status === 'error' ? 'failed' : 'unknown'; event.nativeType = text(raw.toolCallResult?.status); }
         return message;
@@ -32,6 +35,6 @@ export const qwenAdapter = localFileAdapter({
     const title = latest.find(r => r.subtype === 'custom_title')?.systemPayload?.customTitle;
     return { nativeID: first.sessionId, messages, partial, parent: text(parent) || undefined, fork: text(rows.find(r => r.forkedFrom?.sessionId)?.forkedFrom?.sessionId) || undefined,
       session: { directory: text(first.cwd), created: time(first.timestamp), title: text(title), model: text(latest.find(r => r.model)?.model) || text(latest.find(r => r.subtype === 'session_model')?.systemPayload?.modelId) || 'Unknown model', nativeResume: Boolean(first.cwd) && !sourcePath('qwen-code') && !process.env.SESSIONGRAPH_QWEN_HOME },
-      note: 'Local Qwen chat records, including compaction and branch events in source order. Parent and fork links use recorded session IDs. Managed-daemon-only and binary history may be unavailable.' };
+    };
   },
 });

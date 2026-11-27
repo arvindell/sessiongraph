@@ -30,7 +30,7 @@ export function protoFields(value: Uint8Array): Map<number, bigint | Uint8Array>
 const nested = (v: bigint | Uint8Array | undefined) => v instanceof Uint8Array ? protoFields(v) : new Map<number, bigint | Uint8Array>();
 export const antigravityDatabaseAdapters = ['antigravity-cli', 'antigravity-extension'].map(id => sqliteHistoryAdapter({
   id, name: id === 'antigravity-cli' ? 'Antigravity CLI' : 'Antigravity IDE Extension', history: false,
-  description: 'Native session metadata only · opaque protobuf conversations',
+  description: 'Session metadata only',
   paths: async () => (await historyFiles(harnessRoots(id, () => [envHome('GEMINI_CLI_HOME', '.gemini', id === 'antigravity-cli' ? 'antigravity-cli/conversations' : 'antigravity/conversations')])(), p => p.endsWith('.db'))).files,
   table: 'trajectory_metadata_blob', key: 'id', fields: ['id', 'data'],
   parse(db, row, path) {
@@ -41,12 +41,12 @@ export const antigravityDatabaseAdapters = ['antigravity-cli', 'antigravity-exte
     const uri = nested(fields.get(1)).get(1); let directory = '';
     if (uri instanceof Uint8Array) { try { directory = fileURLToPath(Buffer.from(uri).toString('utf8')); } catch { /* Unknown workspace URI. */ } }
     if (!created) throw new Error('Trajectory creation time is unavailable.');
-    return { nativeID: basename(path, '.db'), messages: [], partial: true, session: { created, directory }, note: 'Native Antigravity trajectory identity and creation metadata only. Protobuf conversation/step bodies are opaque; no message text, generation-time guesses, or usage-derived turns are imported.' };
+    return { nativeID: basename(path, '.db'), messages: [], partial: true, session: { created, directory }, note: 'Session metadata only.' };
   },
 }));
 
 export const antigravityCacheAdapter = localFileAdapter({
-  id: 'antigravity', name: 'Antigravity', description: 'Previously synced session metadata only · cache contains no conversations',
+  id: 'antigravity', name: 'Antigravity', description: 'Cached session metadata only',
   capabilities: { history: false, forks: false, children: false, files: false },
   roots: harnessRoots('antigravity', () => [tokscalePath('antigravity-cache/sessions')]), match: p => p.endsWith('.jsonl'),
   parse(path, files) {
@@ -55,6 +55,6 @@ export const antigravityCacheAdapter = localFileAdapter({
     if (ids.size !== 1) throw new Error('Unsupported Antigravity cache identity.');
     const created = rows.map(r => time(r.timestamp)).filter(Boolean).sort((a, b) => a - b)[0];
     if (!created) throw new Error('Antigravity cache has no recorded date.');
-    return { nativeID: [...ids][0], messages: [], partial: true, session: { created, model: text(rows.find(r => r.modelId)?.modelId) || 'Unknown model' }, note: 'Previously synced Antigravity session identity; placement uses earliest recorded usage date. This cache has no conversation bodies. SessionGraph never runs sync or contacts the language server.' };
+    return { nativeID: [...ids][0], messages: [], partial: true, session: { created, model: text(rows.find(r => r.modelId)?.modelId) || 'Unknown model' }, note: 'Session metadata only. Date based on first recorded usage.' };
   },
 });

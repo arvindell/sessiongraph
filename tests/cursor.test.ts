@@ -80,7 +80,7 @@ test('Cursor discovers IDE layouts, explicit subagents, unique workspace mapping
     assert.equal(parent.session.nativeResume, false); assert.equal(parent.session.tokens, null);
     assert.equal(discovery.sessions.find((c) => c.session.nativeID === 'unknown')!.session.directory, '');
     assert.match(discovery.warnings.join(' '), /plain-text/);
-    const page = await f.adapter.read(parent); assert.equal(page.partial, true); assert.match(page.note!, /snapshots/);
+    const page = await f.adapter.read(parent); assert.equal(page.partial, true); assert.match(page.note!, /Tool results and earlier messages/);
   } finally { await rm(f.dir, { recursive: true }); }
 });
 

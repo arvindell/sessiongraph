@@ -1,4 +1,4 @@
-.public-viewer { position: relative; height: min(80vh, 760px); min-height: 520px; min-width: 0; border: 1px solid #c9e3db1a; border-radius: 12px; background: #080e13; overflow: hidden; color: #dbe7e3; font: 13px/1.5 'Geist Variable', Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; isolation: isolate; container: public-graph / inline-size; --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace; }
+.public-viewer { position: relative; height: min(80vh, 760px); min-height: 520px; min-width: 0; border: 1px solid #c9e3db1a; border-radius: 12px; background: #080e13; overflow: hidden; color: #dbe7e3; font: 13px/1.5 var(--app-sans, 'Geist Variable', Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif); isolation: isolate; container: public-graph / inline-size; --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace; }
 .public-viewer-full { height: 100%; min-height: 0; border: 0; border-radius: 0; }
 .public-viewer, .public-viewer * { box-sizing: border-box; }
 .public-viewer [hidden] { display: none !important; }

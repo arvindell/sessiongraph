@@ -18,6 +18,7 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
     <div class="settings-layout"><nav class="settings-tabs" role="tablist" aria-label="Settings categories">${tabs.map(([id, name, glyph], i) => `<button role="tab" id="settings-tab-${id}" aria-controls="settings-${id}" aria-selected="${!i}" tabindex="${i ? -1 : 0}" data-tab="${id}">${createElement([glyph[0], { ...glyph[1], 'aria-hidden': 'true', 'stroke-width': 1.5 }, glyph[2]]).outerHTML}${name}</button>`).join('')}</nav>
     <div class="settings-content">
       <section id="settings-interface" role="tabpanel" aria-labelledby="settings-tab-interface"><h3>Interface</h3><p class="settings-description">View preferences and filters are saved with your library.</p>
+        ${select('grouping', 'Cluster sessions by', 'Worktree keeps each checkout separate. Repository combines checkouts of the same repo.', [['worktree', 'Worktree'], ['repository', 'Repository']])}
         ${select('motion', 'Motion', 'Camera transitions, reveals, and ambient movement.', [['system', 'Follow system'], ['on', 'On'], ['off', 'Off']])}
         ${select('density', 'Session list', 'Adjust spacing between sessions.', [['comfortable', 'Comfortable'], ['compact', 'Compact']])}
         <label class="setting-row"><span><strong>Show archived sessions</strong><small>Include archived history in the map and session list.</small></span><input class="settings-archived" type="checkbox" role="switch" aria-label="Show archived sessions"/></label>
@@ -101,18 +102,18 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
   for (const selector of ['.settings-close', '.settings-done']) dialog.querySelector(selector)!.addEventListener('click', close, options);
   dialog.addEventListener('close', () => { callbacks.visibility(); focus?.focus({ preventScroll: true }); }, options);
   dialog.addEventListener('keydown', (event) => { event.stopPropagation(); }, options);
-  function activate(id: string) {
-    active = id as Section;
+  function activate(id: Section) {
+    active = id;
     for (const [section] of tabs) {
       const tab = dialog.querySelector<HTMLButtonElement>(`[data-tab="${section}"]`)!;
       tab.setAttribute('aria-selected', String(section === id)); tab.tabIndex = section === id ? 0 : -1;
       dialog.querySelector<HTMLElement>(`#settings-${section}`)!.hidden = section !== id;
     }
     dialog.querySelector('.settings-content')!.scrollTop = 0;
-    if (active === 'sources') void loadSources();
+    if (dialog.open && active === 'sources') void loadSources();
   }
   for (const tab of dialog.querySelectorAll<HTMLButtonElement>('[data-tab]')) {
-    tab.addEventListener('click', () => activate(tab.dataset.tab!), options);
+    tab.addEventListener('click', () => activate(tab.dataset.tab as Section), options);
     tab.addEventListener('keydown', (event) => {
       const index = tabs.findIndex(([id]) => id === tab.dataset.tab);
       const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : ['ArrowRight', 'ArrowDown'].includes(event.key) ? (index + 1) % tabs.length : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? (index + tabs.length - 1) % tabs.length : -1;
@@ -130,7 +131,18 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
   dialog.querySelector('.settings-reset')!.addEventListener('click', () => { callbacks.changeArchived(false); callbacks.change({ ...DEFAULT_PREFERENCES }); }, options);
   dialog.querySelector('.settings-reset-panels')!.addEventListener('click', callbacks.resetPanels, options);
   return {
-    open() { if (dialog.open) return; archived.checked = callbacks.getArchived(); focus = document.activeElement as HTMLElement; dialog.showModal(); callbacks.visibility(); dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus(); if (active === 'sources') void loadSources(); },
+    open(section?: Section) {
+      if (dialog.open && !section) return;
+      if (section) activate(section);
+      if (!dialog.open) {
+        archived.checked = callbacks.getArchived();
+        focus = document.activeElement as HTMLElement;
+        dialog.showModal();
+        callbacks.visibility();
+        if (active === 'sources') void loadSources();
+      }
+      dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus();
+    },
     importStatus(status: ImportStatus) {
       const wasRunning = sourcesRunning; sourcesRunning = status.running; sourceControls();
       dialog.querySelector('.settings-import-progress')!.textContent = status.running ? `Importing · ${status.imported.toLocaleString()} saved` : `${status.imported.toLocaleString()} imported · ${status.unchanged.toLocaleString()} unchanged${status.failed ? ` · ${status.failed} unavailable` : ''}${status.errors.length ? ` · ${status.errors[0]}` : ''}`;

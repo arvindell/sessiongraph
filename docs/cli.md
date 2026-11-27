@@ -107,8 +107,10 @@ sessiongraph sources remove --all
 - `sources setup` enables sources. Run `sync` to import them.
   `--detected` enables all detected sources, including metadata-only sources.
 - `sync`, `sources sync`, and `import` are aliases. Sync waits for completion and
-  reports discovered, imported, unchanged, and failed counts. Source IDs select an
-  enabled subset; the saved selection stays unchanged. Configure sources first.
+  reports discovered, imported, unchanged, and failed counts. A discovery error
+  counts as one failure per affected source; coverage warnings do not affect
+  `doctor` or the exit status. `--json` reports these separately in `errors` and
+  `warnings`. Source IDs select an enabled subset without changing the selection.
 - `sources remove` disables imports and clears custom paths. Saved sessions,
   messages, and search history remain available. Re-enable a source to import again.
 - `--auto-import` controls automatic refresh while the app is running.
@@ -188,7 +190,8 @@ saved message time, falling back to creation time, then ID.
 coverage, unmatched text may exist outside the index. Narrow filters for more
 coverage, or inspect `messages` and `events --item`.
 
-`files` returns paths and evidence sources, rather than file contents or diffs.
+`files` returns paths and evidence sources. `snapshotSteps: 0` means the page
+contains no snapshot evidence.
 Its numeric cursor is an offset: compare `revision` across pages and restart if it
 changes. Graph exports include local session metadata; review them before sharing.
 The default view folds linked provider sessions into complete T3 threads.

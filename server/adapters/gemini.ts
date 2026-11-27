@@ -5,6 +5,7 @@ import { addText } from './common';
 import { eventFor, eventText } from '../events';
 import { json, jsonLines, localFileAdapter, object, text, time, type Raw } from './local-files';
 import { googleMessage, successfulEdits } from './local-messages';
+import { googleUsage, messageMetadata } from '../usage';
 
 function projectRootFile(path: string) { const parts = path.split(sep); return join(parts.slice(0, parts.lastIndexOf('chats')).join(sep), '.project_root'); }
 
@@ -14,9 +15,10 @@ export function geminiConversation(contents: string, lines: boolean) {
   const patch = (p: Raw) => {
     const existing = messages.get(text(p.id)); if (!existing) return;
     if (p.content !== undefined) existing.content = p.content;
+    for (const key of ['tokens', 'model', 'thoughts', 'timestamp']) if (key in p) existing[key] = p[key];
     for (const update of Array.isArray(p.toolCalls) ? p.toolCalls : []) {
       const call = existing.toolCalls?.find((t: Raw) => t.id === update.id);
-      if (call && 'result' in update) call.result = update.result;
+      if (call) for (const key of ['result', 'status', 'timestamp', 'args', 'name']) if (key in update) call[key] = update[key];
     }
   };
   for (const row of parsed.rows) {
@@ -50,6 +52,8 @@ export const geminiAdapter = localFileAdapter({
     const directory = (files.get(projectRootFile(path)) || '').trim().slice(0, 4096);
     const messages = records.map((raw, index) => {
       const message = googleMessage({ id: raw.id, timestamp: raw.timestamp, role: raw.type === 'user' ? 'user' : raw.type === 'gemini' ? 'assistant' : 'system', content: raw.content }, `record:${index}`);
+      message.metadata = messageMetadata(raw);
+      if (raw.type === 'gemini') message.usage = googleUsage(raw.tokens, raw.id);
       for (const [i, thought] of (Array.isArray(raw.thoughts) ? raw.thoughts : []).entries()) message.events!.push(eventFor(message, `thought:${i}`, 'reasoning', text(thought.subject) || 'Recorded reasoning', text(thought.description), { time: time(thought.timestamp) || null, timeSource: time(thought.timestamp) ? 'recorded' : 'unknown' }));
       for (const [i, call] of (Array.isArray(raw.toolCalls) ? raw.toolCalls : []).entries()) {
         const id = text(call.id) || `tool:${i}`, name = text(call.name) || 'Tool';
@@ -67,6 +71,6 @@ export const geminiAdapter = localFileAdapter({
     const parent = meta.kind === 'subagent' && basename(dirname(dirname(path))) === 'chats' ? basename(dirname(path)) : undefined;
     return { nativeID: meta.sessionId, messages, parent, partial,
       session: { directory, created: time(meta.startTime), title: text(meta.summary), model: text([...records].reverse().find(r => r.model)?.model) || 'Unknown model', provider: 'Google', nativeResume: !parent && Boolean(directory) && !sourcePath('gemini') && !process.env.SESSIONGRAPH_GEMINI_HOME && !path.includes(`${sep}.cache${sep}`) },
-      note: 'Local Gemini chat records with rewind and patch reconstruction. Only explicit subagent directories form parent links; workspace paths come from the project-root marker. Binary content is omitted.' };
+    };
   },
 });
