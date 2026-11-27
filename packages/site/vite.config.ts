@@ -8,6 +8,7 @@ const routes: Connect.NextHandleFunction = (req, _res, next) => {
   if (/^\/@[a-z\d-]+\/?$/i.test(path)) req.url = '/profile.html';
   else if (path === '/account') req.url = '/account.html';
   else if (path === '/explore' || path === '/explore/') req.url = '/explore.html';
+  else if (path === '/privacy' || path === '/privacy/') req.url = '/privacy.html';
   next();
 };
 
@@ -38,6 +39,6 @@ export default defineConfig({
       for (const file of ['main.js', 'style.css', 'robots.txt', 'sitemap.xml']) await copyFile(file, `dist/${file}`);
     },
   }],
-  build: { rollupOptions: { input: { index: resolve('index.html'), account: resolve('account.html'), profile: resolve('profile.html'), explore: resolve('explore.html'), notFound: resolve('404.html') }, output: { manualChunks: id => id.includes('/three/') || id.includes('/three@') ? 'three' : undefined } } },
+  build: { rollupOptions: { input: { index: resolve('index.html'), account: resolve('account.html'), profile: resolve('profile.html'), explore: resolve('explore.html'), privacy: resolve('privacy.html'), notFound: resolve('404.html') }, output: { manualChunks: id => id.includes('/three/') || id.includes('/three@') ? 'three' : undefined } } },
   server: { host: '127.0.0.1', port: 5190 },
 });

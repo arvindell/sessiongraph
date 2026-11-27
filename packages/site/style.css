@@ -111,6 +111,15 @@ h1 > span { color: var(--mint); }
 .footer > p { color: var(--muted); font-size: 11px; line-height: 1.8; margin: 0; }
 .footer > div { margin-left: auto; display: flex; gap: 24px; font-size: 11px; color: #b4c6bc; }
 .footer a:hover { color: var(--mint); }
+.privacy-policy { max-width: 680px; margin-inline: auto; padding-block: clamp(48px, 8vw, 96px); line-height: 1.65; }
+.privacy-policy h1 { margin: 0 0 20px; font-size: clamp(36px, 6vw, 64px); letter-spacing: -.05em; line-height: 1.05; }
+.privacy-policy h2 { margin: 0 0 10px; font-size: 23px; line-height: 1.25; }
+.privacy-policy section { margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--line); }
+.privacy-policy p { margin: 0 0 12px; }
+.privacy-policy li + li { margin-top: 8px; }
+.privacy-policy .privacy-lead { font-size: 18px; }
+.privacy-policy a { color: var(--mint); text-decoration: underline; text-underline-offset: 3px; }
+.privacy-policy code { font-family: var(--mono); overflow-wrap: anywhere; }
 .error-page { padding-block: 110px; min-height: 65vh; }
 .error-page h1 { margin-bottom: 25px; }
 .error-page > p { color: var(--muted); line-height: 1.8; margin-bottom: 30px; }

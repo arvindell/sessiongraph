@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#080e13">
+    <meta name="description" content="Learn what stays on your device and exactly what SessionGraph stores when you choose to publish a public graph.">
+    <title>Privacy Policy — SessionGraph</title>
+    <link rel="canonical" href="https://sessiongraph.ai/privacy">
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#privacy">Skip to content</a>
+    <div class="page-shell">
+      <header class="header">
+        <a class="brand" href="/" aria-label="SessionGraph home"><img src="/assets/brand/mark.svg" width="32" height="32" alt="">SessionGraph</a>
+        <nav aria-label="Main navigation"><a href="/explore">Explore graphs</a></nav>
+      </header>
+      <main id="privacy" class="privacy-policy">
+        <h1>Privacy Policy</h1>
+        <p class="privacy-lead"><strong>Your session history stays on your device.</strong> SessionGraph imports, searches, and renders it locally. You don’t need an account, and the app doesn’t sync your library to the cloud or send analytics or crash reports.</p>
+
+        <section aria-labelledby="public-graph">
+          <h2 id="public-graph">What we store when you publish</h2>
+          <p>Publishing is optional. The app prepares a preview on your device. Only after you confirm do we replace your previous public graph with the approved snapshot. Signing in or importing more sessions does not publish or update a graph.</p>
+          <ul>
+            <li><strong>Always included:</strong> numeric IDs and groups specific to the graph, plus recorded parent and fork links between the selected sessions.</li>
+            <li><strong>Only if enabled:</strong> token counts, session timestamps, message counts and timestamps, recognized model names, and coding-tool names. Fields you turn off are not uploaded.</li>
+            <li><strong>Never included:</strong> messages, code, tool inputs or outputs, project or session names, file paths, native session IDs, credentials, or costs.</li>
+          </ul>
+          <p>Anyone can view your graph at <code>/@your-github-username</code> or find it in <a href="/explore">Explore graphs</a>. That page can show a thumbnail generated from the public snapshot, the session count, and a token total if shared. It can’t read your local library. Your profile is tied to your GitHub username, and published activity or timestamps can reveal work patterns.</p>
+        </section>
+
+        <section aria-labelledby="website-account">
+          <h2 id="website-account">Website and account data</h2>
+          <p>When you sign in, we store your GitHub user ID and username, hashed login tokens, and short-lived desktop sign-in approval records. Browser sign-in uses cookies. We don’t request repository access, and we discard the GitHub OAuth token after sign-in. If you use organizations, we store organization names, slugs, memberships, and invitations; membership does not grant access to local sessions.</p>
+          <p>Vercel handles website and API requests, and AWS stores hosted records. Hosting providers receive ordinary connection information, such as IP addresses. SessionGraph uses short-lived hashed request identifiers for rate limiting. Desktop update checks contact GitHub, and npm installs contact the npm registry; neither sends session history.</p>
+        </section>
+
+        <section aria-labelledby="your-controls">
+          <h2 id="your-controls">Your controls</h2>
+          <p>Use <strong>Unpublish</strong> from the app or <a href="/account">your account</a> to remove the hosted graph. Signing out doesn’t remove it, and unpublishing can’t erase copies others already saved. SessionGraph doesn’t encrypt local library or handoff files; your device and backup settings govern access to them. If you continue a session in another coding tool, that tool’s privacy settings apply to the context it receives.</p>
+        </section>
+      </main>
+      <footer class="footer">
+        <a class="brand footer-brand" href="/" aria-label="SessionGraph home"><img src="/assets/brand/mark.svg" width="28" height="28" alt="">SessionGraph</a>
+        <p>Only what you choose to share.</p>
+        <div><a href="https://github.com/arvindell/sessiongraph">GitHub ↗</a></div>
+      </footer>
+    </div>
+  </body>
+</html>

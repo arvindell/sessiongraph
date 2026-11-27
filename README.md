@@ -19,11 +19,11 @@ Importing, searching, and visualization stay on your computer.
 
 ### Your history stays local
 
-**No account. No cloud sync. No telemetry.** SessionGraph reads your selected local sources and keeps imported conversations and the search index on your computer. Importing and exploring history never starts an AI agent or sends your conversations to a model provider.
+**No account needed for local use. No automatic cloud sync.** SessionGraph reads your selected sources and keeps imported conversations and the search index on your computer. Importing and exploring history never starts an AI agent or sends conversations to a model provider.
 
 Desktop update checks and downloads contact GitHub without session content; npm installation contacts the npm registry. Explicitly continuing a session opens your chosen harness, which follows its own network and privacy settings. Saved history is not encrypted by SessionGraph; device access and backups affect its confidentiality.
 
-[Read the privacy details, storage locations, and verification steps →](PRIVACY.md)
+[See what stays local and what publishing shares →](PRIVACY.md)
 
 ### Install
 
