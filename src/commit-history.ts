@@ -4,8 +4,9 @@ import { abbreviatedSHA } from '@sessiongraph/core/commits';
 /** Lazy indexed pages; selecting a session never scans messages for commits. */
 export function showCommitHistory(container: HTMLElement, sessionID: string, openEvidence: (id: string, revision: string) => void) {
   const controller = new AbortController();
-  const heading = document.createElement('div'); heading.className = 'section-label'; heading.textContent = 'Recorded commits';
-  const note = document.createElement('p'); note.className = 'coverage-note'; note.textContent = 'Loading commit index…';
+  const heading = document.createElement('div'); heading.className = 'section-label'; heading.textContent = 'Commits';
+  const total = document.createElement('span'); heading.append(total);
+  const note = document.createElement('p'); note.className = 'coverage-note commit-coverage'; note.textContent = 'Loading commits…';
   const list = document.createElement('div'), more = document.createElement('button'); more.className = 'load-more'; more.hidden = true;
   container.replaceChildren(heading, note, list, more);
   let cursor: string | undefined, revision: string | undefined;
@@ -18,7 +19,11 @@ export function showCommitHistory(container: HTMLElement, sessionID: string, ope
       if (!response.ok) throw new Error(page.error || 'Commit index unavailable.');
       if (controller.signal.aborted) return;
       revision = page.revision;
-      note.textContent = `${page.coverage.count === null ? 'Unknown commit history' : `${page.total} confirmed recorded operation${page.total === 1 ? '' : 's'}`} · ${page.coverage.state}. ${page.coverage.note}`;
+      total.textContent = page.total ? page.total.toLocaleString() : '';
+      note.hidden = page.total > 0;
+      note.textContent = page.coverage.state === 'pending' ? 'Commit indexing pending.'
+        : page.coverage.state === 'unavailable' ? 'Commit history unavailable.'
+        : 'No commits found.';
       for (const item of page.items) {
         const button = document.createElement('button'); button.className = 'relation';
         const content = document.createElement('span'), title = document.createElement('strong'), detail = document.createElement('small');
@@ -32,6 +37,7 @@ export function showCommitHistory(container: HTMLElement, sessionID: string, ope
       cursor = page.nextCursor || undefined; more.hidden = !cursor; more.textContent = 'Load more commits';
     } catch (error) {
       if (controller.signal.aborted) return;
+      total.textContent = ''; note.hidden = false;
       note.textContent = error instanceof Error ? error.message : 'Commit index unavailable.';
       // Retry from one consistent snapshot rather than mixing refreshed pages.
       cursor = undefined; list.replaceChildren(); more.hidden = false; more.textContent = 'Reload commits';

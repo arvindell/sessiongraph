@@ -102,18 +102,18 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
   for (const selector of ['.settings-close', '.settings-done']) dialog.querySelector(selector)!.addEventListener('click', close, options);
   dialog.addEventListener('close', () => { callbacks.visibility(); focus?.focus({ preventScroll: true }); }, options);
   dialog.addEventListener('keydown', (event) => { event.stopPropagation(); }, options);
-  function activate(id: string) {
-    active = id as Section;
+  function activate(id: Section) {
+    active = id;
     for (const [section] of tabs) {
       const tab = dialog.querySelector<HTMLButtonElement>(`[data-tab="${section}"]`)!;
       tab.setAttribute('aria-selected', String(section === id)); tab.tabIndex = section === id ? 0 : -1;
       dialog.querySelector<HTMLElement>(`#settings-${section}`)!.hidden = section !== id;
     }
     dialog.querySelector('.settings-content')!.scrollTop = 0;
-    if (active === 'sources') void loadSources();
+    if (dialog.open && active === 'sources') void loadSources();
   }
   for (const tab of dialog.querySelectorAll<HTMLButtonElement>('[data-tab]')) {
-    tab.addEventListener('click', () => activate(tab.dataset.tab!), options);
+    tab.addEventListener('click', () => activate(tab.dataset.tab as Section), options);
     tab.addEventListener('keydown', (event) => {
       const index = tabs.findIndex(([id]) => id === tab.dataset.tab);
       const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : ['ArrowRight', 'ArrowDown'].includes(event.key) ? (index + 1) % tabs.length : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? (index + tabs.length - 1) % tabs.length : -1;
@@ -131,7 +131,18 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
   dialog.querySelector('.settings-reset')!.addEventListener('click', () => { callbacks.changeArchived(false); callbacks.change({ ...DEFAULT_PREFERENCES }); }, options);
   dialog.querySelector('.settings-reset-panels')!.addEventListener('click', callbacks.resetPanels, options);
   return {
-    open() { if (dialog.open) return; archived.checked = callbacks.getArchived(); focus = document.activeElement as HTMLElement; dialog.showModal(); callbacks.visibility(); dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus(); if (active === 'sources') void loadSources(); },
+    open(section?: Section) {
+      if (dialog.open && !section) return;
+      if (section) activate(section);
+      if (!dialog.open) {
+        archived.checked = callbacks.getArchived();
+        focus = document.activeElement as HTMLElement;
+        dialog.showModal();
+        callbacks.visibility();
+        if (active === 'sources') void loadSources();
+      }
+      dialog.querySelector<HTMLButtonElement>('[aria-selected="true"]')!.focus();
+    },
     importStatus(status: ImportStatus) {
       const wasRunning = sourcesRunning; sourcesRunning = status.running; sourceControls();
       dialog.querySelector('.settings-import-progress')!.textContent = status.running ? `Importing · ${status.imported.toLocaleString()} saved` : `${status.imported.toLocaleString()} imported · ${status.unchanged.toLocaleString()} unchanged${status.failed ? ` · ${status.failed} unavailable` : ''}${status.errors.length ? ` · ${status.errors[0]}` : ''}`;
