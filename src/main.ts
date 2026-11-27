@@ -7,7 +7,7 @@ import { createSessionLauncher } from './launcher';
 import { createImports } from './imports';
 import { AutoImportScheduler, AUTO_IMPORT_INTERVAL } from './auto-import';
 import { LibrarySettingsSaver, type LibrarySettingsPatch } from './library-settings';
-import { normalizeViewState, type ViewState } from '@sessiongraph/core/view-state';
+import { DEFAULT_VIEW_STATE, normalizeViewState, viewDateBounds, type ViewState } from '@sessiongraph/core/view-state';
 import { playbackTokens } from './playback-tokens';
 import { PLAYBACK_DURATION, PLAYBACK_ORBIT_DURATION, PLAYBACK_END_HOLD, playbackDate, playbackSessions, timelineBuckets } from '@sessiongraph/core/playback';
 import { playbackControls } from '@sessiongraph/core/playback-controls';
@@ -60,7 +60,7 @@ let timelineRequest = 0;
 let projectID = '';
 let sourceID = '';
 let directory = '';
-let days = 0;
+let days: ViewState['days'] = DEFAULT_VIEW_STATE.days;
 let fromDate = '';
 let toDate = '';
 let includeChildren = true;
@@ -124,7 +124,7 @@ $('#app').innerHTML = `
   <div class="timeline-dock floating-panel" id="timeline">
     <div class="playback-share"><button id="share-playback" class="primary-button" disabled>${icon('share-2')}Share SessionGraph</button></div>
     <section class="timeline-panel glass timeline-controls" aria-label="Timeline controls">
-    ${playbackControls(`<button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="0" class="active">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button>`, { play: 'play', histogram: 'histogram', scrubber: 'scrubber', cursor: 'timeline-cursor', date: 'playback-date', period: 'playback-period', summary: 'playback-summary', sessions: 'playback-sessions', tokens: 'playback-tokens', coverage: 'playback-token-coverage' })}
+    ${playbackControls(`<button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="ytd" class="active" title="Year to date" aria-pressed="true">YTD</button><button data-days="0">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button>`, { play: 'play', histogram: 'histogram', scrubber: 'scrubber', cursor: 'timeline-cursor', date: 'playback-date', period: 'playback-period', summary: 'playback-summary', sessions: 'playback-sessions', tokens: 'playback-tokens', coverage: 'playback-token-coverage' })}
     </section>
   </div>
   <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div>
@@ -137,7 +137,7 @@ refreshIcons();
 const disposePanelDragging = setupPanelDragging();
 const desktopUpdater = createDesktopUpdater();
 const disposeSelects = observeSelects();
-const dateRange = createDateRange($('.custom-dates'), (from, to) => { fromDate = from; toDate = to; updateFilters(true); }, stopPlayback);
+const dateRange = createDateRange($('.custom-dates'), (from, to) => { days = 0; fromDate = from; toDate = to; updateFilters(true); }, stopPlayback);
 const modalVisibility = () => { const open = Boolean(document.querySelector('dialog[open]')); if (open && playing) stopPlayback(); scene?.setSuspended(open); };
 const timelineClient = new TimelineClient();
 const eventHover = createEventHover($('#tooltip'), $('#scene'), timelineClient);
@@ -334,7 +334,8 @@ async function load(background = false) {
     updateDirectories();
     if (selectedID && !previous) {
       const selected = data.sessions.find((s) => s.id === selectedID);
-      if (selected && selected.created < Date.now() - days * 86400000) days = 0;
+      const { min, max } = viewDateBounds(currentView());
+      if (selected && (selected.created < min || selected.created > max)) { days = 0; fromDate = ''; toDate = ''; }
       if (selected?.archived) includeArchived = true;
     }
     updateFilters(!preserve, preserve);
@@ -384,9 +385,7 @@ function updateFilters(fit = false, preserve = false) {
   if (!preserve) { stopPlayback(); playback = 1; listLimit = 60; }
   const scroll = $('#session-list').scrollTop;
   const focused = document.activeElement?.closest<HTMLElement>('[data-session]')?.dataset.session;
-  const now = Date.now();
-  const min = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : days ? now - days * 86400000 : 0;
-  const max = toDate ? new Date(`${toDate}T23:59:59.999`).getTime() : Infinity;
+  const { min, max } = viewDateBounds(currentView());
   filtered = data.sessions.filter((s) =>
     sessionMatchesSource(s, sourceID) && (!projectID || s.projectID === projectID) && (!directory || s.directory === directory) &&
     (includeChildren || !s.parentID || Boolean(s.forkID)) && (includeArchived || !s.archived) &&
@@ -400,7 +399,11 @@ function updateFilters(fit = false, preserve = false) {
   scene?.setCutoff(playback);
   scene?.setGraph(graph, fit, preserve);
   renderGraphMessage();
-  document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.classList.toggle('active', !fromDate && !toDate && Number(button.dataset.days) === days));
+  document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => {
+    const active = !fromDate && !toDate && button.dataset.days === String(days);
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
   renderList();
   if (preserve) { $('#session-list').scrollTop = scroll; if (focused) sessionCards.get(focused)?.focus({ preventScroll: true }); }
   renderHistogram();
@@ -439,7 +442,7 @@ function updateShareButton(reset = false) {
 function resetFilters(reveal?: Session) {
   sourceID = ''; $<HTMLSelectElement>('#source').value = '';
   $('#source-filter-icon').innerHTML = sourceIcon();
-  projectID = ''; directory = ''; days = 0; fromDate = ''; toDate = ''; includeChildren = true; includeArchived = reveal?.archived === true;
+  projectID = ''; directory = ''; days = reveal ? 0 : DEFAULT_VIEW_STATE.days; fromDate = ''; toDate = ''; includeChildren = true; includeArchived = reveal?.archived === true;
   $<HTMLSelectElement>('#project').value = '';
   $<HTMLInputElement>('#children').checked = true;
   dateRange.setRange('', '');
@@ -718,7 +721,7 @@ $('#project').addEventListener('change', (event) => { projectID = (event.target 
 $('#source').addEventListener('change', (event) => { sourceID = (event.target as HTMLSelectElement).value; $('#source-filter-icon').innerHTML = sourceIcon(sourceID); updateFilters(true); });
 $('#directory').addEventListener('change', (event) => { directory = (event.target as HTMLSelectElement).value; updateFilters(true); });
 $('#children').addEventListener('change', (event) => { includeChildren = (event.target as HTMLInputElement).checked; updateFilters(); });
-document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.addEventListener('click', () => { days = Number(button.dataset.days); fromDate = ''; toDate = ''; updateFilters(true); }));
+document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.addEventListener('click', () => { days = button.dataset.days === 'ytd' ? 'ytd' : Number(button.dataset.days); fromDate = ''; toDate = ''; updateFilters(true); }));
 $('#reset-camera').addEventListener('click', () => updateFilters(true));
 $('#refresh').addEventListener('click', () => { if (data?.onboarding) void imports.open(true); else void imports.refresh(); });
 $('#scrubber').addEventListener('input', (event) => { stopPlayback(); playback = Number((event.target as HTMLInputElement).value) / 1000; updateScrubber(true); });
