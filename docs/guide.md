@@ -19,6 +19,10 @@ pnpm desktop:build
 
 Installers appear in `src-tauri/target/release/bundle/`. On macOS, open `macos/SessionGraph.app` or install using the DMG. `pnpm desktop:dev` builds and runs the native shell locally. The Rust toolchain is pinned in `rust-toolchain.toml`.
 
+On first launch, desktop releases install the `sessiongraph` and `ssg` commands
+and register their directory in your user PATH. Restart your terminal.
+See the [CLI installation reference](cli.md#install) for paths and shell support.
+
 ### npm launcher
 
 Install and open the public npm launcher with Node 24+:
@@ -30,6 +34,9 @@ npx sessiongraph --browser
 ```
 
 The default command opens the native desktop app from your matching OS/architecture package. `--browser` instead starts a local authenticated server and opens the explorer in your default browser; keep the terminal open and press Ctrl+C to stop it. Both modes share the same saved SQLite library.
+
+`npm install --global sessiongraph` registers both `sessiongraph` and `ssg`
+in npm's global executable directory.
 
 ### Desktop updates
 

@@ -42,7 +42,7 @@ export const commands: Command[] = [
 ];
 export const resolveCommand = (name: string) => commands.find(command => command.name === name || command.aliases?.includes(name));
 export function manifest(command?: Command) {
-  return { schemaVersion: 1, executable: 'sessiongraph', node: '>=24', globalOptions, commands: command ? [command] : commands,
+  return { schemaVersion: 1, executable: 'sessiongraph', executableAliases: ['ssg'], node: '>=24', globalOptions, commands: command ? [command] : commands,
     launch: { desktop: 'sessiongraph', browser: 'sessiongraph --browser' },
     output: { success: '{ schemaVersion: 1, command, data }', failure: '{ schemaVersion: 1, command, error: { code, message } }', pagination: 'Use nextCursor with the same query and filters. Restart on STALE_CURSOR. Empty results succeed.' },
     exitCodes: { 0: 'Success (including no matches)', 1: 'Operation failed, unhealthy doctor checks, or import with failures; inspect data/errors', 2: 'Invalid command or arguments', 130: 'Interrupted' },
@@ -50,10 +50,10 @@ export function manifest(command?: Command) {
   };
 }
 export function help(command?: Command) {
-  if (!command) return `SessionGraph — local coding-agent history\n\nUsage: sessiongraph <command> [options]\n       sessiongraph                  Open desktop app\n       sessiongraph --browser        Open local browser app\n       sessiongraph --version\n\nCommands:\n${commands.map(c => `  ${c.name.padEnd(18)} ${c.summary}`).join('\n')}\n\nOptions: --help (-h), --json, --data-dir <directory>\n\nStart: sessiongraph sources setup --detected\n       sessiongraph sync\n       sessiongraph sessions\n\nCommand help: sessiongraph <command> --help\nAgent reference: sessiongraph commands --json\nFull reference: sessiongraph docs\n`;
+  if (!command) return `SessionGraph — local coding-agent history\n\nUsage: sessiongraph <command> [options]\n       sessiongraph                  Open desktop app\n       sessiongraph --browser        Open local browser app\n       sessiongraph --version\n\nAlias: ssg\n\nCommands:\n${commands.map(c => `  ${c.name.padEnd(18)} ${c.summary}`).join('\n')}\n\nOptions: --help (-h), --json, --data-dir <directory>\n\nStart: sessiongraph sources setup --detected\n       sessiongraph sync\n       sessiongraph sessions\n\nCommand help: sessiongraph <command> --help\nAgent reference: sessiongraph commands --json\nFull reference: sessiongraph docs\n`;
   return `Usage: sessiongraph ${command.name}${command.args ? ` ${command.args.required ? '<' : '['}${command.args.name}${command.args.variadic ? '...' : ''}${command.args.required ? '>' : ']'}` : ''} [options]\n\n${command.summary}${command.aliases?.length ? `\nAliases: ${command.aliases.join(', ')}` : ''}\n\nOptions:\n${[...command.options, ...globalOptions].map(o => `  --${o.name}${o.type === 'boolean' ? '' : ` <${o.values?.join('|') || o.type}>`}\n      ${o.description}${o.default !== undefined ? ` Default: ${o.default}.` : ''}`).join('\n')}\n\nExamples:\n${command.examples.map(e => `  sessiongraph ${e}`).join('\n')}\n`;
 }
-export const markdownDocs = (command?: Command) => `# SessionGraph CLI${command ? `: ${command.name}` : ''}\n\nRequires Node.js 24+. Use \`--json\` for structured output and \`commands --json\` for command and result schemas.\n\n${manifest().rules.map(rule => `- ${rule}`).join('\n')}\n\n${(command ? [command] : commands).map(c => `## ${c.name}\n\n\`\`\`text\n${help(c)}\`\`\``).join('\n\n')}\n`;
+export const markdownDocs = (command?: Command) => `# SessionGraph CLI${command ? `: ${command.name}` : ''}\n\nUse \`sessiongraph\` or \`ssg\`. npm installs require Node.js 24+; desktop installs bundle it. Use \`--json\` for structured output and \`commands --json\` for command and result schemas.\n\n${manifest().rules.map(rule => `- ${rule}`).join('\n')}\n\n${(command ? [command] : commands).map(c => `## ${c.name}\n\n\`\`\`text\n${help(c)}\`\`\``).join('\n\n')}\n`;
 
 export function parseCLI(argv: string[]) {
   const options: Record<string, string | boolean | string[]> = {}, positionals: string[] = [];

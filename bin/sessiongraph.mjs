@@ -30,14 +30,20 @@ function open(target) {
   child.on('error', () => console.error('Could not open the application. Check your desktop environment.')); child.unref();
 }
 if (!argv.includes('--browser')) {
-  const name = `${pkg.name}-app-${process.platform}-${process.arch}`;
-  try {
-    const manifest = require.resolve(`${name}/package.json`);
-    const app = join(dirname(manifest), 'payload', process.platform === 'darwin' ? 'SessionGraph.app' : process.platform === 'win32' ? 'SessionGraph.exe' : 'SessionGraph.AppImage');
-    if (process.platform === 'darwin') open(app);
-    else { const child = spawn(app, [], { detached: true, stdio: 'ignore', env: { ...process.env, ...(process.platform === 'linux' ? { APPIMAGE_EXTRACT_AND_RUN: '1' } : {}) } }); child.on('error', (e) => console.error(`SessionGraph could not open: ${e.message}`)); child.unref(); }
-  } catch {
-    console.error(`Desktop package ${name} is not installed.\nUse npx ${pkg.name} --browser, or install the matching desktop package.\nFor a source checkout: pnpm desktop:dev`); process.exitCode = 1;
+  if (pkg.sessionGraphDesktopExecutable) {
+    const child = spawn(pkg.sessionGraphDesktopExecutable, [], { detached: true, stdio: 'ignore', env: { ...process.env, ...(process.platform === 'linux' ? { APPIMAGE_EXTRACT_AND_RUN: '1' } : {}) } });
+    child.on('error', (error) => { console.error(`SessionGraph could not open: ${error.message}`); process.exitCode = 1; });
+    child.unref();
+  } else {
+    const name = `${pkg.name}-app-${process.platform}-${process.arch}`;
+    try {
+      const manifest = require.resolve(`${name}/package.json`);
+      const app = join(dirname(manifest), 'payload', process.platform === 'darwin' ? 'SessionGraph.app' : process.platform === 'win32' ? 'SessionGraph.exe' : 'SessionGraph.AppImage');
+      if (process.platform === 'darwin') open(app);
+      else { const child = spawn(app, [], { detached: true, stdio: 'ignore', env: { ...process.env, ...(process.platform === 'linux' ? { APPIMAGE_EXTRACT_AND_RUN: '1' } : {}) } }); child.on('error', (e) => console.error(`SessionGraph could not open: ${e.message}`)); child.unref(); }
+    } catch {
+      console.error(`Desktop package ${name} is not installed.\nUse npx ${pkg.name} --browser, or install the matching desktop package.\nFor a source checkout: pnpm desktop:dev`); process.exitCode = 1;
+    }
   }
 } else {
   const child = spawn(process.execPath, [join(root, 'dist-server', 'server.mjs'), '--assets', join(root, 'dist'), '--parent-pid', String(process.pid)], { stdio: ['ignore', 'pipe', 'inherit'] });
