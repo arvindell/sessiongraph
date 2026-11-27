@@ -6,8 +6,7 @@
 .profile-identity h1 { margin: 0; font-size: clamp(16px, 2vw, 21px); font-weight: 640; letter-spacing: -.025em; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #profile-tokens { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 #profile-tokens strong { color: var(--mint); font-size: 15px; font-variant-numeric: tabular-nums; }
-.profile-github { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 6px 8px; border-radius: var(--radius-6); color: #b5c9be; font-size: 11px; }
-.profile-github[hidden] { display: none; }
+.profile-github { display: inline-flex; align-self: flex-start; align-items: center; gap: 6px; flex: none; padding: 6px 8px; border-radius: var(--radius-6); color: #b5c9be; font-size: 11px; }
 .profile-github:hover { color: var(--mint); background: #b0e9d611; }
 .profile-github .ui-icon { width: 15px; height: 15px; }
 .profile-github .ui-icon:last-child { width: 11px; height: 11px; }
