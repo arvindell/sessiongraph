@@ -1,4 +1,4 @@
-import { createElement, Share2 } from 'lucide';
+import { iconElement } from '@sessiongraph/core/icons';
 import { TimelineScene } from '@sessiongraph/core/scene';
 import { BRAND_TEXT, drawBrandMark } from '@sessiongraph/core/brand';
 import { shareGraph } from './share-graph';
@@ -103,7 +103,7 @@ export function createPlaybackShare(visibility: () => void, publish: () => void)
   const tray = dialog.querySelector<HTMLElement>('.share-tray')!, notice = dialog.querySelector<HTMLElement>('.share-notice')!;
   const traySave = dialog.querySelector<HTMLButtonElement>('.share-tray-save')!, copy = dialog.querySelector<HTMLButtonElement>('.share-copy')!;
   const caption = dialog.querySelector<HTMLTextAreaElement>('.share-caption')!; caption.value = SHARE_CAPTION;
-  const shareIcon = createElement(Share2); shareIcon.setAttribute('aria-hidden', 'true'); shareIcon.setAttribute('stroke-width', '1.5'); share.prepend(shareIcon);
+  share.prepend(iconElement('share-2'));
   let controller: AbortController | undefined, blob: Blob | undefined, file: File | undefined, url: string | undefined, graph: Graph | undefined, preferences: Preferences | undefined;
   let generation = Promise.resolve();
   const showNotice = (text: string) => { notice.textContent = text; notice.hidden = !text; };

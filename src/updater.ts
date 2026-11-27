@@ -3,8 +3,9 @@ import { isTauri } from '@tauri-apps/api/core';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { UpdateController, type UpdateBackend, type UpdateState } from './update-controller';
 
-const arrow = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M8 2v9m-3-3 3 3 3-3M3 13h10"/></svg>';
-const restart = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M13 7a5 5 0 1 0-.8 4M13 2v5H8"/></svg>';
+import { icon } from '@sessiongraph/core/icons';
+const arrow = icon('arrow-down');
+const restart = icon('refresh-cw');
 
 export function createUpdateIndicator(backend: UpdateBackend) {
   const button = document.createElement('button');

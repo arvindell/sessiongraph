@@ -3,6 +3,7 @@ import { cp, copyFile, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { mountPublicApi } from './dev/public-api';
 import { sourceCatalog } from '@sessiongraph/core/sources';
+import { icon, type IconName } from '@sessiongraph/core/icons';
 
 const featuredSourceIDs = [
   'opencode', 'claude-code', 'codex', 'cursor', 'gemini', 'copilot', 't3-code', 'cline',
@@ -52,7 +53,7 @@ export default defineConfig({
   publicDir: false,
   plugins: [{
     name: 'static-site-assets',
-    transformIndexHtml: { order: 'pre', handler: renderLandingSources },
+    transformIndexHtml: { order: 'pre', handler: html => renderLandingSources(html).replace(/<!-- icon:([a-z0-9-]+)(?: ([a-z-]+))? -->/g, (_, name: IconName, cls?: string) => icon(name, cls)) },
     configureServer(server) { mountPublicApi(server); server.middlewares.use(routes); server.middlewares.use(serveSourceIcon); },
     configurePreviewServer(server) { server.middlewares.use(routes); server.middlewares.use(serveSourceIcon); },
     async closeBundle() {

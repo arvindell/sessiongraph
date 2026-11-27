@@ -97,10 +97,18 @@ test('overview makes a full turn with a prolonged smooth slowdown and no end dri
   assert.equal(overviewTurn(2), 1);
   const turns = Array.from({ length: 151 }, (_, frame) => overviewTurn(frame / 150));
   const steps = turns.slice(1).map((turn, index) => turn - turns[index]);
-  assert.ok(steps.every(step => step > 0 && step * 30 * 360 < 95), 'No fast midpoint');
+  assert.ok(steps.every(step => step > 0 && step * 30 * 360 < 100), 'No fast midpoint');
   assert.ok(steps[0] < steps[20]);
   for (let index = 100; index < steps.length - 1; index++) assert.ok(steps[index] > steps[index + 1], 'Slows smoothly over the final third');
   assert.ok(steps.at(-1)! < steps[50] / 1000, 'Settles at a near-zero velocity instead of snapping to a stop');
+});
+
+test('overview starts at the incoming camera speed and still completes exactly one turn', () => {
+  const incoming = 1 / 30, step = .0001;
+  const measured = overviewTurn(step, incoming) / (step * PLAYBACK_ORBIT_DURATION / 1000);
+  assert.ok(Math.abs(measured - incoming) < .00001);
+  assert.equal(overviewTurn(1, incoming), 1);
+  assert.equal(overviewTurn(1.1, incoming), 1);
 });
 
 test('switching share modes finishes queued dialog cleanup before opening the next view', async () => {

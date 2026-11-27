@@ -2,7 +2,7 @@ import { DEFAULT_PUBLISHING, PUBLIC_FIELDS, PUBLIC_GRAPH_DISCLOSURE, publishingS
 import type { createPublicViewer } from '@sessiongraph/core/public-viewer';
 import { isTauri } from '@tauri-apps/api/core';
 import { externalWebUrl, openDesktopUrl } from './external-links';
-import { createElement, Github } from 'lucide';
+import { iconElement } from '@sessiongraph/core/icons';
 import { shareHeader } from './share-modes';
 import type { preloadPublishingAccount } from './publishing-account';
 
@@ -20,7 +20,7 @@ export function createPublishing(visibility: () => void, exportAnimation: () => 
   dialog.prepend(shareHeader(dialog, 'publish', () => exportAnimation()));
   const $ = <T extends HTMLElement>(selector: string) => dialog.querySelector<T>(selector)!;
   $('.publishing-disclosure').textContent = PUBLIC_GRAPH_DISCLOSURE;
-  const github = createElement(Github); github.setAttribute('aria-hidden', 'true'); $('[data-login]').prepend(github);
+  $('[data-login]').prepend(iconElement('github'));
   let ids: string[] = [], settings = { ...DEFAULT_PUBLISHING }, viewer: ReturnType<typeof createPublicViewer> | undefined;
   let preview: { id: string; graph: PublicGraph } | undefined, username = account.preloadedUsername, published = false;
   let accountState: 'checking' | 'ready' | 'failed' = 'checking';

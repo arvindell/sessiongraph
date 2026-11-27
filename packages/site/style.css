@@ -109,7 +109,7 @@ h1 > span { color: var(--mint); }
 .platform-secondary:hover, .linux-options > summary:hover { color: var(--mint); }
 .linux-options > summary { cursor: pointer; list-style: none; }
 .linux-options > summary::-webkit-details-marker { display: none; }
-.linux-options[open] > summary span { transform: rotate(45deg); }
+.linux-options[open] > summary svg { transform: rotate(180deg); }
 .linux-links { display: flex; flex-wrap: wrap; gap: 10px 14px; font: 11px/1.6 var(--mono); padding-block: 3px 8px; }
 .linux-links > span { flex-basis: 100%; color: var(--muted); }
 .linux-links a { text-decoration: underline; text-underline-offset: 4px; color: var(--mint); padding-block: 4px; }
@@ -187,3 +187,5 @@ h1 > span { color: var(--mint); }
 }
 @media (max-width: 360px) { .source-list { grid-template-columns: 1fr; } .header nav { gap: 12px; } .brand { font-size: 18px; } .github-link { gap: 5px; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { transition: none !important; } }
+.landing-page a > .ui-icon:not(.platform-icon), .linux-options summary > .ui-icon, .more-sources summary > .ui-icon { width: 16px; height: 16px; vertical-align: middle; flex-shrink: 0; }
+.command-box button:not([data-copied]) .copy-done, .command-box button[data-copied] .copy-idle { display: none; }

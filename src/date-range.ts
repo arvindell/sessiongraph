@@ -1,13 +1,14 @@
 import * as picker from '@zag-js/date-picker';
 import { VanillaMachine, normalizeProps, spreadProps } from '@zag-js/vanilla';
+import { icon } from '@sessiongraph/core/icons';
 
-const arrow = (direction: 'left' | 'right') => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="${direction === 'left' ? 'm10 4-4 4 4 4' : 'm6 4 4 4-4 4'}"/></svg>`;
+const arrow = (direction: 'left' | 'right') => icon(`chevron-${direction}`);
 const parse = (value: string) => { try { return /^\d{4}-\d{2}-\d{2}$/.test(value) ? picker.parse(value) : undefined; } catch { return undefined; } };
 
 export function createDateRange(root: HTMLElement, apply: (from: string, to: string) => void, onOpen: () => void) {
-  root.innerHTML = `<div class="date-control"><button class="icon-button date-trigger" type="button" aria-label="Custom date range" title="Custom date range"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-12 5h4"/></svg></button></div>
+  root.innerHTML = `<div class="date-control"><button class="icon-button date-trigger" type="button" aria-label="Custom date range" title="Custom date range">${icon('calendar')}</button></div>
     <div class="date-positioner" popover="manual"><section class="date-popover">
-      <header class="date-heading"><div><span class="eyebrow">FOCUS YOUR TIMELINE</span><h2>Date range</h2></div><button type="button" class="icon-button date-close" aria-label="Close date range">×</button></header>
+      <header class="date-heading"><div><span class="eyebrow">FOCUS YOUR TIMELINE</span><h2>Date range</h2></div><button type="button" class="icon-button date-close" aria-label="Close date range">${icon('x')}</button></header>
       <div class="date-fields"><label>From<input id="from-date" aria-label="From date" autocomplete="off" spellcheck="false" placeholder="YYYY-MM-DD"/></label><span aria-hidden="true">→</span><label>To<input id="to-date" aria-label="To date" autocomplete="off" spellcheck="false" placeholder="YYYY-MM-DD"/></label></div>
       <div class="date-presets"><button type="button" data-preset="last7Days">Last 7 days</button><button type="button" data-preset="last30Days">Last 30 days</button><button type="button" data-preset="thisMonth">This month</button></div>
       <div class="date-calendar"><div class="date-navigation"><button type="button" class="icon-button date-prev">${arrow('left')}</button><button type="button" class="date-view"></button><button type="button" class="icon-button date-next">${arrow('right')}</button></div><div class="date-grids"></div></div>

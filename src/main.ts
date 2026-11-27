@@ -1,4 +1,5 @@
-import { createIcons, createElement, Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2, Cpu, Bot, Coins, DollarSign } from 'lucide';
+import { icon, type IconName } from '@sessiongraph/core/icons';
+import { graphButton, graphHelp, sessionInfo, shortcutHints, soundButton } from '@sessiongraph/core/graph-ui';
 import type { TimelineScene } from '@sessiongraph/core/scene';
 import { directoryLabel, makeGraph, sessionEnd } from '@sessiongraph/core/layout';
 import { setupPanelDragging } from './panels';
@@ -16,7 +17,7 @@ import { sourceName, sourceIcon } from '@sessiongraph/core/sources';
 import { sessionMatchesSource } from './session-links';
 import { DEFAULT_PREFERENCES, loadPreferences, savePreferences, normalizePreferences, motionEnabled, PREFERENCES_KEY, type Preferences } from '@sessiongraph/core/preferences';
 import { createSettings } from './settings';
-import { InteractionAudio } from './audio';
+import { InteractionAudio } from '@sessiongraph/core/audio';
 import { createEventExplorer } from './event-explorer';
 import { createEventHover } from './event-hover';
 import { showCommitHistory } from './commit-history';
@@ -32,9 +33,7 @@ import './style.css';
 import './publishing.css';
 
 const publishingAccount = preloadPublishingAccount();
-const icons = { Search, GitFork, GitBranch, Folder, ArrowUpRight, ArrowRight, X, Box, RotateCcw, RefreshCw, Play, Pause, ChevronDown, FileCode2, Terminal, Crosshair, CircleHelp, SlidersHorizontal, LoaderCircle, Network, Clock, Sparkles, Grip, PanelRight, Settings2, Volume2, VolumeX, Share2, Cpu, Bot, Coins, DollarSign };
-const refreshIcons = () => { createIcons({ icons, attrs: { 'stroke-width': 1.5 } }); refreshSelects(); };
-const icon = (name: string, cls = '') => `<i data-lucide="${name}" class="${cls}" aria-hidden="true"></i>`;
+const refreshIcons = () => refreshSelects();
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const compact = (value: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
@@ -101,22 +100,22 @@ $('#app').innerHTML = `
     <a class="brand" href="/" aria-label="SessionGraph home" title="Explore &amp; visualize all your LLM sessions"><img src="/brand/mark.svg" alt=""/><span>SessionGraph</span></a>
     <span class="connection" role="status" title="Connecting"><span class="status-dot"></span><span id="connection-label" class="sr-only">Connecting</span></span>
     <span class="toolbar-divider"></span>
-    <button class="toolbar-button" id="toggle-explorer" aria-label="Toggle sessions" aria-controls="explorer" aria-expanded="true" title="Sessions">${icon('search')}<span>Sessions</span></button>
+    ${graphButton('search', 'Toggle sessions', { id: 'toggle-explorer', 'aria-controls': 'explorer', 'aria-expanded': 'true' }, 'Sessions', 'Sessions')}
   </header>
   <nav class="map-controls glass" aria-label="Map controls">
-    <button class="icon-button" id="reset-camera" aria-label="Fit view" title="Fit view (F)">${icon('crosshair')}</button>
-    <button class="icon-button" id="toggle-timeline" aria-label="Toggle timeline" aria-controls="timeline" aria-expanded="true" title="Timeline">${icon('clock')}</button>
-    <button class="icon-button" id="toggle-inspector" aria-label="Toggle session details" aria-controls="inspector" aria-expanded="false" title="Session details" hidden>${icon('panel-right')}</button>
-    <button class="icon-button" id="help" aria-label="Help" title="Help">${icon('circle-help')}</button>
-    <button class="icon-button" id="mute-audio" aria-label="Mute sound" title="Mute sound" aria-pressed="false" data-sound="none">${icon('volume-2')}</button>
-    <button class="icon-button" id="open-settings" aria-label="Settings" title="Settings" aria-haspopup="dialog">${icon('settings-2')}</button>
-    <button class="icon-button" id="open-publishing" aria-label="Share SessionGraph" title="Share SessionGraph" aria-haspopup="dialog">${icon('share-2')}</button>
+    ${graphButton('crosshair', 'Fit view', { id: 'reset-camera' }, 'Fit view (F)')}
+    ${graphButton('clock', 'Toggle timeline', { id: 'toggle-timeline', 'aria-controls': 'timeline', 'aria-expanded': 'true' }, 'Timeline')}
+    ${graphButton('panel-right', 'Toggle session details', { id: 'toggle-inspector', 'aria-controls': 'inspector', 'aria-expanded': 'false', hidden: true }, 'Session details')}
+    ${graphButton('circle-help', 'Help', { id: 'help', 'aria-haspopup': 'dialog' })}
+    ${graphButton('volume-2', 'Mute sound', { id: 'mute-audio', 'aria-pressed': 'false', 'data-sound': 'none' })}
+    ${graphButton('settings-2', 'Settings', { id: 'open-settings', 'aria-haspopup': 'dialog' })}
+    ${graphButton('share-2', 'Share SessionGraph', { id: 'open-publishing', 'aria-haspopup': 'dialog' })}
   </nav>
   <aside class="sidebar floating-panel glass" id="explorer" aria-label="Sessions">
       <div class="panel-heading"><button class="panel-handle" data-drag-panel="explorer" aria-label="Move sessions panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span>Sessions</span><span class="small-badge" id="list-count">—</span></button><button class="icon-button" id="refresh" aria-label="Refresh sessions" title="Refresh sessions">${icon('refresh-cw')}</button><button class="icon-button" id="close-explorer" aria-label="Close sessions">${icon('x')}</button></div>
       <button class="search-box search-trigger" id="search" aria-label="Search all sessions">${icon('search')}<span>Search everything…</span><kbd>/</kbd></button>
       <div class="filters">
-        <div class="filter-row"><div class="select-wrap"><span id="source-filter-icon">${sourceIcon()}</span><select id="source" aria-label="Session source"><option value="">All sources</option></select>${icon('chevron-down')}</div><button class="icon-button" id="manage-sources" aria-label="Manage sources" title="Import sources">${icon('sliders-horizontal')}</button></div>
+        <div class="filter-row"><div class="select-wrap"><select id="source" data-source-icons="/sources" aria-label="Session source"><option value="">All sources</option></select>${icon('chevron-down')}</div><button class="icon-button" id="manage-sources" aria-label="Manage sources" title="Import sources">${icon('sliders-horizontal')}</button></div>
         <div class="select-wrap">${icon('folder')}<select id="project" aria-label="Project"><option value="">All projects</option></select>${icon('chevron-down')}</div>
         <div class="select-wrap">${icon('git-branch')}<select id="directory" aria-label="Worktree or directory"><option value="">All directories</option></select>${icon('chevron-down')}</div>
         <div class="filter-toggles"><label><input type="checkbox" id="children" checked/><span>Subagent sessions</span></label></div>
@@ -130,11 +129,11 @@ $('#app').innerHTML = `
     ${playbackControls(`<button class="panel-handle" data-drag-panel="timeline" aria-label="Move timeline panel" title="Drag to move · Arrow keys to reposition">${icon('grip')}<span id="date-label">Timeline</span></button><div class="range-buttons" role="group" aria-label="Date range"><button data-days="7">7D</button><button data-days="30">30D</button><button data-days="90">90D</button><button data-days="ytd" class="active" title="Year to date" aria-pressed="true">YTD</button><button data-days="0">All</button></div><div class="custom-dates"></div><button class="icon-button" id="close-timeline" aria-label="Close timeline">${icon('x')}</button>`, { play: 'play', histogram: 'histogram', scrubber: 'scrubber', cursor: 'timeline-cursor', date: 'playback-date', period: 'playback-period', summary: 'playback-summary', sessions: 'playback-sessions', tokens: 'playback-tokens' }, { showCoverage: false })}
     </section>
   </div>
-  <dialog id="help-dialog" aria-labelledby="help-title"><button class="icon-button dialog-close" id="close-help" aria-label="Close help">${icon('x')}</button><h2 id="help-title">Explore the map</h2><div class="help-rows"><div><span>Orbit</span><kbd>Drag</kbd></div><div><span>Zoom</span><kbd>Scroll / pinch</kbd></div><div><span>Pan</span><kbd>Right-drag</kbd></div><div><span>Fit view</span><kbd>F</kbd></div><div><span>Search everything</span><kbd>/ · ⌘/Ctrl K</kbd></div><div><span>Hide / restore panels</span><kbd>H</kbd></div><div><span>Clear selection</span><kbd>Esc</kbd></div></div>
+  ${graphHelp('help-dialog', ['search', 'fit', 'panels', 'clear'], `
     <div class="graph-legend"><span><i class="legend-node"></i>Session orb</span><span><i class="legend-node message"></i>Message</span><span><i class="legend-line lane"></i>Session lifetime</span><span><i class="legend-line fork"></i>Fork</span><span><i class="legend-line child"></i>Child</span><span id="file-legend" hidden><i class="legend-file"></i>File</span></div>
-    <p>Time runs left to right. Each orb travels from session creation to its latest saved message, leaving a trail behind. Select it to explore user and assistant messages in matching colors. Messages without timestamps stay readable in the explorer. Click empty space to deselect. Directory colors group sessions; only fork and child links represent ancestry.</p><button class="secondary-button motion-button" id="motion" aria-pressed="true">${icon('sparkles')}Animate map</button></dialog>
+    <p>Search also opens with ⌘/Ctrl K. Each trail follows a session to its latest saved message. Only fork and child links represent ancestry.</p>`)}
   <div id="toast" class="toast" role="status" hidden></div>
-  <aside class="shortcut-hints" aria-label="Keyboard shortcuts"><span><kbd>/</kbd>Search</span><span><kbd>F</kbd>Fit view</span><span><kbd>H</kbd>Panels</span><span><kbd>Esc</kbd>Clear selection</span></aside>
+  ${shortcutHints(['search', 'fit', 'panels', 'clear'], 'shortcut-hints')}
 `;
 refreshIcons();
 type SessionRow = { session: Session } | { label: string; year: number };
@@ -146,8 +145,6 @@ const sessionList = new VirtualList<SessionRow>($('#session-list'), {
     if ('session' in row) {
       const session = row.session, end = sessionEnd(session);
       element.innerHTML = `<button class="session-card ${selectedID === session.id ? 'selected' : ''}" data-session="${escape(session.id)}" aria-pressed="${selectedID === session.id}" title="${escape(session.title)}"><span class="session-dot" style="--node-color:${nodeColors.get(session.id)}"></span><span class="session-card-body"><span class="session-title">${escape(session.title)}</span><span class="session-meta">${session.forkID ? icon('git-fork') : session.parentID ? icon('network') : ''}<span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><span title="${session.activity?.lastMessageAt ? 'Latest saved message' : 'Session created; message time unavailable'}">${clock.format(end)}</span></span></span></button>`;
-      const marker = element.content.querySelector('[data-lucide]');
-      if (marker) { const svg = createElement(session.forkID ? GitFork : Network); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('stroke-width', '1.5'); marker.replaceWith(svg); }
     } else element.innerHTML = `<div class="list-date">${row.label}<span>${row.year}</span></div>`;
     return element.content.firstElementChild as HTMLElement;
   },
@@ -181,8 +178,7 @@ function applyPreferences() {
   if (densityChanged) sessionList.resetHeights();
   document.documentElement.dataset.motion = String(motionEnabled(preferences, reducedMotion.matches));
   document.documentElement.style.setProperty('--panel-opacity', `${preferences.panelOpacity}%`);
-  $('#motion').setAttribute('aria-pressed', String(motionEnabled(preferences, reducedMotion.matches)));
-  const mute = $('#mute-audio'); mute.setAttribute('aria-pressed', String(preferences.muted)); mute.setAttribute('aria-label', preferences.muted ? 'Unmute sound' : 'Mute sound'); mute.title = preferences.muted ? 'Unmute sound' : 'Mute sound'; mute.innerHTML = icon(preferences.muted ? 'volume-x' : 'volume-2');
+  const mute = $('#mute-audio'), sound = soundButton(preferences.muted); mute.setAttribute('aria-pressed', String(preferences.muted)); mute.setAttribute('aria-label', sound.label); mute.title = sound.label; mute.innerHTML = icon(sound.glyph);
   settings.render(preferences, preferencesSaved || settingsHydrated, settingsSaver?.state || 'saved'); refreshIcons();
 }
 function changePreferences(patch: Partial<Preferences>) {
@@ -345,7 +341,6 @@ async function load(background = false) {
     sessionsByID = new Map(data.sessions.map((session) => [session.id, session]));
     $<HTMLSelectElement>('#source').innerHTML = '<option value="">All sources</option>' + (data.sources || []).map((s) => `<option value="${escape(s.id)}">${escape(s.name)} · ${s.sessions.toLocaleString()}</option>`).join('');
     $<HTMLSelectElement>('#source').value = sourceID;
-    $('#source-filter-icon').innerHTML = sourceIcon(sourceID);
     sessionSearch.setData(data);
     const projectCounts = new Map<string, number>();
     data.sessions.forEach((session) => projectCounts.set(session.projectID, (projectCounts.get(session.projectID) || 0) + 1));
@@ -460,7 +455,6 @@ function updateShareButton(reset = false) {
 
 function resetFilters(reveal?: Session) {
   sourceID = ''; $<HTMLSelectElement>('#source').value = '';
-  $('#source-filter-icon').innerHTML = sourceIcon();
   projectID = ''; directory = ''; days = reveal ? 0 : DEFAULT_VIEW_STATE.days; fromDate = ''; toDate = ''; includeChildren = true; includeArchived = reveal?.archived === true;
   $<HTMLSelectElement>('#project').value = '';
   $<HTMLInputElement>('#children').checked = true;
@@ -573,9 +567,9 @@ function clearSelection() {
 const inspectorPreviewCount = 3;
 
 function renderConnections(container: HTMLElement, session: Session, initiallyExpanded: boolean) {
-  const parents = session.forkID ? [{ id: session.forkID, label: 'Forked from', kind: 'git-fork' }] : session.parentID ? [{ id: session.parentID, label: 'Parent', kind: 'network' }] : [];
+  const parents: { id: string; label: string; kind: IconName }[] = session.forkID ? [{ id: session.forkID, label: 'Forked from', kind: 'git-fork' }] : session.parentID ? [{ id: session.parentID, label: 'Parent', kind: 'network' }] : [];
   const children = data!.sessions.filter((s) => s.forkID === session.id || (!s.forkID && s.parentID === session.id));
-  const related = [...parents, ...children.map((s) => ({ id: s.id, label: s.forkID ? 'Fork' : 'Child', kind: s.forkID ? 'git-fork' : 'network' }))];
+  const related: typeof parents = [...parents, ...children.map((s): (typeof parents)[number] => ({ id: s.id, label: s.forkID ? 'Fork' : 'Child', kind: s.forkID ? 'git-fork' : 'network' }))];
   if (!related.length) { container.hidden = true; return; }
   const rows = (expanded: boolean) => (expanded ? related : related.slice(0, inspectorPreviewCount)).map((r) => {
     const relatedSession = sessionsByID.get(r.id);
@@ -601,7 +595,7 @@ function renderInspector(session: Session, reveal = true) {
   const isWorktree = project?.worktrees.includes(session.directory);
   const infoOpen = !reveal ? ($('#session-inspector').querySelector<HTMLDetailsElement>('.session-info')?.open ?? true) : true;
   const connectionsExpanded = !reveal && $('#toggle-connections')?.getAttribute('aria-expanded') === 'true';
-  const infoRows = [
+  const infoRows: [IconName, string, string][] = [
     ['folder', 'Project', project?.name || 'Unknown'],
     ['cpu', 'Model', session.model],
     ['bot', 'Agent', session.agent || 'Unknown'],
@@ -613,7 +607,7 @@ function renderInspector(session: Session, reveal = true) {
     <div class="detail-scroll">
       <div class="detail-title"><span class="source-badge" data-source="${escape(session.source || 'opencode')}">${sourceIcon(session.source)}${escape(sourceName(session.source))}</span><h2>${escape(session.title)}</h2><div class="detail-title-meta"><span class="detail-date">${timestamp(session.created)}</span><button id="focus-session" class="icon-button" title="Focus node" aria-label="Focus node">${icon('crosshair')}</button></div></div>
       <section id="message-detail" class="detail-section"></section>
-      <details class="session-info more-details detail-section"${infoOpen ? ' open' : ''}><summary>Session info ${icon('chevron-down')}</summary><dl class="metadata">${infoRows.map(([glyph, label, value]) => `<div><dt>${icon(glyph)}${label}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl><div class="directory-card"><span>${icon(isWorktree ? 'git-branch' : 'folder')}${isWorktree ? 'Worktree' : 'Directory'}</span><code>${escape(session.directory)}</code></div></details>
+      ${sessionInfo(infoRows, `<div class="directory-card"><span>${icon(isWorktree ? 'git-branch' : 'folder')}${isWorktree ? 'Worktree' : 'Directory'}</span><code>${escape(session.directory)}</code></div>`, infoOpen)}
       <section id="commit-detail" class="detail-section"></section>
       ${session.linkedSessionIDs?.length ? `<section class="detail-section"><div class="section-label">Linked provider history</div>${session.linkedSessionIDs.map(id => `<button class="relation" data-history="${escape(id)}">${sourceIcon(id.split(':')[0])}<span>${escape(sourceName(id.split(':')[0]))}</span>${icon('arrow-up-right')}</button>`).join('')}</section>` : ''}
       <div id="file-detail"><section class="detail-section"><div class="section-label">Changed files</div><div class="detail-loading">${icon('loader-circle', 'spinning')}Loading changes…</div></section></div>
@@ -773,7 +767,7 @@ $('#inspector').addEventListener('click', (event) => {
   if (button?.dataset.related) selectSession(button.dataset.related);
 });
 $('#project').addEventListener('change', (event) => { projectID = (event.target as HTMLSelectElement).value; directory = ''; updateDirectories(); updateFilters(true); });
-$('#source').addEventListener('change', (event) => { sourceID = (event.target as HTMLSelectElement).value; $('#source-filter-icon').innerHTML = sourceIcon(sourceID); updateFilters(true); });
+$('#source').addEventListener('change', (event) => { sourceID = (event.target as HTMLSelectElement).value; updateFilters(true); });
 $('#directory').addEventListener('change', (event) => { directory = (event.target as HTMLSelectElement).value; updateFilters(true); });
 $('#children').addEventListener('change', (event) => { includeChildren = (event.target as HTMLInputElement).checked; updateFilters(); });
 document.querySelectorAll<HTMLButtonElement>('[data-days]').forEach((button) => button.addEventListener('click', () => { days = button.dataset.days === 'ytd' ? 'ytd' : Number(button.dataset.days); fromDate = ''; toDate = ''; updateFilters(true); }));
@@ -817,10 +811,9 @@ async function openPublishing() {
 $('#share-playback').addEventListener('click', openPublishing);
 $('#open-publishing').addEventListener('click', openPublishing);
 if (import.meta.hot) import.meta.hot.dispose(() => { window.clearTimeout(shareRevealTimer); playbackShare?.dispose(); publishingDialog?.dispose(); });
-$('#motion').addEventListener('click', () => changePreferences({ motion: motionEnabled(preferences, reducedMotion.matches) ? 'off' : 'on' }));
 $('#help').addEventListener('click', () => { $<HTMLDialogElement>('#help-dialog').showModal(); modalVisibility(); });
 $('#help-dialog').addEventListener('close', modalVisibility);
-$('#close-help').addEventListener('click', () => $<HTMLDialogElement>('#help-dialog').close());
+$('#help-dialog [data-close-help]').addEventListener('click', () => $<HTMLDialogElement>('#help-dialog').close());
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented) return;
   if (document.querySelector('dialog[open]')) return;

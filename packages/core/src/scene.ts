@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { connectionPositions, hash, headPosition, orbPosition, progressX, timeX } from './layout';
+import { monthTicks } from './month-ticks';
 import { cometTrails } from './comet-trails';
 import { ForkLinks } from './fork-links';
 import { orbArrivals } from './orb-arrivals';
@@ -21,7 +22,8 @@ import { isConversationMessage, type TimelineItem, type TimelineSummary } from '
 import { ScreenGrid } from './screen-grid';
 import { eventIcon } from './event-icons';
 
-type Label = { element: HTMLDivElement; point: THREE.Vector3; priority?: boolean; visible?: boolean; transform?: string; x?: number; y?: number };
+type Label = { element: HTMLDivElement; point: THREE.Vector3; priority?: boolean; month?: boolean; visible?: boolean; transform?: string; x?: number; y?: number };
+const gridY = -105, gridDepth = 70;
 
 function clearGroup(group: THREE.Group) {
   group.traverse((object) => {
@@ -94,7 +96,8 @@ export class TimelineScene {
   private playbackFocus = new THREE.Vector3();
   private playbackOffset = new THREE.Vector3();
   private playbackOutro: number | null = null;
-  private playbackOrbit?: { theta: number; phi: number; radius: number; focus: THREE.Vector3 };
+  private playbackOrbit?: { theta: number; phi: number; radius: number; focus: THREE.Vector3; incomingTurnsPerSecond: number };
+  private playbackYawSpeed = 0;
   private glowMaterial?: THREE.ShaderMaterial;
   private glowPositions?: THREE.BufferAttribute;
   private time = 0;
@@ -354,9 +357,15 @@ export class TimelineScene {
 
     // Time reference marks sit below the main trunk, with real linear spacing.
     const gridPositions: number[] = [], gridColors: number[] = [];
-    for (let tick = 0; tick <= 8; tick++) {
-      const x = progressX(tick / 8, graph);
-      this.appendSegments([new THREE.Vector3(x, -105, -70), new THREE.Vector3(x, -105, 70)], new THREE.Color('#314149'), gridPositions, gridColors);
+    const months = monthTicks(graph);
+    const gridColor = new THREE.Color('#314149');
+    const marks = months.length > 1 ? months.map(tick => tick.x) : Array.from({ length: 9 }, (_, i) => progressX(i / 8, graph));
+    for (const x of marks) {
+      this.appendSegments([new THREE.Vector3(x, gridY, -gridDepth), new THREE.Vector3(x, gridY, gridDepth)], gridColor, gridPositions, gridColors);
+    }
+    for (const { x, label } of months) {
+      if (months.length === 1 && x !== marks[0]) this.appendSegments([new THREE.Vector3(x, gridY, -gridDepth), new THREE.Vector3(x, gridY, gridDepth)], gridColor, gridPositions, gridColors);
+      this.addLabel(label, new THREE.Vector3(x, gridY, gridDepth), '#9ab9b3', false, true);
     }
     this.addLines(gridPositions, gridColors, 0.23);
     this.setCutoff(this.cutoff);
@@ -445,6 +454,7 @@ export class TimelineScene {
     if (this.playing === playing) return;
     this.playing = playing;
     this.playbackOutro = null; this.playbackOrbit = undefined;
+    this.playbackYawSpeed = 0;
     if (!playing) { this.playbackPath = undefined; this.playbackRadii = []; this.camera.clearViewOffset(); }
     if (playing) { this.focusedSession = null; this.camera.clearViewOffset(); }
     if (playing && this.cutoff === 0) { this.nodeBorn.fill(NaN); this.nodeReveal.fill(0); this.revealsActive = true; }
@@ -462,7 +472,7 @@ export class TimelineScene {
     if (value === this.playbackOutro) return;
     if (value !== null && this.playbackOutro === null) {
       this.playbackSphere.setFromVector3(this.camera.position.clone().sub(this.controls.target));
-      this.playbackOrbit = { theta: this.playbackSphere.theta, phi: this.playbackSphere.phi, radius: this.playbackSphere.radius, focus: this.controls.target.clone() };
+      this.playbackOrbit = { theta: this.playbackSphere.theta, phi: this.playbackSphere.phi, radius: this.playbackSphere.radius, focus: this.controls.target.clone(), incomingTurnsPerSecond: this.playbackYawSpeed / (2 * Math.PI) };
     }
     if (value === null) this.playbackOrbit = undefined;
     this.playbackOutro = value; this.dirty = true;
@@ -476,7 +486,7 @@ export class TimelineScene {
       const orbit = this.playbackOrbit, progress = this.playbackOutro;
       // Unwrapped angles guarantee one whole turn; shortest-angle damping would
       // skip part of the orbit and keep drifting during the final hold.
-      this.playbackSphere.theta = orbit.theta + overviewTurn(progress) * Math.PI * 2;
+      this.playbackSphere.theta = orbit.theta + overviewTurn(progress, orbit.incomingTurnsPerSecond) * Math.PI * 2;
       this.playbackSphere.phi = orbit.phi;
       this.playbackSphere.radius = orbit.radius;
       this.controls.target.copy(orbit.focus);
@@ -494,7 +504,9 @@ export class TimelineScene {
     const yaw = -.3 + this.cutoff * Math.PI;
     const elevation = .16 + Math.sin(this.cutoff * Math.PI) * .12;
     const angle = Math.atan2(Math.sin(yaw - this.playbackSphere.theta), Math.cos(yaw - this.playbackSphere.theta));
-    this.playbackSphere.theta += angle * (1 - Math.exp(-3 * delta));
+    const yawStep = angle * -Math.expm1(-3 * delta);
+    this.playbackSphere.theta += yawStep;
+    if (delta > 0) this.playbackYawSpeed = yawStep / delta;
     this.playbackSphere.phi = THREE.MathUtils.damp(this.playbackSphere.phi, Math.PI / 2 - elevation, 1.5, delta);
     this.playbackSphere.radius = THREE.MathUtils.damp(this.playbackSphere.radius, distance, 1.25, delta);
     this.controls.target.lerp(this.playbackFocus, 1 - Math.exp(-2.1 * delta));
@@ -553,13 +565,13 @@ export class TimelineScene {
     links.update(this.nodeReveal, selected && this.motion ? 0 : Infinity); group.add(links.group); return links;
   }
 
-  private addLabel(text: string, point: THREE.Vector3, color: string, priority = false) {
+  private addLabel(text: string, point: THREE.Vector3, color: string, priority = false, month = false) {
     const element = document.createElement('div');
-    element.className = priority ? 'scene-label selected-label' : 'scene-label';
+    element.className = priority ? 'scene-label selected-label' : month ? 'scene-label month-label' : 'scene-label';
     element.textContent = text;
     element.style.setProperty('--label-color', color);
     this.labelLayer.append(element);
-    const label = { element, point, priority };
+    const label = { element, point, priority, month };
     if (priority) this.labels.unshift(label); else this.labels.push(label);
   }
 
@@ -795,6 +807,7 @@ export class TimelineScene {
     this.camera.clearViewOffset();
     if (!this.graph.nodes.length) return;
     const bounds = new THREE.Box3().setFromPoints(this.graph.nodes.flatMap((node) => [new THREE.Vector3(...node.startPosition), new THREE.Vector3(...node.position)]));
+    if (this.preferences.labels && this.labels.some(label => label.month)) bounds.min.y = Math.min(bounds.min.y, gridY - 12);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
     const tangent = 2 * Math.tan(THREE.MathUtils.degToRad(22.5));
@@ -1146,17 +1159,17 @@ export class TimelineScene {
     for (const label of this.labels) {
       const world = label.point.clone();
       const point = world.project(this.camera);
-      const labelWidth = label.priority ? Math.min(260, width - 24) : this.options.manual ? 235 : 155;
+      const labelWidth = label.priority ? Math.min(260, width - 24) : label.month ? (label.element.textContent!.length > 3 ? 62 : 32) : this.options.manual ? 235 : 155;
       const projectedX = (point.x * 0.5 + 0.5) * width;
-      const x = label.priority ? THREE.MathUtils.clamp(projectedX - labelWidth / 2, 12, width - labelWidth - 12) : projectedX;
-      const y = (-point.y * 0.5 + 0.5) * height - (label.priority ? 24 : 0);
+      const x = label.priority ? THREE.MathUtils.clamp(projectedX - labelWidth / 2, 12, width - labelWidth - 12) : label.month ? projectedX - labelWidth / 2 : projectedX;
+      const y = (-point.y * 0.5 + 0.5) * height + (label.priority ? -24 : label.month ? 4 : 0);
       const overlaps = occupied.some((box) => x < box.x + box.width + 8 && x + labelWidth + 8 > box.x && Math.abs(y - box.y) < 26);
       const inTime = label.priority && selected ? selected.startPosition[0] <= this.clipPlane.constant : label.point.x <= this.clipPlane.constant;
-      const visible = (width > 600 || label.priority) && !overlaps && x + labelWidth <= width - 12 && inTime && point.z < 1 && point.z > -1 && Math.abs(point.x) < 0.95 && Math.abs(point.y) < 0.9;
+      const visible = (width > 600 || label.priority || label.month) && !overlaps && (!label.month || x >= 12) && x + labelWidth <= width - 12 && inTime && point.z < 1 && point.z > -1 && Math.abs(point.x) < 0.95 && Math.abs(point.y) < 0.9;
       if (label.visible !== visible) { label.element.classList.toggle('visible', visible); label.visible = visible; }
       if (visible) {
         label.x = x; label.y = y;
-        const transform = `translate(${x}px, ${y}px)`;
+        const transform = `translate(${x}px, ${y}px)${label.month ? ` translateX(${labelWidth / 2}px) translateX(-50%)` : ''}`;
         if (label.transform !== transform) { label.element.style.transform = transform; label.transform = transform; }
         occupied.push({ x, y, width: labelWidth });
       }
@@ -1206,7 +1219,9 @@ export class TimelineScene {
     context.save(); context.font = '11px "IBM Plex Mono", monospace'; context.textBaseline = 'top';
     for (const label of this.labels) if (label.visible && !label.priority) {
       context.fillStyle = label.element.style.getPropertyValue('--label-color'); context.globalAlpha = .8;
-      context.fillText(label.element.textContent || '', (label.x || 0) + 8, (label.y || 0) + 5);
+      const text = label.element.textContent || '';
+      const x = (label.x || 0) + (label.month ? ((text.length > 3 ? 62 : 32) - context.measureText(text).width) / 2 : 8);
+      context.fillText(text, x, (label.y || 0) + 5);
     }
     context.restore();
   }

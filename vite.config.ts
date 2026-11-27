@@ -12,10 +12,12 @@ function sessionGraphApi(): Plugin {
 
 export default defineConfig({
   plugins: [sessionGraphApi(), {
-    name: 'katagami-license',
+    name: 'ui-asset-licenses',
     apply: 'build',
     generateBundle() {
-      this.emitFile({ type: 'asset', fileName: 'assets/licenses/katagami.txt', source: readFileSync(new URL('./packages/site/assets/licenses/katagami.txt', import.meta.url)) });
+      for (const file of ['katagami.txt', 'hugeicons.txt']) {
+        this.emitFile({ type: 'asset', fileName: `assets/licenses/${file}`, source: readFileSync(new URL(`./packages/site/assets/licenses/${file}`, import.meta.url)) });
+      }
     },
   }],
   build: {
