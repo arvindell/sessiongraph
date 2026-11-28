@@ -4,11 +4,13 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, writeFile, readFile, rm, utimes, truncate, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { claudeAdapter } from '../server/adapters/claude';
+import { claudeAdapter, createClaudeAdapter } from '../server/adapters/claude';
 import { claudeRevision, claudeTranscript } from '../server/adapters/claude-transcripts';
 import { Importer } from '../server/importer';
 import { SessionGraphStore } from '../server/store';
 import type { Candidate, ImportedMessage } from '../server/adapters/types';
+import { createClaudeLocationScanner } from '../server/adapters/claude-locations';
+import { withSourcePaths } from '../server/source-paths';
 
 const time = Date.parse('2026-10-20T10:00:00Z');
 const cwd = 'C:\\Users\\Example User\\Code\\app';
@@ -128,4 +130,52 @@ test('Claude skips non-session files and sidechains, discloses malformed records
     const link = join(root, 'projects', 'C--Code-app', `${randomUUID()}.jsonl`);
     await symlink(file, link); await assert.rejects(claudeRevision(link), /regular file/);
   }
+}));
+
+test('Claude imports computer-wide histories read-only, deduplicates copies, and disables cross-account native resume', async () => fixture(async root => {
+  const alice = join(root, 'Users', 'alice', '.claude'), bob = join(root, 'Users', 'bob', '.claude');
+  const archive = join(root, 'Volumes', 'Archive', 'custom-claude-home');
+  const id = randomUUID(), other = randomUUID(), archived = randomUUID();
+  const old = await put(alice, `app/${id}.jsonl`, conversation(id, 2, 'Older Alice copy'));
+  const current = await put(bob, `app/${id}.jsonl`, conversation(id, 4, 'Latest Bob copy'));
+  await put(alice, `app/${other}.jsonl`, conversation(other, 2, 'Current account'));
+  await put(archive, `app/${archived}.jsonl`, conversation(archived, 2, 'Custom archive'));
+  await put(bob, `app/${id}/subagents/agent-child.jsonl`, conversation(id).map(row => ({ ...row, isSidechain: true })));
+  await utimes(old, new Date(time), new Date(time)); await utimes(current, new Date(time + 1_000), new Date(time + 1_000));
+  const before = await readFile(current);
+  const scan = createClaudeLocationScanner({ roots: async () => [root], preferredHome: () => alice, now: () => 0 });
+  const adapter = createClaudeAdapter(scan, () => alice), store = new SessionGraphStore(':memory:');
+  try {
+    const importer = new Importer(store, [adapter]);
+    importer.start(['claude-code']); await importer.settled();
+    assert.equal(importer.status.failed, 0, JSON.stringify(importer.status));
+    assert.equal(importer.status.imported, 4);
+    assert.equal(store.getSession(`claude-code:${id}`)?.title, 'Latest Bob copy');
+    assert.equal(store.getSession(`claude-code:${id}`)?.nativeResume, false);
+    assert.equal(store.content(`claude-code:${id}`).messages, 4);
+    assert.equal(store.getSession(`claude-code:${other}`)?.nativeResume, true);
+    assert.equal(store.getSession(`claude-code:${archived}`)?.nativeResume, false);
+    assert.equal(store.getSession(`claude-code:${id}/agent/child`)?.parentID, `claude-code:${id}`);
+    assert.deepEqual(await readFile(current), before);
+    await rm(join(bob, 'projects'), { recursive: true });
+    await rm(join(alice, 'projects'), { recursive: true });
+    importer.start(); await importer.settled();
+    assert.equal(store.content(`claude-code:${id}`).messages, 4, 'missing homes must retain saved history');
+  } finally { store.close(); }
+}));
+
+test('Claude chooses the active account on equal copy times and isolates concurrent library overrides', async () => fixture(async root => {
+  const alice = join(root, 'alice'), bob = join(root, 'bob'), id = randomUUID();
+  const a = await put(alice, `app/${id}.jsonl`, conversation(id, 2, 'Alice title'));
+  const b = await put(bob, `app/${id}.jsonl`, conversation(id, 2, 'Bob title'));
+  await utimes(a, new Date(time), new Date(time)); await utimes(b, new Date(time), new Date(time));
+  const adapter = createClaudeAdapter(async () => ({ homes: [bob, alice], warnings: [], pending: false }), () => alice);
+  assert.equal((await adapter.discover()).sessions[0].session.title, 'Alice title');
+  // Saved paths beat CLAUDE_CONFIG_DIR and never invoke computer-wide discovery.
+  const first = withSourcePaths(claudeAdapter, () => ({ 'claude-code': alice }));
+  const second = withSourcePaths(claudeAdapter, () => ({ 'claude-code': bob }));
+  const [left, right] = await Promise.all([first.discover(), second.discover()]);
+  assert.equal(left.sessions.length, 1); assert.equal(right.sessions.length, 1);
+  assert.equal(left.sessions[0].session.title, 'Alice title'); assert.equal(right.sessions[0].session.title, 'Bob title');
+  assert.equal(left.sessions[0].session.nativeResume, false); assert.equal(right.sessions[0].session.nativeResume, false);
 }));

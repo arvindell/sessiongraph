@@ -24,7 +24,7 @@ export function withSourcePaths(adapter: SessionAdapter, configured: () => Recor
 export function sourcePathHint(id: string) {
   const hints: Record<string, string> = {
     opencode: 'OpenCode data directory or SQLite file (normally ~/.local/share/opencode/opencode.db). Supports V1 and V2 offline.',
-    'claude-code': 'Claude home containing projects/ and transcripts/ (normally ~/.claude).',
+    'claude-code': 'Claude home containing projects/ and transcripts/. Automatic discovery searches accessible locations across the computer; a custom path restricts it to this home.',
     codex: 'Codex home containing sessions/ and archived_sessions/ (normally ~/.codex).',
     't3-code': 'T3 home containing its local server history (normally ~/.t3).',
     cursor: 'Cursor CLI home (normally ~/.cursor); IDE data still uses SESSIONGRAPH_CURSOR_USER_DATA_DIR.',

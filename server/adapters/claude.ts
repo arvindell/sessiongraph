@@ -1,20 +1,19 @@
-import { listSessions, getSessionMessages, getSubagentMessages, type SessionMessage } from '@anthropic-ai/claude-agent-sdk';
-import { readdir, stat } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { getSessionMessages, getSubagentMessages, type SDKSessionInfo, type SessionMessage } from '@anthropic-ai/claude-agent-sdk';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { lstat, readdir, stat } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
 import { addText, blankMessage, blankSession, identity, project, toolText } from './common';
 import type { Candidate, ImportedMessage, SessionAdapter } from './types';
 import { blockEvents, eventFor, eventText } from '../events';
 import { claudeRevision as revision, claudeSessionID, claudeTranscript, claudeTranscriptInfo, claudeTranscriptStore } from './claude-transcripts';
-import { localFileAdapter } from './local-files';
+import { historyFiles, localFileAdapter } from './local-files';
 import { envelopeHistory } from './harness-formats';
 import { combineAdapters } from './sqlite-histories';
 import { sourcePath } from '../source-paths';
 import { executionFields, nativeCommit } from '../commit-extraction';
 import type { SessionStoreEntry } from '@anthropic-ai/claude-agent-sdk';
 import { anthropicUsage, messageMetadata, summarizeUsage } from '../usage';
-
-const root = () => join(sourcePath('claude-code') || process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
+import { activeClaudeHome, claudeLocations, type ClaudeLocations } from './claude-locations';
 
 export function claudeMessages(rows: SessionMessage[], candidate: Candidate, times?: Map<string, number>, entries?: Map<string, SessionStoreEntry>): ImportedMessage[] {
   // Match tool results explicitly; a requested edit alone is not file evidence.
@@ -58,53 +57,58 @@ export function claudeMessages(rows: SessionMessage[], candidate: Candidate, tim
   });
 }
 
+const context = new AsyncLocalStorage<ClaudeLocations & { activeHome: string }>();
+const homes = () => context.getStore()?.homes || [];
+const activeHome = () => context.getStore()?.activeHome || activeClaudeHome();
+// Keep only small metadata, never a library of parsed transcript contents.
+const metadata = new Map<string, { revision: string; info?: SDKSessionInfo; partial: boolean }>();
 const sdkClaudeAdapter: SessionAdapter = {
-  id: 'claude-code', name: 'Claude Code', description: 'Local CLI and VS Code history · all projects and subagent transcripts',
+  id: 'claude-code', name: 'Claude Code', description: 'Computer-wide local CLI and VS Code history · all projects and subagent transcripts',
   capabilities: { history: true, forks: false, children: true, files: true },
-  async detect() { try { return (await stat(root())).isDirectory(); } catch { return false; } },
+  async detect() { for (const home of homes()) if ((await lstat(join(home, 'projects')).catch(() => undefined))?.isDirectory()) return true; return false; },
   async discover() {
     const sessions: Candidate[] = [], warnings: string[] = [];
-    // The SDK deduplicates native session IDs across projects and worktrees.
-    // A library-specific archive must not inherit metadata from the SDK's default
-    // home when the same native session also exists there. Read its own headers.
-    const infos = sourcePath('claude-code') ? [] : await listSessions({ limit: 20_000, includeProgrammatic: true });
-    if (infos.length === 20_000) warnings.push('Claude Code listing is limited to 20,000 sessions.');
-    const files = new Map<string, { path: string; children: string }>();
+    // Always read metadata from the chosen transcript, never the SDK's current
+    // user's home: another account/archive can contain a different copy.
+    const listing = await historyFiles(homes().map(home => join(home, 'projects')), p => {
+      const parts = p.split('/');
+      return parts.length === 2 && parts[1].endsWith('.jsonl') && claudeSessionID(parts[1].slice(0, -6));
+    });
+    warnings.push(...listing.warnings);
+    const files = new Map<string, { path: string; children: string; home: string; modified: number }>();
     let unreadable = 0;
-    for (const dir of await readdir(root(), { withFileTypes: true })) {
-      if (!dir.isDirectory()) continue;
-      const parent = join(root(), dir.name);
-      let entries;
-      try { entries = await readdir(parent, { withFileTypes: true }); } catch { unreadable++; continue; }
-      for (const file of entries) if (file.isFile() && file.name.endsWith('.jsonl') && claudeSessionID(file.name.slice(0, -6))) {
-        const id = file.name.slice(0, -6), path = join(parent, file.name);
-        try {
-          const old = files.get(id);
-          if (!old || (await stat(path)).mtimeMs > (await stat(old.path)).mtimeMs) files.set(id, { path, children: join(parent, id, 'subagents') });
-        } catch { unreadable++; }
-      }
-    }
-    const listed = new Set(infos.map(info => info.sessionId));
-    for (const [id, file] of files) {
-      if (listed.has(id)) continue;
-      if (infos.length >= 20_000) { warnings.push('Claude Code discovery is limited to 20,000 sessions.'); break; }
+    for (const path of listing.files) {
+      const name = basename(path);
+      const id = name.slice(0, -6), home = dirname(dirname(dirname(path)));
       try {
-        const transcript = await claudeTranscript(file.path, await revision(file.path));
-        const info = claudeTranscriptInfo(transcript, id);
-        if (info) infos.push(info);
-        else if (transcript.partial) unreadable++;
+        const modified = (await stat(path)).mtimeMs, old = files.get(id);
+        if (!old || modified > old.modified || modified === old.modified && home === resolve(activeHome()) && old.home !== home) files.set(id, { path, home, modified, children: join(dirname(path), id, 'subagents') });
       } catch { unreadable++; }
     }
-    for (const info of infos) {
-      const file = files.get(info.sessionId);
-      if (!file) continue;
-      const s = { ...blankSession('claude-code', info.sessionId, info.cwd), title: info.customTitle || info.summary || info.firstPrompt || 'Untitled session', created: info.createdAt || info.lastModified, updated: info.lastModified, provider: 'anthropic', agent: 'Claude Code' };
+    for (const [id, file] of files) {
+      let info;
+      try {
+        const rev = await revision(file.path);
+        let cached = metadata.get(file.path);
+        if (!cached || cached.revision !== rev) {
+          const transcript = await claudeTranscript(file.path, rev);
+          cached = { revision: rev, info: claudeTranscriptInfo(transcript, id), partial: transcript.partial };
+          if (metadata.size >= 20_000) metadata.delete(metadata.keys().next().value!);
+          metadata.set(file.path, cached);
+        }
+        info = cached.info;
+        if (!info && cached.partial) unreadable++;
+      } catch { unreadable++; continue; }
+      if (!info) continue;
+      const s = { ...blankSession('claude-code', info.sessionId, info.cwd), title: info.customTitle || info.summary || info.firstPrompt || 'Untitled session', created: info.createdAt || info.lastModified, updated: info.lastModified, provider: 'anthropic', agent: 'Claude Code', nativeResume: !sourcePath('claude-code') && file.home === resolve(activeHome()) };
+      if (sessions.length >= 20_000) { warnings.push('Claude Code discovery is limited to 20,000 sessions.'); break; }
       try { sessions.push({ session: s, revision: await revision(file.path), locator: { path: file.path, dir: info.cwd || '' } }); }
       catch { unreadable++; continue; }
       let children;
-      try { children = await readdir(file.children, { withFileTypes: true }); }
+      try { if (!(await lstat(file.children)).isDirectory()) continue; children = await readdir(file.children, { withFileTypes: true }); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') unreadable++; continue; }
       for (const child of children) {
+        if (sessions.length >= 20_000) { warnings.push('Claude Code discovery is limited to 20,000 sessions.'); break; }
         if (!child.isFile() || !/^agent-[\w-]+\.jsonl$/.test(child.name)) continue;
         try {
           const agent = child.name.slice(6, -6), path = join(file.children, child.name), stats = await stat(path);
@@ -156,8 +160,29 @@ const sdkClaudeAdapter: SessionAdapter = {
 const exportedClaudeAdapter = localFileAdapter({
   id: 'claude-code', name: 'Claude Code', description: 'Legacy local transcript exports',
   capabilities: { history: true, forks: false, children: false, files: false },
-  roots: () => [join(sourcePath('claude-code') || process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'transcripts')],
+  roots: () => homes().map(home => join(home, 'transcripts')),
   match: p => p.endsWith('.jsonl'),
   parse: (path, files) => envelopeHistory(path, files.get(path)!),
 });
-export const claudeAdapter = combineAdapters([sdkClaudeAdapter, exportedClaudeAdapter]);
+export function createClaudeAdapter(locations = claudeLocations, currentHome = activeClaudeHome): SessionAdapter {
+  const combined = combineAdapters([sdkClaudeAdapter, exportedClaudeAdapter]);
+  return { ...combined,
+    async detect() {
+      const found = await locations();
+      // A pending search must remain selectable even before the first home is
+      // found, so subsequent imports can continue searching and show warnings.
+      return context.run({ ...found, activeHome: resolve(currentHome()) }, () => found.pending ? Promise.resolve(true) : combined.detect());
+    },
+    async discover() {
+      const found = await locations();
+      return context.run({ ...found, activeHome: resolve(currentHome()) }, async () => {
+        const result = await combined.discover();
+        // Legacy exports, like relocated native histories, are context handoffs.
+        for (const candidate of result.sessions) if (candidate.locator.representation === '1') candidate.session.nativeResume = false;
+        return { ...result, warnings: [...new Set([...found.warnings, ...result.warnings])] };
+      });
+    },
+  };
+}
+
+export const claudeAdapter = createClaudeAdapter();
