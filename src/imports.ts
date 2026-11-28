@@ -1,7 +1,8 @@
 import { icon } from '@sessiongraph/core/icons';
 import type { ImportStatus, SourceStatus } from '@sessiongraph/core/types';
-import { sourceName, sourceOption, sortSources } from '@sessiongraph/core/sources';
+import { sourceName, sortSources } from '@sessiongraph/core/sources';
 import { LocalApiError, requestLocal } from './local-api';
+import { createSourceLocations } from './source-locations';
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 export function createImports(onChange: (background: boolean) => Promise<void>, onVisibility: () => void, notice: (message: string) => void) {
@@ -14,11 +15,14 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
   let starting = false, polling = false, background = false;
   const requests = new AbortController();
   let onboarding = false, view = 0, loadingSources = false, sourcesReady = false, setupImport = false;
+  let locationSaving = false;
+  const locations = createSourceLocations($('.import-sources'), { busy(value) { locationSaving = value; renderAction(); } });
   function renderAction() {
     const selected = dialog.querySelectorAll('input:checked').length;
-    $<HTMLButtonElement>('.import-start').disabled = running || starting || loadingSources;
-    $('.import-start').textContent = running || starting ? 'Importing…' : loadingSources ? 'Finding sources…' : !sourcesReady ? 'Try again' : onboarding ? selected ? 'Import & continue →' : 'Continue without importing →' : 'Import updates ↗';
-    dialog.querySelectorAll<HTMLInputElement>('input').forEach(input => { input.disabled = running || starting; });
+    $<HTMLButtonElement>('.import-start').disabled = running || starting || loadingSources || locationSaving;
+    $('.import-start').textContent = running || starting ? 'Importing…' : locationSaving ? 'Saving location…' : loadingSources ? 'Finding sources…' : !sourcesReady ? 'Try again' : onboarding ? selected ? 'Import & continue →' : 'Continue without importing →' : 'Import updates ↗';
+    dialog.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach(input => { input.disabled = running || starting || locationSaving; });
+    locations.setDisabled(running || starting || loadingSources);
   }
   async function request<T>(path: string, options?: RequestInit): Promise<T> {
     try {
@@ -67,7 +71,7 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
     if (!dialog.open && !background) notice(message);
   }
   async function start(sources?: string[], automatic = false) {
-    if (disposed || automatic && dialog.open) return;
+    if (disposed || locationSaving || automatic && dialog.open) return;
     if (running || starting || polling || timer) { if (!automatic && !dialog.open) void open(); return; }
     starting = true; background = automatic;
     running = true; renderAction();
@@ -88,6 +92,7 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
     finally { starting = false; if (!disposed) renderAction(); }
   }
   async function open(first = false) {
+    if (locationSaving) return;
     onboarding = first; const openedView = ++view;
     loadingSources = true; sourcesReady = false;
     returnFocus = document.activeElement as HTMLElement;
@@ -99,7 +104,7 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
     try {
       const result = await request<{ sources: SourceStatus[] }>('sources');
       if (disposed || openedView !== view) return;
-      $('.import-sources').innerHTML = sortSources(result.sources).map((source) => sourceOption(source, { checked: source.selected || first && source.available && source.capabilities.history, disabled: running })).join('');
+      $('.import-sources').innerHTML = sortSources(result.sources).map(source => locations.option(source, source.selected || first && source.available && source.capabilities.history)).join('');
       sourcesReady = true;
       const status = await request<ImportStatus>('import');
       if (disposed || openedView !== view) return;
@@ -113,5 +118,5 @@ export function createImports(onChange: (background: boolean) => Promise<void>, 
   $('.dialog-close').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => { view++; loadingSources = false; onVisibility(); returnFocus?.focus(); });
   dialog.addEventListener('keydown', (event) => event.stopPropagation());
-  return { open, sources: async () => (await request<{ sources: SourceStatus[] }>('sources')).sources, select: (sources: string[]) => start(sources), get busy() { return running || starting || polling || Boolean(timer); }, refresh: (automatic = false) => start(undefined, automatic), resume: () => { background = true; running = true; window.clearTimeout(timer); void poll(); }, dispose: () => { disposed = true; requests.abort(); window.clearTimeout(timer); dialog.remove(); } };
+  return { open, sources: async () => (await request<{ sources: SourceStatus[] }>('sources')).sources, select: (sources: string[]) => start(sources), get busy() { return running || starting || polling || locationSaving || Boolean(timer); }, refresh: (automatic = false) => start(undefined, automatic), resume: () => { background = true; running = true; window.clearTimeout(timer); void poll(); }, dispose: () => { disposed = true; locations.dispose(); requests.abort(); window.clearTimeout(timer); dialog.remove(); } };
 }

@@ -3,7 +3,8 @@ import { icon, type IconName } from '@sessiongraph/core/icons';
 import { refreshSelects } from './controls';
 import type { SaveState } from './library-settings';
 import type { ImportStatus, SourceStatus } from '@sessiongraph/core/types';
-import { sourceOption, sortSources } from '@sessiongraph/core/sources';
+import { sortSources } from '@sessiongraph/core/sources';
+import { createSourceLocations } from './source-locations';
 
 type Section = 'interface' | 'sources' | 'audio' | 'graphics' | 'trails' | 'privacy';
 const tabs: [Section, string, IconName][] = [['interface', 'Interface', 'panels'], ['sources', 'Sources', 'database'], ['audio', 'Sound', 'volume-2'], ['graphics', 'Graphics', 'sparkles'], ['trails', 'Trails & playback', 'orbit'], ['privacy', 'Privacy', 'lock']];
@@ -24,11 +25,11 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
         <label class="setting-row"><span><strong>Show archived sessions</strong><small>Include archived history in the map and session list.</small></span><input class="settings-archived" type="checkbox" role="switch" aria-label="Show archived sessions"/></label>
         ${range('panelOpacity', 'Panel opacity', 'Adjust panel background transparency.', 55, 100)}
       </section>
-      <section id="settings-sources" role="tabpanel" aria-labelledby="settings-tab-sources" hidden><h3>Sources</h3><p class="settings-description">Choose the local apps to import. Importing is read-only.</p>
+      <section id="settings-sources" role="tabpanel" aria-labelledby="settings-tab-sources" hidden><h3>Sources</h3><p class="settings-description">Choose the local apps to import. Expand History location under any harness to override its automatic discovery. Importing is read-only.</p>
         ${toggle('autoImport', 'Auto-import sessions', 'Check selected sources on startup, on return, and every minute while visible.')}
         <div class="settings-sources-list import-sources"></div>
         <div class="settings-import-progress" role="status"></div>
-        <div class="settings-note"><span>Source changes apply when you import. Previously saved history is kept.</span><button class="secondary-button settings-import" disabled>Import selected sources</button></div>
+        <div class="settings-note"><span>Selections apply when you import. History locations save separately. Previously saved history is kept.</span><button class="secondary-button settings-import" disabled>Import selected sources</button></div>
       </section>
       <section id="settings-audio" role="tabpanel" aria-labelledby="settings-tab-audio" hidden><h3>Sound</h3><p class="settings-description">Interaction sounds are synthesized locally.</p>
         ${toggle('muted', 'Mute all sound', 'Silence everything. Your volume levels are kept.')}
@@ -69,24 +70,28 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
   archived.addEventListener('change', () => callbacks.changeArchived(archived.checked), options);
   let focus: HTMLElement | null = null;
   let sourceRequest = 0, sourcesLoading = false, sourcesRunning = false, active: Section = 'interface';
+  let locationSaving = false;
   const sourceControls = () => {
-    dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>('.settings-source, .settings-import').forEach((control) => { control.disabled = sourcesLoading || sourcesRunning; });
+    dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>('.settings-source, .settings-import').forEach((control) => { control.disabled = sourcesLoading || sourcesRunning || locationSaving; });
+    locations.setDisabled(sourcesLoading || sourcesRunning);
     if (!dialog.querySelector('.settings-source')) (dialog.querySelector('.settings-import') as HTMLButtonElement).disabled = true;
   };
+  const locations = createSourceLocations(dialog.querySelector('.settings-sources-list')!, { settings: true, busy(value) { locationSaving = value; sourceControls(); } });
   async function loadSources() {
+    if (locationSaving) return;
     const request = ++sourceRequest; sourcesLoading = true; sourceControls();
     const list = dialog.querySelector('.settings-sources-list')!;
     list.textContent = 'Finding local session sources…';
     try {
       const sources = await callbacks.getSources();
       if (events.signal.aborted || request !== sourceRequest) return;
-      list.innerHTML = sortSources(sources).map((source) => sourceOption(source, { settings: true })).join('');
+      list.innerHTML = sortSources(sources).map(source => locations.option(source)).join('');
     } catch (error) {
       if (events.signal.aborted || request !== sourceRequest) return;
       list.textContent = error instanceof Error ? error.message : 'Could not detect sources.';
       const retry = document.createElement('button'); retry.className = 'secondary-button'; retry.textContent = 'Retry'; retry.addEventListener('click', () => void loadSources(), options); list.append(retry);
     } finally {
-      if (request === sourceRequest && !events.signal.aborted) { sourcesLoading = false; sourceControls(); (dialog.querySelector('.settings-import') as HTMLButtonElement).disabled ||= !list.querySelector('input'); }
+      if (request === sourceRequest && !events.signal.aborted) { sourcesLoading = false; sourceControls(); (dialog.querySelector('.settings-import') as HTMLButtonElement).disabled ||= !list.querySelector('.settings-source'); }
     }
   }
   dialog.querySelector('.settings-import')!.addEventListener('click', async () => {
@@ -161,6 +166,6 @@ export function createSettings(callbacks: { publishing: () => void; change: (pat
       refreshSelects(dialog);
     },
     audioStatus(text: string) { dialog.querySelector('.settings-audio-status')!.textContent = text; },
-    dispose() { events.abort(); dialog.remove(); },
+    dispose() { events.abort(); locations.dispose(); dialog.remove(); },
   };
 }
