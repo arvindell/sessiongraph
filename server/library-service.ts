@@ -40,7 +40,7 @@ export class LibraryService {
   private key(kind: string, sessions: Session[], filters: unknown) { return fingerprint([this.store.setting('libraryID'), kind, filters, sessions]); }
   async discoverSources() {
     const paths = this.store.setting<Record<string, string>>('sourcePaths') || {};
-    return { sources: (await this.importer.sources()).map(source => ({ ...source, path: paths[source.id] || null, pathSupported: source.id !== 'opencode', pathHint: sourcePathHint(source.id) })),
+    return { sources: (await this.importer.sources()).map(source => ({ ...source, path: paths[source.id] || null, pathSupported: true, pathHint: sourcePathHint(source.id) })),
       configured: this.store.setting('selected') !== undefined, autoImport: this.store.autoImportEnabled() };
   }
   private configure(change: () => void) {
@@ -57,7 +57,7 @@ export class LibraryService {
     if (options.detected && ids.length) invalid('Choose source IDs or --detected, not both.');
     if (options.path !== undefined && options.defaultPath) invalid('Choose --path or --default-path, not both.');
     if (options.path !== undefined || options.defaultPath) {
-      if (ids.length !== 1 || ids[0] === 'opencode') invalid('A path override requires exactly one filesystem source. OpenCode uses service discovery.');
+      if (ids.length !== 1) invalid('A path override requires exactly one filesystem source.');
       if (options.path !== undefined && (!options.path.trim() || options.path.includes('\0'))) invalid('Choose a nonempty local source directory.');
     }
     if (options.detected) ids = (await this.discoverSources()).sources.filter(s => s.available).map(s => s.id);
@@ -224,7 +224,7 @@ export class LibraryService {
     const sources = await this.discoverSources(), checks: { name: string; ok: boolean; message: string }[] = [];
     const integrity = this.store.db.prepare('PRAGMA quick_check').all();
     checks.push({ name: 'database', ok: integrity.every(row => row.quick_check === 'ok'), message: integrity.map(row => String(row.quick_check)).join('; ') });
-    for (const source of sources.sources.filter(s => s.selected)) checks.push({ name: source.id, ok: source.available && !source.error, message: source.error || (source.available ? 'Available' : source.id === 'opencode' ? 'Open OpenCode and retry sync.' : 'History unavailable. Check the source path and permissions.') });
+    for (const source of sources.sources.filter(s => s.selected)) checks.push({ name: source.id, ok: source.available && !source.error, message: source.error || (source.available ? 'Available' : 'History unavailable. Check the source path and permissions.') });
     const lock = this.store.db.prepare('SELECT pid,heartbeat FROM import_lock WHERE id=1').get();
     return { ok: checks.every(c => c.ok), database: this.store.path, node: process.versions.node, configured: sources.configured, selected: this.store.selected(), autoImport: sources.autoImport,
       importLock: lock ? { pid: Number(lock.pid), heartbeat: Number(lock.heartbeat) } : null, checks,

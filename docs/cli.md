@@ -200,7 +200,7 @@ Paths can be configured before they become available.
 | Claude Code | Home containing `projects/` |
 | Pi | The `sessions/` directory |
 | Cursor | CLI home; IDE data uses `SESSIONGRAPH_CURSOR_USER_DATA_DIR` |
-| OpenCode | Authenticated local service discovery; open OpenCode before syncing |
+| OpenCode | Data directory or SQLite file, normally `~/.local/share/opencode/opencode.db`; V1 and V2 work offline |
 
 Other sources describe their paths in `sources --json` under `pathHint`.
 Custom-path sessions use a saved-context handoff when opened from the app.

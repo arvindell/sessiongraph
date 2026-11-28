@@ -21,7 +21,7 @@
 ## History invariants
 
 - Discovery and import must stay local and read-only: never run inference, resume sessions, or upload data. Launching a destination harness is a separate explicit user action.
-- OpenCode reads use the official client's authenticated service discovery and loopback GET API (`server/opencode.ts`). Never directly open or mutate OpenCode's database; keep source credentials in the backend.
+- OpenCode imports use private read-only SQLite snapshots (including the WAL) of V1 and V2 history. Never open the live source database with SQLite or mutate it. Only explicit launch/connection actions use authenticated service discovery; keep source credentials in the backend.
 - Imported history and search checkpoints belong in SessionGraph's own SQLite database outside the repository. Never put session data in Git, bundles, or npm artifacts. Keep temporary diagnostics and screenshots in ignored `tmp/`.
 - Deduplicate by source/native session identity and native message IDs. Replace messages, events, coverage, and search invalidation atomically; retain saved history when sources disappear, are deselected, or fail to import.
 - Forks, child/subagent links, directory/worktree associations, and chronological proximity are distinct. Never infer ancestry from timestamps or merge sessions by similar text. Unknown metadata is not zero.

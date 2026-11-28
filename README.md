@@ -47,7 +47,7 @@ Or download an installer — no Node.js required:
 
 | Harness | Local history |
 | --- | --- |
-| <img src="public/sources/opencode.svg" width="14" alt=""/> **OpenCode** | Run OpenCode when importing |
+| <img src="public/sources/opencode.svg" width="14" alt=""/> **OpenCode** | Local V1 and V2 SQLite history; works with OpenCode closed |
 | <img src="public/sources/claude.svg" width="14" alt=""/> **Claude Code** | Projects, worktrees, and subagents |
 | <img src="public/sources/openai.svg" width="14" alt=""/> **Codex** | Active and archived sessions |
 | <img src="public/sources/t3.svg" width="14" alt=""/> **T3 Code** | Threads and activity |

@@ -10,7 +10,7 @@ This table describes **the current importer**, not every capability of the harne
 
 | Harness | Messages | Tool calls/results | Changed files | Commit index | Workspace directory | Session links |
 | --- | --- | --- | --- | --- | --- | --- |
-| OpenCode V2 | ✅ | ✅ | ✅ snapshots / edits | ⚠️ confirmed executions | ✅ + move events | ✅ forks / children |
+| OpenCode V1 / V2 SQLite | ✅ | ✅ | ✅ snapshots / edits | ⚠️ confirmed executions | ✅; V2 move events | ✅ recorded parents; V2 explicit forks |
 | Claude Code | ⚠️ SDK-visible chain | ✅ | ⚠️ successful edits | ⚠️ executions / native Git result | ✅ recorded cwd | ⚠️ children |
 | Codex | ✅ local rollouts | ✅ | ✅ completed patches | ⚠️ confirmed executions | ✅ header / turn cwd | ✅ forks / children |
 | T3 Code | ⚠️ V2 activity; V1 text | ⚠️ V2 only | ⚠️ actual-path changes | ⚠️ V2 executions | ✅ thread/worktree; per-command cwd conditional | ✅ explicit links + provider bindings |
@@ -88,7 +88,7 @@ The index stores only **created**, **amended**, and **cherry-picked** actions wi
 
 ## Recorded usage and metadata audit
 
-Audit date: **2026-11-27**. This is a code/schema and synthetic-fixture audit, not a claim that every installed harness version has been tested against live history. References are the pinned [Tokscale format parsers](https://github.com/junhoyeo/tokscale/tree/8d9b509c4d719f3385e3c2464b770dc5257cb354/crates/tokscale-core/src/sessions), the [OpenCode V2 API](https://opencode.ai/docs/api), and its [OpenAPI schema](https://opencode.ai/docs/openapi.json).
+Audit date: **2026-11-27**. This is a code/schema and synthetic-fixture audit, not a claim that every installed harness version has been tested against live history. References are the pinned [Tokscale format parsers](https://github.com/junhoyeo/tokscale/tree/8d9b509c4d719f3385e3c2464b770dc5257cb354/crates/tokscale-core/src/sessions), the [OpenCode V1 SQLite schema](https://github.com/anomalyco/opencode/blob/v1.2.0/packages/opencode/src/session/session.sql.ts), the [OpenCode V2 SQLite schema](https://github.com/anomalyco/opencode/blob/5410c21e3ea8a2e910157ba876ca1c41d3d798d9/packages/core/src/session/sql.ts), and its [OpenAPI schema](https://opencode.ai/docs/openapi.json).
 
 ### Usage now retained
 
@@ -96,7 +96,7 @@ Recorded totals are available to playback and node sizing for **every source**, 
 
 | Input family | Decoded usage | Important limits |
 | --- | --- | --- |
-| OpenCode V2 | Session and assistant input/output/cache/reasoning and native cost | Uses the authenticated read API only. Reasoning is not added twice. |
+| OpenCode V1 / V2 SQLite | V2 session totals and V1/V2 assistant input/output/cache/reasoning and native cost | Private read-only database and WAL snapshots; no running service required. V1 step-finish counters are not added to assistant totals. Reasoning is not added twice. |
 | Claude Code | Raw assistant-envelope usage, including retained records outside the SDK-visible chain | Native response IDs deduplicate repeated envelopes. Separately attributed subagents are excluded from the parent. No USD cost is calculated from pricing tables. |
 | Codex | Latest recorded cumulative `total_token_usage`, plus response usage when present | Cumulative snapshots are not summed. Usage-only clocks do not extend conversation activity. Earlier totals are marked partial if the latest parsed snapshot has only a breakdown. |
 | Gemini / Qwen | Recorded native totals, cached input, thoughts/reasoning and tool-token counters | Late Gemini patches are retained. Qwen zero-total placeholders remain unknown; provider-dependent overlaps are not guessed. |
