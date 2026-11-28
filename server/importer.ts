@@ -16,8 +16,8 @@ export class Importer {
   constructor(readonly store: SessionGraphStore, adapters: SessionAdapter[]) {
     this.adapters = adapters.map(adapter => withSourcePaths(adapter, () => this.store.setting<Record<string, string>>('sourcePaths') || {}));
   }
-  async sources(): Promise<SourceStatus[]> {
-    return Promise.all(this.adapters.map(async (adapter) => ({ id: adapter.id, name: adapter.name, description: adapter.description, capabilities: adapter.capabilities, available: await adapter.detect().catch(() => false), selected: this.store.selected().includes(adapter.id), ...this.store.sourceInfo(adapter.id) })));
+  async sources(ids?: string[]): Promise<SourceStatus[]> {
+    return Promise.all(this.adapters.filter(adapter => !ids || ids.includes(adapter.id)).map(async (adapter) => ({ id: adapter.id, name: adapter.name, description: adapter.description, capabilities: adapter.capabilities, available: await adapter.detect().catch(() => false), selected: this.store.selected().includes(adapter.id), ...this.store.sourceInfo(adapter.id) })));
   }
   start(ids?: string[], automatic = false) {
     return this.begin(ids, automatic, true);

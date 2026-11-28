@@ -102,6 +102,10 @@ export interface SourceStatus {
   sessions: number;
   lastImport?: number;
   error?: string;
+  /** Saved per-library override; null/absent uses environment/default discovery. */
+  path?: string | null;
+  pathSupported?: boolean;
+  pathHint?: string;
 }
 
 export interface ImportStatus {

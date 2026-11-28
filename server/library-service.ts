@@ -1,5 +1,5 @@
 import type { Project, Session } from '@sessiongraph/core/types';
-import { basename } from 'node:path';
+import { basename, isAbsolute } from 'node:path';
 import { annotateGitCheckouts } from './git-checkouts';
 import { makeGraph, sessionEnd } from '@sessiongraph/core/layout';
 import { SessionGraphStore } from './store';
@@ -17,7 +17,7 @@ const utc = (ms: number) => ms > 0 && ms <= 8.64e15 ? new Date(ms).toISOString()
 export class LibraryService {
   private searchCache?: { key: string; index: SessionSearchIndex; complete: number; characters: number };
   readonly importer: Importer;
-  constructor(readonly store: SessionGraphStore, adapters: SessionAdapter[]) { this.importer = new Importer(store, adapters); }
+  constructor(readonly store: SessionGraphStore, adapters: SessionAdapter[] | Importer) { this.importer = adapters instanceof Importer ? adapters : new Importer(store, adapters); }
   private validateSources(ids: string[]) {
     for (const id of ids) if (!this.importer.adapters.some(a => a.id === id)) invalid(`Unknown source "${id}". Run sessiongraph sources list.`);
   }
@@ -38,10 +38,21 @@ export class LibraryService {
     return { sessions: matched, projects: library.projects };
   }
   private key(kind: string, sessions: Session[], filters: unknown) { return fingerprint([this.store.setting('libraryID'), kind, filters, sessions]); }
-  async discoverSources() {
+  async discoverSources(ids?: string[]) {
     const paths = this.store.setting<Record<string, string>>('sourcePaths') || {};
-    return { sources: (await this.importer.sources()).map(source => ({ ...source, path: paths[source.id] || null, pathSupported: true, pathHint: sourcePathHint(source.id) })),
+    return { sources: (await this.importer.sources(ids)).map(source => ({ ...source, path: paths[source.id] || null, pathSupported: true, pathHint: sourcePathHint(source.id) })),
       configured: this.store.setting('selected') !== undefined, autoImport: this.store.autoImportEnabled() };
+  }
+  /** Editing a location neither selects a source nor imports its conversations. */
+  setSourcePath(id: string, path: string | null) {
+    this.validateSources([id]);
+    if (path !== null && (typeof path !== 'string' || !path.trim() || path.includes('\0') || !isAbsolute(path) && path !== '~' && !path.startsWith('~/'))) invalid('Enter an absolute history path, or choose Automatic.');
+    return this.configure(() => {
+      const paths = this.store.setting<Record<string, string>>('sourcePaths') || {};
+      if (path === null) delete paths[id];
+      else paths[id] = localPath(path);
+      this.store.setting('sourcePaths', paths);
+    });
   }
   private configure(change: () => void) {
     if (this.importer.status.running || !this.store.acquireImport()) throw new LibraryError('IMPORT_BUSY', 'Another import is running. Try again when it finishes.');

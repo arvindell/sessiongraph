@@ -14,6 +14,7 @@ import { LibraryError } from './library-query';
 import { MAX_SESSION_RECORDS } from './history-limits';
 import { annotateGitCheckouts } from './git-checkouts';
 import { storageFailure } from './local-errors';
+import { LibraryService } from './library-service';
 
 let publishingClient: PublishingClient | undefined;
 
@@ -76,7 +77,19 @@ export async function sessionGraphMiddleware(req: IncomingMessage, res: ServerRe
       } catch (error) { store.db.exec('ROLLBACK'); throw error; }
       return json(200, { saved: true, autoImport: store.autoImportEnabled() });
     }
-    if (url.pathname === '/api/sessiongraph/sources' && req.method === 'GET') return json(200, { sources: await importer.sources(), onboarding: store.setting('selected') === undefined });
+    if (url.pathname === '/api/sessiongraph/sources' && req.method === 'GET') {
+      const result = await new LibraryService(store, importer).discoverSources();
+      return json(200, { ...result, onboarding: !result.configured });
+    }
+    if (url.pathname === '/api/sessiongraph/sources/path') {
+      if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+      const value = await body(req);
+      if (!value || typeof value !== 'object' || Array.isArray(value) || typeof value.source !== 'string' || value.path !== null && typeof value.path !== 'string') return json(400, { error: 'Choose a source and a history path, or Automatic.' });
+      const service = new LibraryService(store, importer);
+      service.setSourcePath(value.source, value.path);
+      const result = await service.discoverSources([value.source]);
+      return json(200, { saved: true, source: result.sources[0] });
+    }
     if (url.pathname === '/api/sessiongraph/import') {
       if (req.method === 'GET') return json(200, importer.status);
       if (req.method === 'POST') {

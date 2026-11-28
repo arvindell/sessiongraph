@@ -61,7 +61,7 @@ fn main() {
                     serde_json::json!({ "url": "https://*" }),
                     serde_json::json!({ "url": "http://*" }),
                 ], vec![])
-                .permission("dialog:allow-save").permission("fs:allow-write-file"))?;
+                .permission("dialog:allow-save").permission("dialog:allow-open").permission("fs:allow-write-file"))?;
             let handle = app.handle().clone();
             let external = app.handle().clone();
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
