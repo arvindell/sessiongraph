@@ -203,6 +203,12 @@ Paths can be configured before they become available.
 | OpenCode | Data directory or SQLite file, normally `~/.local/share/opencode/opencode.db`; V1 and V2 work offline |
 
 Other sources describe their paths in `sources --json` under `pathHint`.
+Without a saved path or `CLAUDE_CONFIG_DIR`, Claude Code searches accessible
+filesystem locations across the computer in cached, resumable passes. `sync`
+continues an unfinished search; keep the app running and refresh to advance
+through very large filesystems. A custom Claude path restricts discovery to that
+home. Permission skips and scan limits are reported as warnings, not erased
+history. See [computer-wide discovery](guide.md#computer-wide-claude-history-discovery).
 Custom-path sessions use a saved-context handoff when opened from the app.
 See the [source guide](guide.md#source-coverage) for format coverage.
 

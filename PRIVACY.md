@@ -16,6 +16,13 @@ Anyone can view a published graph at `/@<github_username>` or find it in **Explo
 
 The SQLite library stores imported sessions, search data, and preferences on your device. See the [storage guide](docs/guide.md#local-storage-and-privacy) for paths and overrides. Handoff files and optional desktop login credentials also stay on your device. SessionGraph does not encrypt these files; use OS permissions and disk encryption as needed.
 
+Claude Code discovery searches accessible folders across the computer by default,
+including other users' readable history locations and mounted drives. The search
+reads directory names and filesystem metadata; conversations are read only when
+Claude Code is selected for import. No permissions are changed and no administrator
+access is requested. A saved custom source path or `CLAUDE_CONFIG_DIR` restricts
+discovery to that home. See [discovery limits](docs/guide.md#computer-wide-claude-history-discovery).
+
 Desktop releases install the `sessiongraph` and `ssg` commands on first launch.
 Setup copies CLI files to a per-user application-data directory and adds it to
 your shell profiles or Windows user PATH, preserving existing entries.

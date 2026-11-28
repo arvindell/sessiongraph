@@ -113,6 +113,14 @@ See [extended source coverage](import-coverage.md) for all additional harness lo
 
 Claude Code's local VS Code extension uses the same transcript directory as its CLI: `~/.claude/projects` (`%USERPROFILE%\.claude\projects` on Windows), or `projects` under `CLAUDE_CONFIG_DIR`. A separate CLI installation is not required for import. History in WSL, SSH hosts, or dev containers must be accessible in the environment running SessionGraph.
 
+#### Computer-wide Claude history discovery
+
+By default, Claude Code discovery searches accessible folders across the computer, including other users' readable homes and mounted drives. It looks for `.claude` homes and renamed/custom homes with native `projects/<project>/<session UUID>.jsonl` layouts. Directory discovery reads names and filesystem metadata, not arbitrary file contents, settings, or credentials. Only selecting Claude Code for import reads the discovered conversations. Copies are deduplicated by native session ID; the newest transcript wins, with the current user's copy preferred on equal modification times. Other users' and relocated histories use saved-context handoffs rather than native resume.
+
+The search advances in cached passes with a two-second or 100,000-entry budget, checked between filesystem operations; a slow OS operation can take longer. Refresh sessions (or enabled auto-import) continues an unfinished search while importing known locations. A completed search is cached for five minutes before restarting. Search progress lives only in the current process, so very large filesystems may need several refreshes in the running app. Limits of 100,000 directories, 1,000 history homes, and 128 directory levels prevent unbounded traversal; import file/message limits still apply. Symlinks, virtual Linux filesystems (`/dev`, `/proc`, `/sys`, `/run`), and macOS's duplicate `/System/Volumes` tree are not traversed. OS-protected or unreadable locations are skipped without administrator access or permission changes. **Import details** reports incomplete scans, permission skips, and limits; missing locations never erase saved history.
+
+A saved custom source path or `CLAUDE_CONFIG_DIR` disables the computer-wide search and reads only that home. Use one to restrict discovery or import an accessible copy when permissions block the original. To set a path, see [custom source paths](cli.md#custom-paths). Arbitrarily named standalone exports outside a recognized Claude home are not automatically identified.
+
 ### Additional source locations
 
 - Gemini respects `GEMINI_CLI_HOME` as a replacement home directory. `SESSIONGRAPH_GEMINI_HOME` selects a `.gemini`-style directory containing `tmp/`.

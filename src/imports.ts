@@ -7,7 +7,7 @@ const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<':
 export function createImports(onChange: (background: boolean) => Promise<void>, onVisibility: () => void, notice: (message: string) => void) {
   const dialog = document.createElement('dialog'); dialog.className = 'imports-dialog';
   dialog.setAttribute('aria-labelledby', 'imports-heading');
-  dialog.innerHTML = `<button class="icon-button dialog-close" aria-label="Close sources">${icon('x')}</button><h2 id="imports-heading">Choose your session sources</h2><div class="import-sources"></div><div class="imports-progress" role="status"></div><details class="imports-notes" hidden><summary>Import details</summary><div></div></details><footer><button class="primary-button import-start">Import sessions</button></footer>`;
+  dialog.innerHTML = `<button class="icon-button dialog-close" aria-label="Close sources">${icon('x')}</button><h2 id="imports-heading">Choose your session sources</h2><p class="imports-description">By default, Claude Code searches accessible folders across this computer, including other users’ readable histories. Only selected sources are imported. Custom history paths restrict the search.</p><div class="import-sources"></div><div class="imports-progress" role="status"></div><details class="imports-notes" hidden><summary>Import details</summary><div></div></details><footer><button class="primary-button import-start">Import sessions</button></footer>`;
   document.body.append(dialog);
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => dialog.querySelector<T>(s)!;
   let running = false, timer = 0, disposed = false, returnFocus: HTMLElement | null = null;
