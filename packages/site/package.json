@@ -10,6 +10,7 @@
     "typecheck": "pnpm generate && tsc --noEmit",
     "test": "pnpm generate && tsx --test tests/*.test.ts",
     "test:browser": "pnpm build && tsx tests/browser.ts",
+    "test:analytics": "tsx tests/analytics.browser.ts",
     "db:migrate": "PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=1 prisma migrate deploy",
     "db:backfill-publications": "tsx server/backfill-publications.ts"
   },
@@ -23,7 +24,8 @@
     "@sessiongraph/core": "workspace:*",
     "@vercel/functions": "^3.11.4",
     "@vercel/oidc-aws-credentials-provider": "^3.3.18",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "posthog-js": "^1.455.4"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

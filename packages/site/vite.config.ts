@@ -53,7 +53,10 @@ export default defineConfig({
   publicDir: false,
   plugins: [{
     name: 'static-site-assets',
-    transformIndexHtml: { order: 'pre', handler: html => renderLandingSources(html).replace(/<!-- icon:([a-z0-9-]+)(?: ([a-z-]+))? -->/g, (_, name: IconName, cls?: string) => icon(name, cls)) },
+    transformIndexHtml: { order: 'pre', handler: html => ({
+      html: renderLandingSources(html).replace(/<!-- icon:([a-z0-9-]+)(?: ([a-z-]+))? -->/g, (_, name: IconName, cls?: string) => icon(name, cls)),
+      tags: [{ tag: 'script', attrs: { type: 'module', src: '/analytics.ts' }, injectTo: 'head' }],
+    }) },
     configureServer(server) { mountPublicApi(server); server.middlewares.use(routes); server.middlewares.use(serveSourceIcon); },
     configurePreviewServer(server) { server.middlewares.use(routes); server.middlewares.use(serveSourceIcon); },
     async closeBundle() {

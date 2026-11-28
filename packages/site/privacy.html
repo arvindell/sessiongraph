@@ -39,6 +39,12 @@
           <p>Vercel handles website and API requests, and AWS stores hosted records. Hosting providers receive ordinary connection information, such as IP addresses. SessionGraph uses short-lived hashed request identifiers for rate limiting. Desktop update checks contact GitHub, and npm installs contact the npm registry; neither sends session history.</p>
         </section>
 
+        <section aria-labelledby="website-analytics">
+          <h2 id="website-analytics">Website visitor analytics</h2>
+          <p>We use PostHog on public website pages to estimate visitors and count page views. Analytics do not run in the local or desktop app, account pages, or sign-in flows. We do not record sessions, clicks, forms, conversations, or graph contents, and do not identify signed-in users.</p>
+          <p>Analytics use no cookies or browser storage. PostHog derives a daily anonymous visitor identifier from the day, website host, IP address, and browser user agent, then discards the raw IP address and user agent. Events contain basic browser and device information, a public page category, and the referring domain. We strip URL queries, fragments, and profile usernames before sending events. We skip analytics when your browser sends Do Not Track or Global Privacy Control.</p>
+        </section>
+
         <section aria-labelledby="your-controls">
           <h2 id="your-controls">Your controls</h2>
           <p>Use <strong>Unpublish</strong> from the app or <a href="/account">your account</a> to remove the hosted graph. Signing out doesn’t remove it, and unpublishing can’t erase copies others already saved. SessionGraph doesn’t encrypt local library or handoff files; your device and backup settings govern access to them. If you continue a session in another coding tool, that tool’s privacy settings apply to the context it receives.</p>

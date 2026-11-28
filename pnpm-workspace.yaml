@@ -2,6 +2,7 @@ allowBuilds:
   esbuild: true
   '@prisma/engines': true
   prisma: true
+  core-js: false
 packages:
   - 'packages/*'
 # These are release outputs; source builds never install their own native binaries.
